@@ -8,11 +8,13 @@ import importlib.util
 import json
 import os
 import stat
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parent / "todo" / "obsidian_todo.py"
+sys.path.insert(0,str(SCRIPT.parent))
 SPEC = importlib.util.spec_from_file_location("obsidian_todo", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 obsidian_todo = importlib.util.module_from_spec(SPEC)

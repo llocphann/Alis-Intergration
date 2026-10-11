@@ -1,6 +1,6 @@
 {
   "id": "hadalird",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "host": "Hadalis",
   "hostApi": 1,
   "session": "HadalisSession.qml",

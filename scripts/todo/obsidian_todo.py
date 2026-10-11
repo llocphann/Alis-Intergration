@@ -6,6 +6,7 @@ Tasks-aware Obsidian CLI mutation is implemented separately.
 """
 
 from __future__ import annotations
+import agenda_metadata
 
 import argparse
 import codecs
@@ -298,13 +299,14 @@ def _task_from_line(doc: dict[str, Any], index: int) -> dict[str, Any] | None:
         return None
 
     indent, list_marker, status_char, content = match.groups()
+    content, agenda = agenda_metadata.split(content)
     raw_hash = _sha256_text(raw_line)
     source_line = index + 1
     task_id = _sha256_text(
         doc["notePath"] + "\0" + str(source_line) + "\0" + raw_hash
     )[:24]
     status_type = _status_type(status_char)
-    return {
+    result = {
         "content": content,
         "done": status_type == "DONE",
         "id": task_id,
@@ -319,6 +321,13 @@ def _task_from_line(doc: dict[str, Any], index: int) -> dict[str, Any] | None:
         "_index": index,
         "_match": match,
     }
+    if agenda:
+        result['agenda']=agenda
+        result['date']=str(agenda.get('date',''))
+        result['startTime']=str(agenda.get('startTime',''))
+        result['endTime']=str(agenda.get('endTime',''))
+        if content==agenda.get('owned'):result['content']=str(agenda.get('title',content))
+    return result
 
 
 def _tasks(doc: dict[str, Any]) -> list[dict[str, Any]]:

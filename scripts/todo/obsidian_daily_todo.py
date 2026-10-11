@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 import obsidian_todo as core
+import agenda_metadata
 
 DEFAULT_FOLDER = "00_Capture/01_Journal"
 DEFAULT_FORMAT = "YYYY/MMMM/DD-MM-YYYY-dddd"
@@ -191,6 +192,7 @@ def _task_from_line(
     if match is None:
         return None
     indent, list_marker, status_char, raw_content = match.groups()
+    raw_content, agenda = agenda_metadata.split(raw_content)
     content, start_time, end_time, duration = _time_metadata(raw_content, default_duration)
     raw_hash = core._sha256_text(raw_line)
     source_line = index + 1
@@ -198,7 +200,7 @@ def _task_from_line(
         doc["notePath"] + "\x00" + str(source_line) + "\x00" + raw_hash
     )[:24]
     status_type = core._status_type(status_char)
-    return {
+    result = {
         "content": content,
         "rawContent": raw_content,
         "done": status_type == "DONE",
@@ -219,6 +221,10 @@ def _task_from_line(
         "_index": index,
         "_match": match,
     }
+    if agenda:
+        result['agenda']=agenda
+        result['date']=str(agenda.get('date',''))
+    return result
 
 
 def _tasks(doc: dict[str, Any], default_duration: int) -> list[dict[str, Any]]:

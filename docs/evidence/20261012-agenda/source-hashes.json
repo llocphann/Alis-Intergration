@@ -1,0 +1,13 @@
+{
+  "manifest.json": "64d1985e17d1be0cfbbcf1179d4df98a5120a0b939e144a5363cbc8ac17759fb",
+  "scripts/test-obsidian-agenda-helper.py": "501eb2f541590a1bf3337937c0020306579a65283549264e58fbc8280f0a2243",
+  "scripts/test-todo-obsidian-helper.py": "9d83fcdcf1d107bb8963d199ee922670a0f613f8d778b4dd4e2f990bb776101e",
+  "scripts/todo/agenda_metadata.py": "82da93aa3f0a9ae4c9241e22a69f779fb90f369a91d21df12380cffceeca3841",
+  "scripts/todo/obsidian_agenda.py": "64b04f937d14eaf53d5010fe7baf293fa2e4a03c41054278641faf89239492ae",
+  "scripts/todo/obsidian_daily_todo.py": "0419fc7bc8258a31ad8b8cdb1713e5a66e22bbc3f3ae821ed8c41314836062bb",
+  "scripts/todo/obsidian_todo.py": "5c77aafe50c14f042ddfcfe54aea8e2b733cf6bc27c26c03c79d2a46844495e1",
+  "services/AgendaTaskMutation.qml": "19b786063b338ebee8696461182eb61dcc9e6459ca887f3e6c052c7b223a6b92",
+  "services/DailyNoteTodoBackend.qml": "202beaf207b1cd5d7633c2f1498a89d0d28b3004cc56e6279c154d017aee0ec0",
+  "services/ObsidianTodoBackend.qml": "56a4f73777236595ebb87aa7756d3448d5c3bed7478171fff1fe9609eeea2dbc",
+  "services/qmldir": "7a5212d5bb29a2856f6ae44fe6295cd43d9aa2aa2cf70ae279a1d5ec1f18ed92"
+}

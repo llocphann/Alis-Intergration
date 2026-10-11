@@ -1,0 +1,25 @@
+{
+  "scope": "focused source, private notes/package only",
+  "parentSha": "7c3623da5cf8741a0b82cb4d3d8054017dfa99d0",
+  "tests": [
+    {
+      "command": "python3 scripts/test-obsidian-agenda-helper.py",
+      "exit": 0,
+      "methods": 9,
+      "result": "PASS; both modes, BOM/CRLF, idempotence, unlink/delete, external notes/checkbox edits, readonly/invalid source, CAS conflict, concurrent workers"
+    },
+    {
+      "command": "python3 scripts/test-install.py",
+      "exit": 0,
+      "result": "PASS; private fixture release identity/hash readback/owned links/idempotence/helper prefix. Owner install not performed"
+    }
+  ],
+  "priorRegressionResults": {
+    "dailyTodoMethods": 16,
+    "managedTodoMethods": 30,
+    "result": "PASS before additive explicit-delete fixture; see compatible host cross-repository raw bridge logs"
+  },
+  "ownerAcceptance": "OPEN",
+  "hardwareActions": false,
+  "personalVaultAccess": false
+}
