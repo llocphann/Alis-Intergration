@@ -28,7 +28,8 @@ Qt 6 and private Niri, and use synthetic vaults and injected status helpers.
 Initial provenance is recorded in `manifest.json`. All active feature, rework and bug tasks are tracked **only in
 [Alis GitHub Issues](https://github.com/llocphann/Alis/issues?q=is%3Aissue+is%3Aopen)**.
 Search existing Issues first; create one only for a new outcome. Keep its Goal,
-necessary constraints and Done-when criteria brief. Update it directly at
+necessary constraints and Done-when criteria brief; use one `type:*`, the primary
+`area:integration` label and a `status:*` label only when applicable. Update it directly at
 meaningful milestones with actual Alis `dev` / Integration `main` SHAs, test
 results and any Owner/permission gate. A bot-complete Issue remains open until
 Owner verification. **Do not write task progress to Markdown.** This repository
