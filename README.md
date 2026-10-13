@@ -25,14 +25,15 @@ Run `make test` for scoped filesystem/helper and installation contracts.
 Native tests use the sibling `Hadalis` checkout by default; set
 `HADALIS_ROOT=/path/to/Hadalis` for another location. They require Quickshell,
 Qt 6 and private Niri, and use synthetic vaults and injected status helpers.
-Initial provenance is recorded in `manifest.json`. All current
-implementation, host-cutover, native integration and new feature **tasks are
-managed centrally in [Alis GitHub Issues](https://github.com/llocphann/Alis/issues?q=is%3Aissue+is%3Aopen)**, using stable feature/rework/bug task codes. The former Markdown lists are historical compatibility pointers. This repository continues to own optional TLP, Thinkfan and Obsidian
-source, QML Settings, helpers and tests, but has no separate active task
-queue. Every change should reference its selected Alis task and pin the
-compatible Alis host and Integration source SHAs, with actual test receipts
-and remaining real-device/user-permission gates. No user data, vault or
-privileged system settings are modified merely by centralizing TODOs.
+Initial provenance is recorded in `manifest.json`. All active feature, rework and bug tasks are tracked **only in
+[Alis GitHub Issues](https://github.com/llocphann/Alis/issues?q=is%3Aissue+is%3Aopen)**.
+Search existing Issues first; create one only for a new outcome. Keep its Goal,
+necessary constraints and Done-when criteria brief. Update it directly at
+meaningful milestones with actual Alis `dev` / Integration `main` SHAs, test
+results and any Owner/permission gate. A bot-complete Issue remains open until
+Owner verification. **Do not write task progress to Markdown.** This repository
+still owns its optional QML services, Settings, helpers and package-local tests;
+no user vault, privileged settings or existing data is changed by task tracking.
 
 Classic and Waffle TLP editors and Obsidian task/capture settings are owned
 here. Hadalis retains navigation, optional loaders, generic Battery controls
