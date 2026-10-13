@@ -47,32 +47,6 @@ Scope {
 
     signal migrationCommitted(var payload)
     signal migrationFinished(bool success, var payload)
-    signal agendaMutationFinished(bool success,var payload)
-    function ensureAgenda(event): bool {return root._agendaMutation("ensure",event)}
-    function unlinkAgenda(link): bool {return root._agendaMutation("unlink",link)}
-    function deleteAgenda(link): bool {return root._agendaMutation("delete",link)}
-    function _agendaMutation(operation,event): bool {
-        if(!root.ready || root.busy)return false
-        root.busy=true
-        if(agendaJob.execute(operation,event))return true
-        root._finishMutation();return false
-    }
-    AgendaTaskMutation {
-        id:agendaJob
-        mode:"daily"
-        sourceArgs:root._sourceArgs()
-        configured:root.configured
-        onFinished:(success,payloadJson)=>{
-            const payload=JSON.parse(payloadJson)
-            if(success) {
-                if(payload.sourceDate===root.sourceDate)root._applyPayload(payload)
-                else root._clearError()
-            } else root._setError(String(payload?.error?.code || "agenda_failed"),String(payload?.error?.message || "To-do link pending"))
-            root.agendaMutationFinished(success,payload)
-            root._finishMutation()
-        }
-    }
-
     property string _scanSourceKey: ""
     property string _mutationSourceKey: ""
     property bool _refreshQueued: false
@@ -150,7 +124,7 @@ Scope {
             root._clearUnavailable("not_configured", "Markdown Todo source is not configured")
             return
         }
-        if (scanProc.running || mutationProc.running || agendaJob.busy) {
+        if (scanProc.running || mutationProc.running) {
             root._refreshQueued = true
             return
         }
@@ -273,7 +247,7 @@ Scope {
             root._setError("not_ready", "Markdown Todo source is not ready")
             return false
         }
-        if (mutationProc.running || agendaJob.busy) {
+        if (mutationProc.running) {
             root._setError("busy", "Another Todo mutation is already in progress")
             return false
         }
@@ -306,7 +280,7 @@ Scope {
     }
 
     function _finishScan(): void {
-        root.busy = mutationProc.running || agendaJob.busy
+        root.busy = mutationProc.running
         if (root._refreshQueued && root.configured && !mutationProc.running) {
             root._refreshQueued = false
             Qt.callLater(() => { if (root._live) root.refresh() })
@@ -314,7 +288,7 @@ Scope {
     }
 
     function _finishMutation(): void {
-        root.busy = scanProc.running || agendaJob.busy
+        root.busy = scanProc.running
         if (root._refreshQueued && root.configured && !scanProc.running) {
             root._refreshQueued = false
             Qt.callLater(() => { if (root._live) root.refresh() })
