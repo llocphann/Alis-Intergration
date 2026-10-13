@@ -1,4 +1,7 @@
-"""Read only validated Alis-owned inline metadata; other Markdown stays literal."""
+"""Read-only legacy Agenda metadata parser for existing Todo Markdown.
+
+No Agenda links are created or modified; unknown/invalid markup stays literal.
+"""
 import base64
 import json
 import re
@@ -19,10 +22,3 @@ def split(content):
     except (ValueError, TypeError, AttributeError):
         return content, None
 
-
-def render(data):
-    raw = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode()
-    encoded = base64.urlsafe_b64encode(raw).decode().rstrip('=')
-    if len(encoded) > 32768:
-        raise ValueError('Agenda task metadata exceeds its bounded size')
-    return ' <!-- alis:agenda:v1:' + encoded + ' -->'
