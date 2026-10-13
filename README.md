@@ -27,11 +27,7 @@ Native tests use the sibling `Hadalis` checkout by default; set
 Qt 6 and private Niri, and use synthetic vaults and injected status helpers.
 Initial provenance is recorded in `manifest.json`. All current
 implementation, host-cutover, native integration and new feature **tasks are
-managed centrally in [Alis dev](https://github.com/llocphann/Alis/blob/dev/to-do/README.md)**,
-using its [Issues](https://github.com/llocphann/Alis/blob/dev/to-do/cloud-bot/ISSUES.md),
-[Rework](https://github.com/llocphann/Alis/blob/dev/to-do/cloud-bot/REWORK_OPTIMIZATION.md)
-and [New features](https://github.com/llocphann/Alis/blob/dev/to-do/cloud-bot/NEW_FEATURES.md)
-lists. This repository continues to own optional TLP, Thinkfan and Obsidian
+managed centrally in [Alis GitHub Issues](https://github.com/llocphann/Alis/issues?q=is%3Aissue+is%3Aopen)**, using stable feature/rework/bug task codes. The former Markdown lists are historical compatibility pointers. This repository continues to own optional TLP, Thinkfan and Obsidian
 source, QML Settings, helpers and tests, but has no separate active task
 queue. Every change should reference its selected Alis task and pin the
 compatible Alis host and Integration source SHAs, with actual test receipts
