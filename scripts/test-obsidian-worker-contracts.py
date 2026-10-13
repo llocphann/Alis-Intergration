@@ -130,4 +130,28 @@ for token in ('id: todoObsidianVaultPath','updates["todo.obsidian.vaultPath"] = 
     assert token in settings, "shared-vault settings lost contract: "+token
 for token in ('Translation.tr("Obsidian vault folder")', 'Translation.tr("Shared by To-do and Zettelkasten.")', 'text: Todo.sharedVaultPath'):
     assert token in settings, "shared-vault label/help lost contract: "+token
+# Agenda-to-Todo automation was withdrawn by the owner. Backends must never
+# expose its mutation API; still parse historical metadata without rewriting it.
+for name in ("services/ObsidianTodoBackend.qml", "services/DailyNoteTodoBackend.qml"):
+    source=(ROOT/name).read_text(encoding="utf-8")
+    for retired in ("AgendaTaskMutation", "agendaJob", "ensureAgenda(",
+                    "unlinkAgenda(", "deleteAgenda(", "agendaMutationFinished"):
+        assert retired not in source, name+" retains retired Agenda writer: "+retired
+for name in ("services/AgendaTaskMutation.qml", "services/qmldir",
+             "scripts/todo/obsidian_agenda.py",
+             "scripts/test-obsidian-agenda-helper.py"):
+    assert not (ROOT/name).exists(), name+" resurrected obsolete linking code"
+metadata=(ROOT/"scripts/todo/agenda_metadata.py").read_text(encoding="utf-8")
+assert "def split(content):" in metadata and "def render(" not in metadata
+import base64
+import json
+import sys
+sys.path.insert(0,str(ROOT/"scripts/todo"))
+import agenda_metadata
+legacy={"version":1,"key":"agenda-legacy-test-001","date":"2026-10-12"}
+encoded=base64.urlsafe_b64encode(json.dumps(legacy).encode()).decode().rstrip("=")
+body="Old user task <!-- alis:agenda:v1:"+encoded+" -->"
+clean,parsed=agenda_metadata.split(body)
+assert clean=="Old user task" and parsed==legacy
+assert agenda_metadata.split("Unrelated task <!-- other:marker -->")==("Unrelated task <!-- other:marker -->",None)
 print("HADALIRD_OBSIDIAN_WORKER_CONTRACTS_PASS managed/daily source identity, migration/status/plugin boundaries, quick-note template and shared vault")
