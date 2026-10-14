@@ -25,9 +25,9 @@ Run `make test` for scoped filesystem/helper and installation contracts.
 Native tests use the sibling `Hadalis` checkout by default; set
 `HADALIS_ROOT=/path/to/Hadalis` for another location. They require Quickshell,
 Qt 6 and private Niri, and use synthetic vaults and injected status helpers.
-Initial provenance is recorded in `manifest.json`. All active feature, rework and bug tasks are tracked **only in
-[Alis GitHub Issues](https://github.com/llocphann/Alis/issues?q=is%3Aissue+is%3Aopen)**.
-Search existing Issues first; create one only for a new outcome. Keep its Goal,
+Initial provenance is recorded in `manifest.json`. All active Integration feature, rework and bug tasks are tracked **in
+[Alis-Intergration GitHub Issues](https://github.com/llocphann/Alis-Intergration/issues?q=is%3Aissue+is%3Aopen)**. Alis core shell/host Issues and Companion Issues stay in their own repositories; link cross-repo dependencies rather than creating duplicate Issues.
+Search existing Alis-Intergration Issues first (including closed and historical Alis MOVED links); create one only for a new outcome. Keep its Goal,
 necessary constraints and Done-when criteria brief; reuse `bug`, `enhancement`
 or `documentation` plus the primary `area:integration`. Add colored
 `complexity:high` only for genuinely difficult native, privileged or cross-repo
