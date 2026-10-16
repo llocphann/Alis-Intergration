@@ -22,9 +22,11 @@ not create profile directories or overrides. TLP (including its optional
 Radio Device Wizard), Thinkfan and Obsidian remain separately installed apps.
 
 Run `make test` for scoped filesystem/helper and installation contracts.
-Native tests use the sibling `Hadalis` checkout by default; set
-`HADALIS_ROOT=/path/to/Hadalis` for another location. They require Quickshell,
-Qt 6 and private Niri, and use synthetic vaults and injected status helpers.
+Native tests prefer a sibling `Alis` host checkout, with a sibling `Hadalis`
+checkout accepted for legacy fixtures. Set `ALIS_ROOT=/path/to/Alis` to pin the
+native-test host explicitly (`HADALIS_ROOT` is a supported legacy override).
+They require Quickshell, Qt 6 and private Niri, and use synthetic vaults and
+injected status helpers.
 Initial provenance is recorded in `manifest.json`. All active Integration feature, rework and bug tasks are tracked **in
 [Alis-Intergration GitHub Issues](https://github.com/llocphann/Alis-Intergration/issues?q=is%3Aissue+is%3Aopen)**. Alis core shell/host Issues and Companion Issues stay in their own repositories; link cross-repo dependencies rather than creating duplicate Issues.
 Search existing Alis-Intergration Issues first (including closed and historical Alis MOVED links); create one only for a new outcome. Keep its Goal,

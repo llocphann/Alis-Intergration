@@ -8,8 +8,9 @@ from pathlib import Path
 import sys
 import tempfile
 
+from integration_test_host import resolve_host_root
 ROOT = Path(__file__).resolve().parents[1]
-HOST = Path(os.environ.get("HADALIS_ROOT", str(ROOT.parent / "Hadalis"))).resolve()
+HOST = resolve_host_root(ROOT)
 sys.path.insert(0, str(HOST / "scripts"))
 from native_test_session import private_wayland, run_qs
 spec = importlib.util.spec_from_file_location("installer", ROOT / "scripts/install.py")

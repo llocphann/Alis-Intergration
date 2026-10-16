@@ -2,8 +2,9 @@
 """Real consolidated path controls preserve the shared vault configuration."""
 import json,os,sys,tempfile
 from pathlib import Path
+from integration_test_host import resolve_host_root
 ROOT=Path(__file__).resolve().parents[1]
-HOST=Path(os.environ.get("HADALIS_ROOT",str(ROOT.parent/"Hadalis"))).resolve()
+HOST = resolve_host_root(ROOT)
 sys.path.insert(0,str(HOST/"scripts"))
 from native_test_session import private_wayland,run_qs
 with tempfile.TemporaryDirectory(prefix="hadalis-obsidian-path-ui-") as name:
