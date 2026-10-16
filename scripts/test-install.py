@@ -29,6 +29,40 @@ with tempfile.TemporaryDirectory(prefix="hadalird-install-") as name:
     assert (release / "manifest.json").read_bytes() == before
     manifest = json.loads(before)
     assert all(installer.digest(release / path) == digest for path, digest in manifest["files"].items())
+
+    def expect_reinstall_rejected(reason):
+        try:
+            installer.install(data, source)
+        except ValueError:
+            return
+        raise AssertionError(reason)
+
+    original_manifest = (release / "manifest.json").read_text()
+    omitted = dict(manifest)
+    omitted["files"] = {name: value for name, value in manifest["files"].items()
+                        if name != "HadalisSession.qml"}
+    (release / "manifest.json").write_text(json.dumps(omitted))
+    expect_reinstall_rejected("missing mandatory digest entry accepted")
+    (release / "manifest.json").write_text(original_manifest)
+    (release / "unexpected.qml").write_text("unlisted")
+    expect_reinstall_rejected("unlisted release payload accepted")
+    (release / "unexpected.qml").unlink()
+    (release / "services/unlisted.qml").symlink_to(source / "README.md")
+    expect_reinstall_rejected("linked release payload accepted")
+    (release / "services/unlisted.qml").unlink()
+    assert installer.install(data, source) == release
+
+    original_source_manifest = (source / "manifest.json").read_text()
+    for field, value in (("hostApi", 2), ("session", "Untrusted.qml")):
+        incompatible = json.loads(original_source_manifest)
+        incompatible[field] = value
+        (source / "manifest.json").write_text(json.dumps(incompatible))
+        try:
+            installer.assemble(source, private / ("invalid-" + field), "a" * 40)
+            raise AssertionError("incompatible manifest accepted: " + field)
+        except ValueError:
+            pass
+    (source / "manifest.json").write_text(original_source_manifest)
     installer.uninstall(data)
     assert not (data / "current").exists() and release.exists()
     foreign = private / "foreign"
