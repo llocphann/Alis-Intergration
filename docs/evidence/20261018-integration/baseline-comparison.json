@@ -1,0 +1,344 @@
+{
+  "hostSha": "c8036e61d525666e72d652751b1501a8bd073c48",
+  "contracts": {
+    "hostSha": "c8036e61d525666e72d652751b1501a8bd073c48",
+    "checks": [
+      {
+        "argv": [
+          "python3",
+          "scripts/test-abyss-edge-editor-adaptive-toolbar-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "8e18a356cc471f5b4145d3d1546683469aafd96919ad81c5169dd733388357f4"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-abyss-edge-editor-compact-actions-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "1098eec7ca422538bf5eadcdabb7ed9dcfaf01275bc639bfd016955e9837875f"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-abyss-edge-editor-compact-side-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "cba22007aecde696f203dc1a73a041a296f30649b86451e80a2dd67801454242"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-abyss-input-region-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "ad1c38a5a8ebe3bb94f3ddd6a2577774b9ce2a6499c8a7097731b2b89cd6a7ed"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-abyss-launcher-live-editor-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "d7a08125f373a083c382457b16c15862728686417ea3e293b6c2ae9e7fa7bbb2"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-abyss-niri-hover-layer-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "78f285250840f3268d9eecf76b15e76cf7685be28ba585b80682b92b8d83a0ef"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-calendar-weather-composition-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "60b7ce9a90ec481c6e52090b45751bd3fb277bbcbe0e90f1c43453872f87623d"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-clipboard-watcher-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "cd133a28fd614ab6911bb67db78d0e6c95f4afa3b798d4bea38731723b89f019"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-dashboard-freeform-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "76cd287ad82d45196e8ea3bd7edc97bf49cb946e08d43e6834a22ba7efc535d7"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-dashboard-music-browser-navigation-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "e02311d282f7b790581d5b88aa34fd885ad5ab99b8c2461aa59c2a71bf328a20"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-dashboard-notes-markdown-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "42b98f408a14440258d19a5edbb813c0ee57101cb3cb13987e0f01060489d16d"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-dock-abyss-hover-orientation-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "023e068a557c8482122c85ef2562c2f9555004cb44e83a9459da21d51c9978c8"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-material-only-global-style-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "d3b309b6a2de92ccd6d6fba43d26d11d4ef77901c0e303b2bd89e61fc0788dbe"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-notification-center-bottom-right-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "1ea84ed9fa55ae2510aedd95f7a4c7eebaea674a32024ab7418c01a9a8d07edb"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-p0-settings-navigation-contract.py"
+        ],
+        "exit": 0,
+        "outputSha256": "4a7ead20a8081322d7d1d75c4b1d31fe20490b51ec05f81b7956c4cbeecfa1a8"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-shell-surface-contracts.py"
+        ],
+        "exit": 1,
+        "outputSha256": "0ca9b99eb80ea7bdc5d4fe5f6cc4149e2dead5963a1be40eac3acde96f4081c9"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-thinkfan-system-monitor-contract.py"
+        ],
+        "exit": 0,
+        "outputSha256": "2f5f7621c0341a4fcf76a7f02da73f614fcc69b7ce87f5a58b2b39b550ab5443"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-todo-obsidian-settings-deeplink.py"
+        ],
+        "exit": 0,
+        "outputSha256": "5ae3ee8534060df2de7b5fd65f6041956e10e9f79d407ba207a34ad66d477c1c"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-todo-obsidian-settings-ui.py"
+        ],
+        "exit": 0,
+        "outputSha256": "bf97aecf71fe087b73f382b44e6c258d614c53eaf73e9a3174356add564ae8f1"
+      },
+      {
+        "argv": [
+          "python3",
+          "scripts/test-weekly-planner-expanded-event-editor-contract.py"
+        ],
+        "exit": 1,
+        "outputSha256": "9e5dbf30b15ff41e2dd3a2b4e2f5e9412e3c3492003a094aeea0c621a9f7a28d"
+      }
+    ],
+    "finishedAt": "2026-10-18T09:21:41.961923+00:00"
+  },
+  "policies": {
+    "hostSha": "c8036e61d525666e72d652751b1501a8bd073c48",
+    "checks": [
+      {
+        "argv": [
+          "node",
+          "scripts/test-weekly-planner-multidate.mjs"
+        ],
+        "exit": 1,
+        "log": "baseline-test-weekly-planner-multidate.log"
+      },
+      {
+        "argv": [
+          "node",
+          "scripts/test-agenda-todo-independence.mjs"
+        ],
+        "exit": 1,
+        "log": "baseline-test-agenda-todo-independence.log"
+      }
+    ],
+    "finishedAt": "2026-10-18T04:32:40.338494+00:00"
+  },
+  "brandBaseline": {
+    "scope": "active source only (excludes docs, history, migration and tests)",
+    "files_scanned": 1513,
+    "remaining_active_references": 3,
+    "remaining_legacy_paths": [],
+    "remaining_legacy_path_count": 0,
+    "by_kind": {
+      "environment": 0,
+      "service": 1,
+      "shell-id": 0,
+      "native": 0,
+      "polkit": 0,
+      "launcher": 2,
+      "runtime-path": 0,
+      "nix": 0
+    },
+    "examples": {
+      "environment": [],
+      "service": [
+        {
+          "path": "automation/queue/pending/JOB-AUDIO-I01-BASELINE-20261015-01.json",
+          "line": 1,
+          "match": "inir.service"
+        }
+      ],
+      "shell-id": [],
+      "native": [],
+      "polkit": [],
+      "launcher": [
+        {
+          "path": "scripts/companion-manager.py",
+          "line": 31,
+          "match": "bin/inir"
+        },
+        {
+          "path": "scripts/hadanion-status.py",
+          "line": 20,
+          "match": "bin/inir"
+        }
+      ],
+      "runtime-path": [],
+      "nix": []
+    }
+  },
+  "brandCurrent": {
+    "scope": "active source only (excludes docs, history, migration and tests)",
+    "files_scanned": 1515,
+    "remaining_active_references": 3,
+    "remaining_legacy_paths": [],
+    "remaining_legacy_path_count": 0,
+    "by_kind": {
+      "environment": 0,
+      "service": 1,
+      "shell-id": 0,
+      "native": 0,
+      "polkit": 0,
+      "launcher": 2,
+      "runtime-path": 0,
+      "nix": 0
+    },
+    "examples": {
+      "environment": [],
+      "service": [
+        {
+          "path": "automation/queue/pending/JOB-AUDIO-I01-BASELINE-20261015-01.json",
+          "line": 1,
+          "match": "inir.service"
+        }
+      ],
+      "shell-id": [],
+      "native": [],
+      "polkit": [],
+      "launcher": [
+        {
+          "path": "scripts/companion-manager.py",
+          "line": 31,
+          "match": "bin/inir"
+        },
+        {
+          "path": "scripts/hadanion-status.py",
+          "line": 20,
+          "match": "bin/inir"
+        }
+      ],
+      "runtime-path": [],
+      "nix": []
+    }
+  },
+  "packagingInputs": {
+    "baselineHostSha": "c8036e61d525666e72d652751b1501a8bd073c48",
+    "currentHostSha": "53953bdd666972be9f9bfa0754b2ded0e02cf73b",
+    "checks": [
+      {
+        "path": "Makefile",
+        "sameBlob": true,
+        "baselineBlob": "43546342cb143478f72aa38067cceea024de1176",
+        "currentBlob": "43546342cb143478f72aa38067cceea024de1176"
+      },
+      {
+        "path": "scripts/alis",
+        "sameBlob": true,
+        "baselineBlob": "ff201ad2a1b7a91334fc8e73dde874a24a270a54",
+        "currentBlob": "ff201ad2a1b7a91334fc8e73dde874a24a270a54"
+      },
+      {
+        "path": "scripts/lib/brand-env-compat.sh",
+        "sameBlob": true,
+        "baselineBlob": "7d5ff851dba8338f9a66e3f5d63506a09cba5054",
+        "currentBlob": "7d5ff851dba8338f9a66e3f5d63506a09cba5054"
+      },
+      {
+        "path": "distro/arch/alis-shell/PKGBUILD",
+        "sameBlob": true,
+        "baselineBlob": "d1192319e5a3654aaa0269835ac1218517261f77",
+        "currentBlob": "d1192319e5a3654aaa0269835ac1218517261f77"
+      },
+      {
+        "path": "distro/arch/alis-shell/.SRCINFO",
+        "sameBlob": true,
+        "baselineBlob": "e7975959ad47015be5c1f14073637428ac161a98",
+        "currentBlob": "e7975959ad47015be5c1f14073637428ac161a98"
+      }
+    ],
+    "prefixFirstFailure": "grep for literal system_config_dir ALIS_SYSTEM_RUNTIME_DIR in staged CLI",
+    "scope": "identical first-failure packaging inputs only; no full package acceptance claimed"
+  },
+  "newBarCavaFailureInputs": [
+    {
+      "path": "services/Audio.qml",
+      "baselineBlob": "a62722abc4d24495e6ee52b56989c18628150582",
+      "currentBlob": "a62722abc4d24495e6ee52b56989c18628150582",
+      "sameBlob": true
+    },
+    {
+      "path": "modules/common/widgets/BarCavaVisualizer.qml",
+      "baselineBlob": "06e6826825cf783bcaf0bf42c5adb8c127707230",
+      "currentBlob": "06e6826825cf783bcaf0bf42c5adb8c127707230",
+      "sameBlob": true
+    },
+    {
+      "path": "scripts/test-bar-cava-profile-runtime.py",
+      "baselineBlob": "9292768656174d1311ddc47568212ea5fa7d5289",
+      "currentBlob": "9292768656174d1311ddc47568212ea5fa7d5289",
+      "sameBlob": true
+    },
+    {
+      "path": "scripts/native_test_session.py",
+      "baselineBlob": "de4923f79ff8dc86172376ec215fb7ba7d0f4dcf",
+      "currentBlob": "de4923f79ff8dc86172376ec215fb7ba7d0f4dcf",
+      "sameBlob": true
+    }
+  ],
+  "newBarCavaFailureNote": "Final run adds a FAIL for bar Cava: numeric BAR_PROFILE_PASS was logged, but Audio.qml undefined PipeWire assignments trigger the strict check. The full check remains FAIL. No new favorable benchmark was selected; input equality is not a reproduced baseline result."
+}

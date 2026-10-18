@@ -1,0 +1,3465 @@
+{
+  "hostSha": "53953bdd666972be9f9bfa0754b2ded0e02cf73b",
+  "argv": [
+    "bash",
+    "scripts/validate-maintainer-local.sh",
+    "--current-repo"
+  ],
+  "exit": 1,
+  "finishedAt": "2026-10-18T09:49:35.508529+00:00",
+  "result": "FAIL",
+  "reportedCounts": {
+    "run": 491,
+    "pass": 441,
+    "fail": 49,
+    "skip": 2
+  },
+  "countNote": "Raw validator totals retained. Its skipped list can include entries outside the numbered checks.",
+  "skippedReasons": [
+    "QML parser pass (/usr/bin/qmlformat Qt version could not be determined)",
+    "NIX-DEFERRED: scripts/test-nix-module-contract.sh"
+  ],
+  "rawLog": {
+    "name": "maintainer-postfix.log",
+    "sha256": "ec608901ed6733454165b963196f1a89ab947375537fef8ae4ad22e48d177c1f",
+    "retention": "private local archive; raw stdout is not published"
+  },
+  "checks": [
+    {
+      "number": 1,
+      "name": "host tool preflight",
+      "command": "require_host_tools",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 2,
+      "name": "build and baseline shell syntax",
+      "command": "make build",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 3,
+      "name": "tracked shell/package syntax",
+      "command": "tracked_shell_syntax",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 4,
+      "name": "tracked Python syntax",
+      "command": "tracked_python_syntax",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 5,
+      "name": "tracked JSON syntax",
+      "command": "tracked_json_syntax",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 6,
+      "name": "tracked JavaScript syntax",
+      "command": "tracked_js_syntax",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 7,
+      "name": "tracked Fish syntax",
+      "command": "tracked_fish_syntax",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 8,
+      "name": "Retired IME integration source guard",
+      "command": "python3 scripts/test-input-method-decoupling.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 9,
+      "name": "Niri selected-fullscreen workspace regression",
+      "command": "node scripts/test-niri-fullscreen-selection.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 10,
+      "name": "NotificationCenter anchor hover lease regression",
+      "command": "node scripts/test-notification-center-hover-lease.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 11,
+      "name": "Abyss notification popup geometry transition regression",
+      "command": "node scripts/test-abyss-notification-transition.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 12,
+      "name": "Abyss Notification closing content snapshot regression",
+      "command": "node scripts/test-abyss-notification-closing-snapshot.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 13,
+      "name": "Notification closing frame/model fast path regression",
+      "command": "node scripts/test-notification-close-fastpath.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 14,
+      "name": "Recording/Notification stable allocator priority",
+      "command": "node scripts/test-abyss-recording-notification-placement.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 15,
+      "name": "Recording-fixed Notification Pyramid visual origin",
+      "command": "node scripts/test-abyss-recording-pyramid-anchor.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 16,
+      "name": "Abyss disabled Waves mass-update regression",
+      "command": "node scripts/test-abyss-wave-idle-policy.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 17,
+      "name": "Abyss hover scene geometry diagnostic regression",
+      "command": "node scripts/test-abyss-hover-geometry-probe.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 18,
+      "name": "Abyss frame activity diagnostic regression",
+      "command": "node scripts/test-abyss-frame-activity-probe.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 19,
+      "name": "Shared tooltip hover/click lifecycle contract",
+      "command": "python3 scripts/test-popup-tooltip-hover-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 20,
+      "name": "Native default/custom/styled/Waffle tooltip content lifecycle",
+      "command": "python3 scripts/test-tooltip-content-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 21,
+      "name": "Native static Panel reveal without content resizing",
+      "command": "python3 scripts/test-abyss-panel-content-size-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 22,
+      "name": "Native dynamic Toast/OSD/Utility and reparented form reveal",
+      "command": "python3 scripts/test-abyss-dynamic-content-size-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 23,
+      "name": "Native shared-field optimized/unoptimized exact GPU parity",
+      "command": "python3 scripts/test-abyss-field-support-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 24,
+      "name": "Native shared-field transparent-interior exact GPU parity",
+      "command": "python3 scripts/test-abyss-transparent-interior-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 25,
+      "name": "Native shared-field fractional light transparent-interior exact GPU parity",
+      "command": "python3 scripts/test-abyss-transparent-interior-runtime.py --light --scale 1.5",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 26,
+      "name": "Native shared-field fractional light/mask exact GPU parity",
+      "command": "python3 scripts/test-abyss-field-support-runtime.py --light --scale 1.5",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 27,
+      "name": "Native generic Popup delayed-loader reveal and cancellation",
+      "command": "python3 scripts/test-abyss-generic-reveal-readiness-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 28,
+      "name": "Native Dashboard/Overview content-ready reveal, reversal and warm expiry",
+      "command": "python3 scripts/test-abyss-body-reveal-readiness-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 29,
+      "name": "Dashboard horizontal gesture and stable page order regression",
+      "command": "node scripts/test-dashboard-page-policy.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 30,
+      "name": "Weekly Planner civil dates, overlap, recurrence and DST regression",
+      "command": "node scripts/test-weekly-planner-policy.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 31,
+      "name": "Weekly Planner Ctrl/Shift multi-date and compatible Repeat cycles",
+      "command": "node scripts/test-weekly-planner-multidate.mjs",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 32,
+      "name": "Weekly Planner multi-date single-write storage runtime",
+      "command": "python3 scripts/test-weekly-planner-multidate-storage-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 33,
+      "name": "Multi-date Events grouping and Weekly Planner drag/resize policy",
+      "command": "node scripts/test-event-occurrences-policy.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 34,
+      "name": "Weekly Planner moved Event inline Calendar focus",
+      "command": "node scripts/test-weekly-planner-event-focus.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 35,
+      "name": "Events persisted data preservation without automatic migration",
+      "command": "node scripts/test-events-no-automatic-migration.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 36,
+      "name": "Calendar popup three-day civil range and recurrence policy",
+      "command": "node scripts/test-calendar-three-day-window.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 37,
+      "name": "Calendar counterclockwise 3-per-edge Agenda dots",
+      "command": "node scripts/test-calendar-event-dot-layout.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 38,
+      "name": "Calendar popup compact event cards, hover controls and dot spacing",
+      "command": "python3 scripts/test-calendar-popup-compact-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 39,
+      "name": "Independent Agenda and Todo stores with stable Event ID edits",
+      "command": "node scripts/test-agenda-todo-independence.mjs",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 40,
+      "name": "Agenda QML upcoming events and Dashboard startup compatibility",
+      "command": "node scripts/test-agenda-upcoming-runtime-compat.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 41,
+      "name": "Screen Edge lock reservations and output packing",
+      "command": "node scripts/test-abyss-module-locks.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 42,
+      "name": "Screen Edge multi-selection transactions",
+      "command": "node scripts/test-abyss-multi-selection.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 43,
+      "name": "Screen Edge full module designs and capacity",
+      "command": "node scripts/test-abyss-full-size-modules.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 44,
+      "name": "Screen Edge grab anchors and safe corners",
+      "command": "node scripts/test-abyss-drag-corners.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 45,
+      "name": "Screen Edge zero-width inner corner geometry",
+      "command": "node scripts/test-abyss-zero-corners.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 46,
+      "name": "Abyss mandatory structural panels and optional preferences",
+      "command": "node scripts/test-abyss-mandatory-panels.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 47,
+      "name": "Quick Notes Markdown preview, formatting and attachment safety regression",
+      "command": "node scripts/test-quick-notes-markdown-policy.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 48,
+      "name": "Quick Notes rail wheel sensitivity and modifier routing regression",
+      "command": "node scripts/test-note-rail-wheel-policy.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 49,
+      "name": "Abyss unified content opacity migration regression",
+      "command": "node scripts/test-abyss-content-opacity-migration.mjs",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 50,
+      "name": "translation catalog structure",
+      "command": "python3 translations/tools/l10n.py audit-all",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 51,
+      "name": "translation source parity",
+      "command": "python3 translations/tools/source-parity.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 52,
+      "name": "Python regression: scripts/test-UTIL-F01-mirror-intent.py",
+      "command": "python3 scripts/test-UTIL-F01-mirror-intent.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 53,
+      "name": "Python regression: scripts/test-UTIL-F01-source-delivery.py",
+      "command": "python3 scripts/test-UTIL-F01-source-delivery.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 54,
+      "name": "Python regression: scripts/test-abyss-bar-popup-autohide-contract.py",
+      "command": "python3 scripts/test-abyss-bar-popup-autohide-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 55,
+      "name": "Python regression: scripts/test-abyss-body-placement.py",
+      "command": "python3 scripts/test-abyss-body-placement.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 56,
+      "name": "Python regression: scripts/test-abyss-body-reveal-readiness-runtime.py",
+      "command": "python3 scripts/test-abyss-body-reveal-readiness-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 57,
+      "name": "Python regression: scripts/test-abyss-compact-editor-runtime.py",
+      "command": "python3 scripts/test-abyss-compact-editor-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 58,
+      "name": "Python regression: scripts/test-abyss-compact-osd-contract.py",
+      "command": "python3 scripts/test-abyss-compact-osd-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 59,
+      "name": "Python regression: scripts/test-abyss-connection-region-runtime.py",
+      "command": "python3 scripts/test-abyss-connection-region-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 60,
+      "name": "Python regression: scripts/test-abyss-content-opacity-config-runtime.py",
+      "command": "python3 scripts/test-abyss-content-opacity-config-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 61,
+      "name": "Python regression: scripts/test-abyss-critical-host-ipc-import.py",
+      "command": "python3 scripts/test-abyss-critical-host-ipc-import.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 62,
+      "name": "Python regression: scripts/test-abyss-display-mode-hotplug-source.py",
+      "command": "python3 scripts/test-abyss-display-mode-hotplug-source.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 63,
+      "name": "Python regression: scripts/test-abyss-display-mode.py",
+      "command": "python3 scripts/test-abyss-display-mode.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 64,
+      "name": "Python regression: scripts/test-abyss-dock-attached-menu-contract.py",
+      "command": "python3 scripts/test-abyss-dock-attached-menu-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 65,
+      "name": "Python regression: scripts/test-abyss-dock-menu-axis-contract.py",
+      "command": "python3 scripts/test-abyss-dock-menu-axis-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 66,
+      "name": "Python regression: scripts/test-abyss-dock-resident-content-contract.py",
+      "command": "python3 scripts/test-abyss-dock-resident-content-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 67,
+      "name": "Python regression: scripts/test-abyss-drag-corners-runtime.py",
+      "command": "python3 scripts/test-abyss-drag-corners-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 68,
+      "name": "Python regression: scripts/test-abyss-dynamic-content-size-runtime.py",
+      "command": "python3 scripts/test-abyss-dynamic-content-size-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 69,
+      "name": "Python regression: scripts/test-abyss-edge-editor-adaptive-toolbar-contract.py",
+      "command": "python3 scripts/test-abyss-edge-editor-adaptive-toolbar-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 70,
+      "name": "Python regression: scripts/test-abyss-edge-editor-compact-actions-contract.py",
+      "command": "python3 scripts/test-abyss-edge-editor-compact-actions-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 71,
+      "name": "Python regression: scripts/test-abyss-edge-editor-compact-side-contract.py",
+      "command": "python3 scripts/test-abyss-edge-editor-compact-side-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 72,
+      "name": "Python regression: scripts/test-abyss-edge-editor-toolbar-contract.py",
+      "command": "python3 scripts/test-abyss-edge-editor-toolbar-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 73,
+      "name": "Python regression: scripts/test-abyss-edgebar-popup-sizing-contract.py",
+      "command": "python3 scripts/test-abyss-edgebar-popup-sizing-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 74,
+      "name": "Python regression: scripts/test-abyss-editor-popup-source-runtime.py",
+      "command": "python3 scripts/test-abyss-editor-popup-source-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 75,
+      "name": "Python regression: scripts/test-abyss-family-contract.py",
+      "command": "python3 scripts/test-abyss-family-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 76,
+      "name": "Python regression: scripts/test-abyss-field-support-runtime.py",
+      "command": "python3 scripts/test-abyss-field-support-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 77,
+      "name": "Python regression: scripts/test-abyss-full-size-modules-runtime.py",
+      "command": "python3 scripts/test-abyss-full-size-modules-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 78,
+      "name": "Python regression: scripts/test-abyss-fullscreen-osd-runtime.py",
+      "command": "python3 scripts/test-abyss-fullscreen-osd-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 79,
+      "name": "Python regression: scripts/test-abyss-generic-popup-presenter-contract.py",
+      "command": "python3 scripts/test-abyss-generic-popup-presenter-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 80,
+      "name": "Python regression: scripts/test-abyss-generic-reveal-readiness-runtime.py",
+      "command": "python3 scripts/test-abyss-generic-reveal-readiness-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 81,
+      "name": "Python regression: scripts/test-abyss-geometry-contract.py",
+      "command": "python3 scripts/test-abyss-geometry-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 82,
+      "name": "Python regression: scripts/test-abyss-input-region-contract.py",
+      "command": "python3 scripts/test-abyss-input-region-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 83,
+      "name": "Python regression: scripts/test-abyss-keyboard-runtime.py",
+      "command": "python3 scripts/test-abyss-keyboard-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 84,
+      "name": "Python regression: scripts/test-abyss-launcher-dock-menu-contract.py",
+      "command": "python3 scripts/test-abyss-launcher-dock-menu-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 85,
+      "name": "Python regression: scripts/test-abyss-launcher-hover-owner-contract.py",
+      "command": "python3 scripts/test-abyss-launcher-hover-owner-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 86,
+      "name": "Python regression: scripts/test-abyss-launcher-live-editor-contract.py",
+      "command": "python3 scripts/test-abyss-launcher-live-editor-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 87,
+      "name": "Python regression: scripts/test-abyss-launcher-preset-popup-contract.py",
+      "command": "python3 scripts/test-abyss-launcher-preset-popup-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 88,
+      "name": "Python regression: scripts/test-abyss-launcher-status-mark-contract.py",
+      "command": "python3 scripts/test-abyss-launcher-status-mark-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 89,
+      "name": "Python regression: scripts/test-abyss-lossless-allocations.py",
+      "command": "python3 scripts/test-abyss-lossless-allocations.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 90,
+      "name": "Python regression: scripts/test-abyss-mandatory-typography-runtime.py",
+      "command": "python3 scripts/test-abyss-mandatory-typography-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 91,
+      "name": "Python regression: scripts/test-abyss-module-field-runtime.py",
+      "command": "python3 scripts/test-abyss-module-field-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 92,
+      "name": "Python regression: scripts/test-abyss-module-layout.py",
+      "command": "python3 scripts/test-abyss-module-layout.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 93,
+      "name": "Python regression: scripts/test-abyss-module-locks-runtime.py",
+      "command": "python3 scripts/test-abyss-module-locks-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 94,
+      "name": "Python regression: scripts/test-abyss-multi-selection-runtime.py",
+      "command": "python3 scripts/test-abyss-multi-selection-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 95,
+      "name": "Python regression: scripts/test-abyss-niri-hover-layer-contract.py",
+      "command": "python3 scripts/test-abyss-niri-hover-layer-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 96,
+      "name": "Python regression: scripts/test-abyss-notification-closing-runtime.py",
+      "command": "python3 scripts/test-abyss-notification-closing-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 97,
+      "name": "Python regression: scripts/test-abyss-notification-presentation-probe.py",
+      "command": "python3 scripts/test-abyss-notification-presentation-probe.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 98,
+      "name": "Python regression: scripts/test-abyss-obstacle-allocations.py",
+      "command": "python3 scripts/test-abyss-obstacle-allocations.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 99,
+      "name": "Python regression: scripts/test-abyss-panel-content-size-runtime.py",
+      "command": "python3 scripts/test-abyss-panel-content-size-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 100,
+      "name": "Python regression: scripts/test-abyss-panel-material-pixels-runtime.py",
+      "command": "python3 scripts/test-abyss-panel-material-pixels-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 101,
+      "name": "Python regression: scripts/test-abyss-panel-material-settings-runtime.py",
+      "command": "python3 scripts/test-abyss-panel-material-settings-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 102,
+      "name": "Python regression: scripts/test-abyss-physical-contact-render.py",
+      "command": "python3 scripts/test-abyss-physical-contact-render.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 103,
+      "name": "Python regression: scripts/test-abyss-placement-memo-runtime.py",
+      "command": "python3 scripts/test-abyss-placement-memo-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 104,
+      "name": "Python regression: scripts/test-abyss-popup-media-flash-contract.py",
+      "command": "python3 scripts/test-abyss-popup-media-flash-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 105,
+      "name": "Python regression: scripts/test-abyss-popup-ownership-contract.py",
+      "command": "python3 scripts/test-abyss-popup-ownership-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 106,
+      "name": "Python regression: scripts/test-abyss-presentation.py",
+      "command": "python3 scripts/test-abyss-presentation.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 107,
+      "name": "Python regression: scripts/test-abyss-pyramid-v2-concurrent-reflow.py",
+      "command": "python3 scripts/test-abyss-pyramid-v2-concurrent-reflow.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 108,
+      "name": "Python regression: scripts/test-abyss-pyramid-v2-foundation-contract.py",
+      "command": "python3 scripts/test-abyss-pyramid-v2-foundation-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 109,
+      "name": "Python regression: scripts/test-abyss-pyramid-v2-geometry.py",
+      "command": "python3 scripts/test-abyss-pyramid-v2-geometry.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 110,
+      "name": "Python regression: scripts/test-abyss-pyramid-v2-motion-contract.py",
+      "command": "python3 scripts/test-abyss-pyramid-v2-motion-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 111,
+      "name": "Python regression: scripts/test-abyss-pyramid-v2-neighborhood.py",
+      "command": "python3 scripts/test-abyss-pyramid-v2-neighborhood.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 112,
+      "name": "Python regression: scripts/test-abyss-pyramid-v2-transactions.py",
+      "command": "python3 scripts/test-abyss-pyramid-v2-transactions.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 113,
+      "name": "Python regression: scripts/test-abyss-pyramid-v2-zero-motion-close.py",
+      "command": "python3 scripts/test-abyss-pyramid-v2-zero-motion-close.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 114,
+      "name": "Python regression: scripts/test-abyss-round0-editor-controls.py",
+      "command": "python3 scripts/test-abyss-round0-editor-controls.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 115,
+      "name": "Python regression: scripts/test-abyss-round0-valid-module-ends.py",
+      "command": "python3 scripts/test-abyss-round0-valid-module-ends.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 116,
+      "name": "Python regression: scripts/test-abyss-settings-compact-contract.py",
+      "command": "python3 scripts/test-abyss-settings-compact-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 117,
+      "name": "Python regression: scripts/test-abyss-shoulder-sampler-runtime.py",
+      "command": "python3 scripts/test-abyss-shoulder-sampler-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 118,
+      "name": "Python regression: scripts/test-abyss-toast-dock-overlap-contract.py",
+      "command": "python3 scripts/test-abyss-toast-dock-overlap-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 119,
+      "name": "Python regression: scripts/test-abyss-transparent-interior-runtime.py",
+      "command": "python3 scripts/test-abyss-transparent-interior-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 120,
+      "name": "Python regression: scripts/test-abyss-unified-edge-modules-contract.py",
+      "command": "python3 scripts/test-abyss-unified-edge-modules-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 121,
+      "name": "Python regression: scripts/test-abyss-utility-closing-kind.py",
+      "command": "python3 scripts/test-abyss-utility-closing-kind.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 122,
+      "name": "Python regression: scripts/test-abyss-vacancy-borrowing.py",
+      "command": "python3 scripts/test-abyss-vacancy-borrowing.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 123,
+      "name": "Python regression: scripts/test-abyss-wave-mass-cache.py",
+      "command": "python3 scripts/test-abyss-wave-mass-cache.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 124,
+      "name": "Python regression: scripts/test-abyss-wave-presets.py",
+      "command": "python3 scripts/test-abyss-wave-presets.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 125,
+      "name": "Python regression: scripts/test-abyss-wave-solver.py",
+      "command": "python3 scripts/test-abyss-wave-solver.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 126,
+      "name": "Python regression: scripts/test-abyss-width-affects-modules-runtime.py",
+      "command": "python3 scripts/test-abyss-width-affects-modules-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 127,
+      "name": "Python regression: scripts/test-abyss-zero-corners-runtime.py",
+      "command": "python3 scripts/test-abyss-zero-corners-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 128,
+      "name": "Python regression: scripts/test-agenda-obsidian-runtime.py",
+      "command": "python3 scripts/test-agenda-obsidian-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 129,
+      "name": "Python regression: scripts/test-anti-flashbang-policy.py",
+      "command": "python3 scripts/test-anti-flashbang-policy.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 130,
+      "name": "Python regression: scripts/test-audio-i01-quantum-guard.py",
+      "command": "python3 scripts/test-audio-i01-quantum-guard.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 131,
+      "name": "Python regression: scripts/test-audio-output-routing.py",
+      "command": "python3 scripts/test-audio-output-routing.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 132,
+      "name": "Python regression: scripts/test-audio-tracked-nodes-parity.py",
+      "command": "python3 scripts/test-audio-tracked-nodes-parity.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 133,
+      "name": "Python regression: scripts/test-audio-transition-trace.py",
+      "command": "python3 scripts/test-audio-transition-trace.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 134,
+      "name": "Python regression: scripts/test-bar-active-window-width-contract.py",
+      "command": "python3 scripts/test-bar-active-window-width-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 135,
+      "name": "Python regression: scripts/test-bar-adaptive-packing.py",
+      "command": "python3 scripts/test-bar-adaptive-packing.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 136,
+      "name": "Python regression: scripts/test-bar-auxiliary-indicator-runtime.py",
+      "command": "python3 scripts/test-bar-auxiliary-indicator-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 137,
+      "name": "Python regression: scripts/test-bar-cava-profile-runtime.py",
+      "command": "python3 scripts/test-bar-cava-profile-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 138,
+      "name": "Python regression: scripts/test-bar-media-popup-layout-contract.py",
+      "command": "python3 scripts/test-bar-media-popup-layout-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 139,
+      "name": "Python regression: scripts/test-bar-media-width-contract.py",
+      "command": "python3 scripts/test-bar-media-width-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 140,
+      "name": "Python regression: scripts/test-bar-module-scaling.py",
+      "command": "python3 scripts/test-bar-module-scaling.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 141,
+      "name": "Python regression: scripts/test-bar-orientation-module-sync.py",
+      "command": "python3 scripts/test-bar-orientation-module-sync.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 142,
+      "name": "Python regression: scripts/test-bar-taskbar-overflow-parity.py",
+      "command": "python3 scripts/test-bar-taskbar-overflow-parity.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 143,
+      "name": "Python regression: scripts/test-brand-about-identity.py",
+      "command": "python3 scripts/test-brand-about-identity.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 144,
+      "name": "Python regression: scripts/test-brand-canonical-audit.py",
+      "command": "python3 scripts/test-brand-canonical-audit.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 145,
+      "name": "Python regression: scripts/test-brand-cli-instance-selection.py",
+      "command": "python3 scripts/test-brand-cli-instance-selection.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 146,
+      "name": "Python regression: scripts/test-brand-cli-session-guard.py",
+      "command": "python3 scripts/test-brand-cli-session-guard.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 147,
+      "name": "Python regression: scripts/test-brand-env-compat.py",
+      "command": "python3 scripts/test-brand-env-compat.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 148,
+      "name": "Python regression: scripts/test-brand-niri-runtime-paths.py",
+      "command": "python3 scripts/test-brand-niri-runtime-paths.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 149,
+      "name": "Python regression: scripts/test-calendar-editor-layout-runtime.py",
+      "command": "python3 scripts/test-calendar-editor-layout-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 150,
+      "name": "Python regression: scripts/test-calendar-event-indicators-contract.py",
+      "command": "python3 scripts/test-calendar-event-indicators-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 151,
+      "name": "Python regression: scripts/test-calendar-event-indicators-runtime.py",
+      "command": "python3 scripts/test-calendar-event-indicators-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 152,
+      "name": "Python regression: scripts/test-calendar-popup-compact-contract.py",
+      "command": "python3 scripts/test-calendar-popup-compact-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 153,
+      "name": "Python regression: scripts/test-calendar-weather-composition-contract.py",
+      "command": "python3 scripts/test-calendar-weather-composition-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 154,
+      "name": "Python regression: scripts/test-cava-config-refresh-runtime.py",
+      "command": "python3 scripts/test-cava-config-refresh-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 155,
+      "name": "Python regression: scripts/test-cava-run-wrapper.py",
+      "command": "python3 scripts/test-cava-run-wrapper.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 156,
+      "name": "Python regression: scripts/test-cava-warm-spectrum-runtime.py",
+      "command": "python3 scripts/test-cava-warm-spectrum-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 157,
+      "name": "Python regression: scripts/test-cheatsheet-focus-close-contract.py",
+      "command": "python3 scripts/test-cheatsheet-focus-close-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 158,
+      "name": "Python regression: scripts/test-clipboard-image-classification-contract.py",
+      "command": "python3 scripts/test-clipboard-image-classification-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 159,
+      "name": "Python regression: scripts/test-clipboard-image-mime-contract.py",
+      "command": "python3 scripts/test-clipboard-image-mime-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 160,
+      "name": "Python regression: scripts/test-clipboard-image-runtime.py",
+      "command": "python3 scripts/test-clipboard-image-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 161,
+      "name": "Python regression: scripts/test-clipboard-image-thumbnail-contract.py",
+      "command": "python3 scripts/test-clipboard-image-thumbnail-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 162,
+      "name": "Python regression: scripts/test-clipboard-owner-image-metadata-contract.py",
+      "command": "python3 scripts/test-clipboard-owner-image-metadata-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 163,
+      "name": "Python regression: scripts/test-clipboard-watcher-contract.py",
+      "command": "python3 scripts/test-clipboard-watcher-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 164,
+      "name": "Python regression: scripts/test-companion-entrypoint-discovery.py",
+      "command": "python3 scripts/test-companion-entrypoint-discovery.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 165,
+      "name": "Python regression: scripts/test-companion-managed-install.py",
+      "command": "python3 scripts/test-companion-managed-install.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 166,
+      "name": "Python regression: scripts/test-companion-output-loader-lifecycle.py",
+      "command": "python3 scripts/test-companion-output-loader-lifecycle.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 167,
+      "name": "Python regression: scripts/test-companion-pinned-source-contract.py",
+      "command": "python3 scripts/test-companion-pinned-source-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 168,
+      "name": "Python regression: scripts/test-config-inflight-mutation-runtime.py",
+      "command": "python3 scripts/test-config-inflight-mutation-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 169,
+      "name": "Python regression: scripts/test-config-raw-write-runtime.py",
+      "command": "python3 scripts/test-config-raw-write-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 170,
+      "name": "Python regression: scripts/test-connected-input-lifecycle.py",
+      "command": "python3 scripts/test-connected-input-lifecycle.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 171,
+      "name": "Python regression: scripts/test-connected-route-lifecycle.py",
+      "command": "python3 scripts/test-connected-route-lifecycle.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 172,
+      "name": "Python regression: scripts/test-custom-theme-quick-adjustments-parity.py",
+      "command": "python3 scripts/test-custom-theme-quick-adjustments-parity.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 173,
+      "name": "Python regression: scripts/test-dashboard-collision-behavior.py",
+      "command": "python3 scripts/test-dashboard-collision-behavior.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 174,
+      "name": "Python regression: scripts/test-dashboard-content-aware-add-all-contract.py",
+      "command": "python3 scripts/test-dashboard-content-aware-add-all-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 175,
+      "name": "Python regression: scripts/test-dashboard-edit-input-escape-contract.py",
+      "command": "python3 scripts/test-dashboard-edit-input-escape-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 176,
+      "name": "Python regression: scripts/test-dashboard-edit-transaction-contract.py",
+      "command": "python3 scripts/test-dashboard-edit-transaction-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 177,
+      "name": "Python regression: scripts/test-dashboard-editor-field-runtime.py",
+      "command": "python3 scripts/test-dashboard-editor-field-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 178,
+      "name": "Python regression: scripts/test-dashboard-freeform-contract.py",
+      "command": "python3 scripts/test-dashboard-freeform-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 179,
+      "name": "Python regression: scripts/test-dashboard-github-visual-hierarchy.py",
+      "command": "python3 scripts/test-dashboard-github-visual-hierarchy.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 180,
+      "name": "Python regression: scripts/test-dashboard-hidden-header-runtime.py",
+      "command": "python3 scripts/test-dashboard-hidden-header-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 181,
+      "name": "Python regression: scripts/test-dashboard-media-shared-player-contract.py",
+      "command": "python3 scripts/test-dashboard-media-shared-player-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 182,
+      "name": "Python regression: scripts/test-dashboard-music-browser-navigation-contract.py",
+      "command": "python3 scripts/test-dashboard-music-browser-navigation-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 183,
+      "name": "Python regression: scripts/test-dashboard-music-migration.py",
+      "command": "python3 scripts/test-dashboard-music-migration.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 184,
+      "name": "Python regression: scripts/test-dashboard-music-runtime.py",
+      "command": "python3 scripts/test-dashboard-music-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 185,
+      "name": "Python regression: scripts/test-dashboard-music-scroll-runtime.py",
+      "command": "python3 scripts/test-dashboard-music-scroll-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 186,
+      "name": "Python regression: scripts/test-dashboard-notes-markdown-contract.py",
+      "command": "python3 scripts/test-dashboard-notes-markdown-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 187,
+      "name": "Python regression: scripts/test-dashboard-notes-markdown-runtime.py",
+      "command": "python3 scripts/test-dashboard-notes-markdown-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 188,
+      "name": "Python regression: scripts/test-dashboard-presentation-motion-contract.py",
+      "command": "python3 scripts/test-dashboard-presentation-motion-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 189,
+      "name": "Python regression: scripts/test-dashboard-prioritized-add-all-contract.py",
+      "command": "python3 scripts/test-dashboard-prioritized-add-all-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 190,
+      "name": "Python regression: scripts/test-dashboard-responsive-overlap-parity.py",
+      "command": "python3 scripts/test-dashboard-responsive-overlap-parity.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 191,
+      "name": "Python regression: scripts/test-dashboard-search-system-refinement-contract.py",
+      "command": "python3 scripts/test-dashboard-search-system-refinement-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 192,
+      "name": "Python regression: scripts/test-dashboard-smart-layout-contract.py",
+      "command": "python3 scripts/test-dashboard-smart-layout-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 193,
+      "name": "Python regression: scripts/test-dashboard-tab-reorder-runtime.py",
+      "command": "python3 scripts/test-dashboard-tab-reorder-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 194,
+      "name": "Python regression: scripts/test-dashboard-todo-concept-contract.py",
+      "command": "python3 scripts/test-dashboard-todo-concept-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 195,
+      "name": "Python regression: scripts/test-dashboard-todo-layout-contract.py",
+      "command": "python3 scripts/test-dashboard-todo-layout-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 196,
+      "name": "Python regression: scripts/test-dashboard-warm-readiness.py",
+      "command": "python3 scripts/test-dashboard-warm-readiness.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 197,
+      "name": "Python regression: scripts/test-dashboard-workspace.py",
+      "command": "python3 scripts/test-dashboard-workspace.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 198,
+      "name": "Python regression: scripts/test-deferred-service-materialization-contract.py",
+      "command": "python3 scripts/test-deferred-service-materialization-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 199,
+      "name": "Python regression: scripts/test-desktop-context-menu-fade-relocation-contract.py",
+      "command": "python3 scripts/test-desktop-context-menu-fade-relocation-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 200,
+      "name": "Python regression: scripts/test-desktop-context-menu-hover-contract.py",
+      "command": "python3 scripts/test-desktop-context-menu-hover-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 201,
+      "name": "Python regression: scripts/test-desktop-widget-editor-coordinates.py",
+      "command": "python3 scripts/test-desktop-widget-editor-coordinates.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 202,
+      "name": "Python regression: scripts/test-desktop-widget-editor-placement.py",
+      "command": "python3 scripts/test-desktop-widget-editor-placement.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 203,
+      "name": "Python regression: scripts/test-desktop-widget-editor-runtime.py",
+      "command": "python3 scripts/test-desktop-widget-editor-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 204,
+      "name": "Python regression: scripts/test-dock-abyss-hover-orientation-contract.py",
+      "command": "python3 scripts/test-dock-abyss-hover-orientation-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 205,
+      "name": "Python regression: scripts/test-equalizer-idle-sweep.py",
+      "command": "python3 scripts/test-equalizer-idle-sweep.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 206,
+      "name": "Python regression: scripts/test-equalizer-presentation-runtime.py",
+      "command": "python3 scripts/test-equalizer-presentation-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 207,
+      "name": "Python regression: scripts/test-events-durable-snapshot-runtime.py",
+      "command": "python3 scripts/test-events-durable-snapshot-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 208,
+      "name": "Python regression: scripts/test-global-actions-query-parity.py",
+      "command": "python3 scripts/test-global-actions-query-parity.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 209,
+      "name": "Python regression: scripts/test-hadalird-arch-package.py",
+      "command": "python3 scripts/test-hadalird-arch-package.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 210,
+      "name": "Python regression: scripts/test-hadalird-gateway-bootstrap.py",
+      "command": "python3 scripts/test-hadalird-gateway-bootstrap.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 211,
+      "name": "Python regression: scripts/test-hadalird-install-lifecycle.py",
+      "command": "python3 scripts/test-hadalird-install-lifecycle.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 212,
+      "name": "Python regression: scripts/test-hadalird-manager.py",
+      "command": "python3 scripts/test-hadalird-manager.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 213,
+      "name": "Python regression: scripts/test-hadalird-obsidian-wrapper.py",
+      "command": "python3 scripts/test-hadalird-obsidian-wrapper.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 214,
+      "name": "Python regression: scripts/test-hadalird-optional.py",
+      "command": "python3 scripts/test-hadalird-optional.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 215,
+      "name": "Python regression: scripts/test-hadalird-polkit-visibility.py",
+      "command": "python3 scripts/test-hadalird-polkit-visibility.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 216,
+      "name": "Python regression: scripts/test-hadalird-preferences-migration.py",
+      "command": "python3 scripts/test-hadalird-preferences-migration.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 217,
+      "name": "Python regression: scripts/test-hadalird-settings-flow.py",
+      "command": "python3 scripts/test-hadalird-settings-flow.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 218,
+      "name": "Python regression: scripts/test-hadalird-system-provision.py",
+      "command": "python3 scripts/test-hadalird-system-provision.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 219,
+      "name": "Python regression: scripts/test-hadanion-layer-shell.py",
+      "command": "python3 scripts/test-hadanion-layer-shell.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 220,
+      "name": "Python regression: scripts/test-hadanion-optional.py",
+      "command": "python3 scripts/test-hadanion-optional.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 221,
+      "name": "Python regression: scripts/test-inir-process-cleanup.py",
+      "command": "python3 scripts/test-inir-process-cleanup.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 222,
+      "name": "Python regression: scripts/test-input-method-decoupling.py",
+      "command": "python3 scripts/test-input-method-decoupling.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 223,
+      "name": "Python regression: scripts/test-integration-recovery-runtime.py",
+      "command": "python3 scripts/test-integration-recovery-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 224,
+      "name": "Python regression: scripts/test-integration-setup.py",
+      "command": "python3 scripts/test-integration-setup.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 225,
+      "name": "Python regression: scripts/test-internal-todo-persistence-runtime.py",
+      "command": "python3 scripts/test-internal-todo-persistence-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 226,
+      "name": "Python regression: scripts/test-ipc-registry-generator.py",
+      "command": "python3 scripts/test-ipc-registry-generator.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 227,
+      "name": "Python regression: scripts/test-iris-corner-poc-contract.py",
+      "command": "python3 scripts/test-iris-corner-poc-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 228,
+      "name": "Python regression: scripts/test-iris-g2-contract.py",
+      "command": "python3 scripts/test-iris-g2-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 229,
+      "name": "Python regression: scripts/test-iris-production-surface-contract.py",
+      "command": "python3 scripts/test-iris-production-surface-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 230,
+      "name": "Python regression: scripts/test-light-mode-upstream-contract.py",
+      "command": "python3 scripts/test-light-mode-upstream-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 231,
+      "name": "Python regression: scripts/test-loading-presentation-contract.py",
+      "command": "python3 scripts/test-loading-presentation-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 232,
+      "name": "Python regression: scripts/test-local-ai-gguf-runtime.py",
+      "command": "python3 scripts/test-local-ai-gguf-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 233,
+      "name": "Python regression: scripts/test-local-model-folder.py",
+      "command": "python3 scripts/test-local-model-folder.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 234,
+      "name": "Python regression: scripts/test-local-model-formats.py",
+      "command": "python3 scripts/test-local-model-formats.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 235,
+      "name": "Python regression: scripts/test-local-music-contract.py",
+      "command": "python3 scripts/test-local-music-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 236,
+      "name": "Python regression: scripts/test-local-music-demand-runtime.py",
+      "command": "python3 scripts/test-local-music-demand-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 237,
+      "name": "Python regression: scripts/test-local-music-folder-release.py",
+      "command": "python3 scripts/test-local-music-folder-release.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 238,
+      "name": "Python regression: scripts/test-local-music-lean-qml.py",
+      "command": "python3 scripts/test-local-music-lean-qml.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 239,
+      "name": "Python regression: scripts/test-local-music-lean-snapshot.py",
+      "command": "python3 scripts/test-local-music-lean-snapshot.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 240,
+      "name": "Python regression: scripts/test-local-music-mpd-playback-runtime.py",
+      "command": "python3 scripts/test-local-music-mpd-playback-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 241,
+      "name": "Python regression: scripts/test-local-music-mutation-runtime.py",
+      "command": "python3 scripts/test-local-music-mutation-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 242,
+      "name": "Python regression: scripts/test-material-only-docs-contract.py",
+      "command": "python3 scripts/test-material-only-docs-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 243,
+      "name": "Python regression: scripts/test-material-only-global-style-contract.py",
+      "command": "python3 scripts/test-material-only-global-style-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 244,
+      "name": "Python regression: scripts/test-material-only-settings-contract.py",
+      "command": "python3 scripts/test-material-only-settings-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 245,
+      "name": "Python regression: scripts/test-material-presentation-model-contract.py",
+      "command": "python3 scripts/test-material-presentation-model-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 246,
+      "name": "Python regression: scripts/test-media-popup-tabs-contract.py",
+      "command": "python3 scripts/test-media-popup-tabs-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 247,
+      "name": "Python regression: scripts/test-media-surface-controls-contract.py",
+      "command": "python3 scripts/test-media-surface-controls-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 248,
+      "name": "Python regression: scripts/test-media-visualizer-lifecycle-contract.py",
+      "command": "python3 scripts/test-media-visualizer-lifecycle-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 249,
+      "name": "Python regression: scripts/test-native-capture-focus.py",
+      "command": "python3 scripts/test-native-capture-focus.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 250,
+      "name": "Python regression: scripts/test-native-debug-first-frame.py",
+      "command": "python3 scripts/test-native-debug-first-frame.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 251,
+      "name": "Python regression: scripts/test-niri-config-structural-read.py",
+      "command": "python3 scripts/test-niri-config-structural-read.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 252,
+      "name": "Python regression: scripts/test-notification-center-bottom-right-contract.py",
+      "command": "python3 scripts/test-notification-center-bottom-right-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 253,
+      "name": "Python regression: scripts/test-notification-center-card-layout-contract.py",
+      "command": "python3 scripts/test-notification-center-card-layout-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 254,
+      "name": "Python regression: scripts/test-notification-center-contract.py",
+      "command": "python3 scripts/test-notification-center-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 255,
+      "name": "Python regression: scripts/test-notification-settings-runtime.py",
+      "command": "python3 scripts/test-notification-settings-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 256,
+      "name": "Python regression: scripts/test-notification-timeout-runtime.py",
+      "command": "python3 scripts/test-notification-timeout-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 257,
+      "name": "Python regression: scripts/test-osd-connected-surface-contract.py",
+      "command": "python3 scripts/test-osd-connected-surface-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 258,
+      "name": "Python regression: scripts/test-overview-hover-contract.py",
+      "command": "python3 scripts/test-overview-hover-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 259,
+      "name": "Python regression: scripts/test-overview-niri-drag-contract.py",
+      "command": "python3 scripts/test-overview-niri-drag-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 260,
+      "name": "Python regression: scripts/test-owner-ui-regressions-contract.py",
+      "command": "python3 scripts/test-owner-ui-regressions-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 261,
+      "name": "Python regression: scripts/test-p0-settings-navigation-contract.py",
+      "command": "python3 scripts/test-p0-settings-navigation-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 262,
+      "name": "Python regression: scripts/test-panel-style-migration.py",
+      "command": "python3 scripts/test-panel-style-migration.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 263,
+      "name": "Python regression: scripts/test-popup-anchor-hover-runtime.py",
+      "command": "python3 scripts/test-popup-anchor-hover-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 264,
+      "name": "Python regression: scripts/test-popup-cold-start-lifecycle-runtime.py",
+      "command": "python3 scripts/test-popup-cold-start-lifecycle-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 265,
+      "name": "Python regression: scripts/test-popup-cold-start-source-contract.py",
+      "command": "python3 scripts/test-popup-cold-start-source-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 266,
+      "name": "Python regression: scripts/test-popup-tooltip-hover-contract.py",
+      "command": "python3 scripts/test-popup-tooltip-hover-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 267,
+      "name": "Python regression: scripts/test-qml-syntax-check.py",
+      "command": "python3 scripts/test-qml-syntax-check.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 268,
+      "name": "Python regression: scripts/test-quick-action-drag-visibility-contract.py",
+      "command": "python3 scripts/test-quick-action-drag-visibility-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 269,
+      "name": "Python regression: scripts/test-quick-action-icon-order-contract.py",
+      "command": "python3 scripts/test-quick-action-icon-order-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 270,
+      "name": "Python regression: scripts/test-quick-action-settings-titles-contract.py",
+      "command": "python3 scripts/test-quick-action-settings-titles-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 271,
+      "name": "Python regression: scripts/test-quick-notes-attachments.py",
+      "command": "python3 scripts/test-quick-notes-attachments.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 272,
+      "name": "Python regression: scripts/test-quick-notes-corner-contract.py",
+      "command": "python3 scripts/test-quick-notes-corner-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 273,
+      "name": "Python regression: scripts/test-quick-notes-image-runtime.py",
+      "command": "python3 scripts/test-quick-notes-image-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 274,
+      "name": "Python regression: scripts/test-quick-notes-markdown-runtime.py",
+      "command": "python3 scripts/test-quick-notes-markdown-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 275,
+      "name": "Python regression: scripts/test-quick-notes-pin-runtime.py",
+      "command": "python3 scripts/test-quick-notes-pin-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 276,
+      "name": "Python regression: scripts/test-quick-notes-popup-pin-contract.py",
+      "command": "python3 scripts/test-quick-notes-popup-pin-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 277,
+      "name": "Python regression: scripts/test-recording-abyss-runtime.py",
+      "command": "python3 scripts/test-recording-abyss-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 278,
+      "name": "Python regression: scripts/test-reload-notification-runtime.py",
+      "command": "python3 scripts/test-reload-notification-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 279,
+      "name": "Python regression: scripts/test-reload-toast-contract.py",
+      "command": "python3 scripts/test-reload-toast-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 280,
+      "name": "Python regression: scripts/test-remove-pyramid-close-animation-contract.py",
+      "command": "python3 scripts/test-remove-pyramid-close-animation-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 281,
+      "name": "Python regression: scripts/test-retired-runtime-links.py",
+      "command": "python3 scripts/test-retired-runtime-links.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 282,
+      "name": "Python regression: scripts/test-retired-runtime-payload.py",
+      "command": "python3 scripts/test-retired-runtime-payload.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 283,
+      "name": "Python regression: scripts/test-retired-service-audit.py",
+      "command": "python3 scripts/test-retired-service-audit.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 284,
+      "name": "Python regression: scripts/test-retired-settings-routes.py",
+      "command": "python3 scripts/test-retired-settings-routes.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 285,
+      "name": "Python regression: scripts/test-runtime-integration-dependencies.py",
+      "command": "python3 scripts/test-runtime-integration-dependencies.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 286,
+      "name": "Python regression: scripts/test-runtime-unblock-abyss-contract.py",
+      "command": "python3 scripts/test-runtime-unblock-abyss-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 287,
+      "name": "Python regression: scripts/test-screen-edge-analytic-field-contract.py",
+      "command": "python3 scripts/test-screen-edge-analytic-field-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 288,
+      "name": "Python regression: scripts/test-screen-edge-analytic-perceptual.py",
+      "command": "python3 scripts/test-screen-edge-analytic-perceptual.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 289,
+      "name": "Python regression: scripts/test-screen-edge-banded-perceptual.py",
+      "command": "python3 scripts/test-screen-edge-banded-perceptual.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 290,
+      "name": "Python regression: scripts/test-screen-edge-output-targeting.py",
+      "command": "python3 scripts/test-screen-edge-output-targeting.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 291,
+      "name": "Python regression: scripts/test-screen-edge-shadow-padding-parity.py",
+      "command": "python3 scripts/test-screen-edge-shadow-padding-parity.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 292,
+      "name": "Python regression: scripts/test-screen-edge-shadow-raster-perceptual.py",
+      "command": "python3 scripts/test-screen-edge-shadow-raster-perceptual.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 293,
+      "name": "Python regression: scripts/test-screenshot-pointer-runtime.py",
+      "command": "python3 scripts/test-screenshot-pointer-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 294,
+      "name": "Python regression: scripts/test-settings-concise-copy-surface.py",
+      "command": "python3 scripts/test-settings-concise-copy-surface.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 295,
+      "name": "Python regression: scripts/test-settings-flat-navigation.py",
+      "command": "python3 scripts/test-settings-flat-navigation.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 296,
+      "name": "Python regression: scripts/test-settings-hierarchy-runtime.py",
+      "command": "python3 scripts/test-settings-hierarchy-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 297,
+      "name": "Python regression: scripts/test-settings-information-architecture.py",
+      "command": "python3 scripts/test-settings-information-architecture.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 298,
+      "name": "Python regression: scripts/test-settings-inir-task-tabs-contract.py",
+      "command": "python3 scripts/test-settings-inir-task-tabs-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 299,
+      "name": "Python regression: scripts/test-settings-inline-search-layout.py",
+      "command": "python3 scripts/test-settings-inline-search-layout.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 300,
+      "name": "Python regression: scripts/test-settings-navigation-behavior.py",
+      "command": "python3 scripts/test-settings-navigation-behavior.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 301,
+      "name": "Python regression: scripts/test-settings-ownership-cleanup.py",
+      "command": "python3 scripts/test-settings-ownership-cleanup.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 302,
+      "name": "Python regression: scripts/test-settings-task-tabs-runtime.py",
+      "command": "python3 scripts/test-settings-task-tabs-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 303,
+      "name": "Python regression: scripts/test-shell-critical-qml-module-manifests.py",
+      "command": "python3 scripts/test-shell-critical-qml-module-manifests.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 304,
+      "name": "Python regression: scripts/test-shell-elevation-shadow-contract.py",
+      "command": "python3 scripts/test-shell-elevation-shadow-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 305,
+      "name": "Python regression: scripts/test-shell-surface-contracts.py",
+      "command": "python3 scripts/test-shell-surface-contracts.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 306,
+      "name": "Python regression: scripts/test-sidebar-left-theme-contract.py",
+      "command": "python3 scripts/test-sidebar-left-theme-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 307,
+      "name": "Python regression: scripts/test-sidebar-left-theme-runtime.py",
+      "command": "python3 scripts/test-sidebar-left-theme-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 308,
+      "name": "Python regression: scripts/test-startup-qml-surface-regression.py",
+      "command": "python3 scripts/test-startup-qml-surface-regression.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 309,
+      "name": "Python regression: scripts/test-styled-popup-content-contract.py",
+      "command": "python3 scripts/test-styled-popup-content-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 310,
+      "name": "Python regression: scripts/test-surface-motion-contract.py",
+      "command": "python3 scripts/test-surface-motion-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 311,
+      "name": "Python regression: scripts/test-task-issues-governance.py",
+      "command": "python3 scripts/test-task-issues-governance.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 312,
+      "name": "Python regression: scripts/test-taskbar-app-model-contract.py",
+      "command": "python3 scripts/test-taskbar-app-model-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 313,
+      "name": "Python regression: scripts/test-thinkfan-system-monitor-contract.py",
+      "command": "python3 scripts/test-thinkfan-system-monitor-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 314,
+      "name": "Python regression: scripts/test-timer-presentation-contract.py",
+      "command": "python3 scripts/test-timer-presentation-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 315,
+      "name": "Python regression: scripts/test-todo-backend-contract.py",
+      "command": "python3 scripts/test-todo-backend-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 316,
+      "name": "Python regression: scripts/test-todo-config-schema.py",
+      "command": "python3 scripts/test-todo-config-schema.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 317,
+      "name": "Python regression: scripts/test-todo-obsidian-daily-backend-contract.py",
+      "command": "python3 scripts/test-todo-obsidian-daily-backend-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 318,
+      "name": "Python regression: scripts/test-todo-obsidian-read-backend-contract.py",
+      "command": "python3 scripts/test-todo-obsidian-read-backend-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 319,
+      "name": "Python regression: scripts/test-todo-obsidian-settings-deeplink.py",
+      "command": "python3 scripts/test-todo-obsidian-settings-deeplink.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 320,
+      "name": "Python regression: scripts/test-todo-obsidian-settings-ui.py",
+      "command": "python3 scripts/test-todo-obsidian-settings-ui.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 321,
+      "name": "Python regression: scripts/test-todo-ui-backend-routing.py",
+      "command": "python3 scripts/test-todo-ui-backend-routing.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 322,
+      "name": "Python regression: scripts/test-todo-widget-backend-feedback.py",
+      "command": "python3 scripts/test-todo-widget-backend-feedback.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 323,
+      "name": "Python regression: scripts/test-tooltip-content-runtime.py",
+      "command": "python3 scripts/test-tooltip-content-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 324,
+      "name": "Python regression: scripts/test-tray-focus-contract.py",
+      "command": "python3 scripts/test-tray-focus-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 325,
+      "name": "Python regression: scripts/test-utf8-launcher-osd-model-contract.py",
+      "command": "python3 scripts/test-utf8-launcher-osd-model-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 326,
+      "name": "Python regression: scripts/test-wallpaper-abyss-liquid.py",
+      "command": "python3 scripts/test-wallpaper-abyss-liquid.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 327,
+      "name": "Python regression: scripts/test-wallpaper-background-apply-runtime.py",
+      "command": "python3 scripts/test-wallpaper-background-apply-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 328,
+      "name": "Python regression: scripts/test-wallpaper-carousel-runtime.py",
+      "command": "python3 scripts/test-wallpaper-carousel-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 329,
+      "name": "Python regression: scripts/test-wallpaper-color-preview-runtime.py",
+      "command": "python3 scripts/test-wallpaper-color-preview-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 330,
+      "name": "Python regression: scripts/test-wallpaper-liquid-contract.py",
+      "command": "python3 scripts/test-wallpaper-liquid-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 331,
+      "name": "Python regression: scripts/test-wallpaper-liquid-theme-deferral.py",
+      "command": "python3 scripts/test-wallpaper-liquid-theme-deferral.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 332,
+      "name": "Python regression: scripts/test-wallpaper-mode.py",
+      "command": "python3 scripts/test-wallpaper-mode.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 333,
+      "name": "Python regression: scripts/test-wallpaper-parallax-optout.py",
+      "command": "python3 scripts/test-wallpaper-parallax-optout.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 334,
+      "name": "Python regression: scripts/test-wallpaper-preview-palette-cache.py",
+      "command": "python3 scripts/test-wallpaper-preview-palette-cache.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 335,
+      "name": "Python regression: scripts/test-wallpaper-search-state.py",
+      "command": "python3 scripts/test-wallpaper-search-state.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 336,
+      "name": "Python regression: scripts/test-wallpaper-selector-migration.py",
+      "command": "python3 scripts/test-wallpaper-selector-migration.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 337,
+      "name": "Python regression: scripts/test-wallpaper-transition-recovery-runtime.py",
+      "command": "python3 scripts/test-wallpaper-transition-recovery-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 338,
+      "name": "Python regression: scripts/test-wave-visualizer-lifecycle-runtime.py",
+      "command": "python3 scripts/test-wave-visualizer-lifecycle-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 339,
+      "name": "Python regression: scripts/test-weather-hourly-light-runtime.py",
+      "command": "python3 scripts/test-weather-hourly-light-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 340,
+      "name": "Python regression: scripts/test-weather-liquid-orbital-contract.py",
+      "command": "python3 scripts/test-weather-liquid-orbital-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 341,
+      "name": "Python regression: scripts/test-weather-orbit-table-parity.py",
+      "command": "python3 scripts/test-weather-orbit-table-parity.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 342,
+      "name": "Python regression: scripts/test-weather-popup-handoff-runtime.py",
+      "command": "python3 scripts/test-weather-popup-handoff-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 343,
+      "name": "Python regression: scripts/test-weather-popup-layout-contract.py",
+      "command": "python3 scripts/test-weather-popup-layout-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 344,
+      "name": "Python regression: scripts/test-weekly-planner-expanded-event-editor-contract.py",
+      "command": "python3 scripts/test-weekly-planner-expanded-event-editor-contract.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 345,
+      "name": "Python regression: scripts/test-weekly-planner-multi-selection-contract.py",
+      "command": "python3 scripts/test-weekly-planner-multi-selection-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 346,
+      "name": "Python regression: scripts/test-weekly-planner-multidate-storage-runtime.py",
+      "command": "python3 scripts/test-weekly-planner-multidate-storage-runtime.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 347,
+      "name": "Python regression: scripts/test-weekly-planner-pointer-contract.py",
+      "command": "python3 scripts/test-weekly-planner-pointer-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 348,
+      "name": "Python regression: scripts/test-weekly-planner-runtime.py",
+      "command": "python3 scripts/test-weekly-planner-runtime.py",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 349,
+      "name": "Python regression: scripts/test-yazi-auto-theme.py",
+      "command": "python3 scripts/test-yazi-auto-theme.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 350,
+      "name": "Python regression: scripts/test-zettelkasten-service-contract.py",
+      "command": "python3 scripts/test-zettelkasten-service-contract.py",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 351,
+      "name": "IPC registry freshness",
+      "command": "python3 scripts/lib/generate-ipc-registry.py --check",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 352,
+      "name": "documentation contracts",
+      "command": "bash scripts/verify-docs.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 353,
+      "name": "QML parser capability",
+      "command": "probe_qml_parser",
+      "result": "SKIP"
+    },
+    {
+      "number": 354,
+      "name": "QML/startup project guards",
+      "command": "run_qml_guards",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 355,
+      "name": "shell regression: scripts/test-abyss-app-hover-menu.sh",
+      "command": "run_shell_regression scripts/test-abyss-app-hover-menu.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 356,
+      "name": "shell regression: scripts/test-abyss-body-placement.sh",
+      "command": "run_shell_regression scripts/test-abyss-body-placement.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 357,
+      "name": "shell regression: scripts/test-abyss-choice-motion.sh",
+      "command": "run_shell_regression scripts/test-abyss-choice-motion.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 358,
+      "name": "shell regression: scripts/test-abyss-clipboard-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-abyss-clipboard-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 359,
+      "name": "shell regression: scripts/test-abyss-content-material.sh",
+      "command": "run_shell_regression scripts/test-abyss-content-material.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 360,
+      "name": "shell regression: scripts/test-abyss-corner-content.sh",
+      "command": "run_shell_regression scripts/test-abyss-corner-content.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 361,
+      "name": "shell regression: scripts/test-abyss-dashboard-editing.sh",
+      "command": "run_shell_regression scripts/test-abyss-dashboard-editing.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 362,
+      "name": "shell regression: scripts/test-abyss-dialog-host.sh",
+      "command": "run_shell_regression scripts/test-abyss-dialog-host.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 363,
+      "name": "shell regression: scripts/test-abyss-dock-content.sh",
+      "command": "run_shell_regression scripts/test-abyss-dock-content.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 364,
+      "name": "shell regression: scripts/test-abyss-dock-reveal.sh",
+      "command": "run_shell_regression scripts/test-abyss-dock-reveal.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 365,
+      "name": "shell regression: scripts/test-abyss-editor-runtime.sh",
+      "command": "run_shell_regression scripts/test-abyss-editor-runtime.sh",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 366,
+      "name": "shell regression: scripts/test-abyss-ipc-corner.sh",
+      "command": "run_shell_regression scripts/test-abyss-ipc-corner.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 367,
+      "name": "shell regression: scripts/test-abyss-multi-styled-popup.sh",
+      "command": "run_shell_regression scripts/test-abyss-multi-styled-popup.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 368,
+      "name": "shell regression: scripts/test-abyss-network-popups.sh",
+      "command": "run_shell_regression scripts/test-abyss-network-popups.sh",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 369,
+      "name": "shell regression: scripts/test-abyss-osd-content.sh",
+      "command": "run_shell_regression scripts/test-abyss-osd-content.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 370,
+      "name": "shell regression: scripts/test-abyss-popup-layout.sh",
+      "command": "run_shell_regression scripts/test-abyss-popup-layout.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 371,
+      "name": "shell regression: scripts/test-abyss-runtime-contract.sh",
+      "command": "run_shell_regression scripts/test-abyss-runtime-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 372,
+      "name": "shell regression: scripts/test-abyss-settings-embedded.sh",
+      "command": "run_shell_regression scripts/test-abyss-settings-embedded.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 373,
+      "name": "shell regression: scripts/test-abyss-shader-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-abyss-shader-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 374,
+      "name": "shell regression: scripts/test-abyss-shared-content.sh",
+      "command": "run_shell_regression scripts/test-abyss-shared-content.sh",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 375,
+      "name": "shell regression: scripts/test-abyss-sidebar-reveal.sh",
+      "command": "run_shell_regression scripts/test-abyss-sidebar-reveal.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 376,
+      "name": "shell regression: scripts/test-abyss-styled-popup.sh",
+      "command": "run_shell_regression scripts/test-abyss-styled-popup.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 377,
+      "name": "shell regression: scripts/test-abyss-utilities-popup.sh",
+      "command": "run_shell_regression scripts/test-abyss-utilities-popup.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 378,
+      "name": "shell regression: scripts/test-abyss-utility-content.sh",
+      "command": "run_shell_regression scripts/test-abyss-utility-content.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 379,
+      "name": "shell regression: scripts/test-abyss-wave-runtime.sh",
+      "command": "run_shell_regression scripts/test-abyss-wave-runtime.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 380,
+      "name": "shell regression: scripts/test-alis-desktop-update.sh",
+      "command": "run_shell_regression scripts/test-alis-desktop-update.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 381,
+      "name": "shell regression: scripts/test-alis-namespace-alias.sh",
+      "command": "run_shell_regression scripts/test-alis-namespace-alias.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 382,
+      "name": "shell regression: scripts/test-anti-flashbang-brightness.sh",
+      "command": "run_shell_regression scripts/test-anti-flashbang-brightness.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 383,
+      "name": "shell regression: scripts/test-anti-flashbang-sampler.sh",
+      "command": "run_shell_regression scripts/test-anti-flashbang-sampler.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 384,
+      "name": "shell regression: scripts/test-app-catalog-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-app-catalog-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 385,
+      "name": "shell regression: scripts/test-appsearch-binding-cache.sh",
+      "command": "run_shell_regression scripts/test-appsearch-binding-cache.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 386,
+      "name": "shell regression: scripts/test-audio-i01-autostart-guard.sh",
+      "command": "run_shell_regression scripts/test-audio-i01-autostart-guard.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 387,
+      "name": "shell regression: scripts/test-audio-i01-quantum-policy.sh",
+      "command": "run_shell_regression scripts/test-audio-i01-quantum-policy.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 388,
+      "name": "shell regression: scripts/test-awww-backend-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-awww-backend-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 389,
+      "name": "shell regression: scripts/test-bar-connected-popup-coverage.sh",
+      "command": "run_shell_regression scripts/test-bar-connected-popup-coverage.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 390,
+      "name": "shell regression: scripts/test-brand-canonical-arch-snapshot.sh",
+      "command": "run_shell_regression scripts/test-brand-canonical-arch-snapshot.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 391,
+      "name": "shell regression: scripts/test-brand-canonical-config.sh",
+      "command": "run_shell_regression scripts/test-brand-canonical-config.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 392,
+      "name": "shell regression: scripts/test-brand-canonical-contracts.sh",
+      "command": "run_shell_regression scripts/test-brand-canonical-contracts.sh",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 393,
+      "name": "shell regression: scripts/test-brand-canonical-cutover.sh",
+      "command": "run_shell_regression scripts/test-brand-canonical-cutover.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 394,
+      "name": "shell regression: scripts/test-brand-canonical-keyring.sh",
+      "command": "run_shell_regression scripts/test-brand-canonical-keyring.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 395,
+      "name": "shell regression: scripts/test-brand-canonical-rollback.sh",
+      "command": "run_shell_regression scripts/test-brand-canonical-rollback.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 396,
+      "name": "shell regression: scripts/test-brand-canonical-stage.sh",
+      "command": "run_shell_regression scripts/test-brand-canonical-stage.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 397,
+      "name": "shell regression: scripts/test-brand-entrypoints.sh",
+      "command": "run_shell_regression scripts/test-brand-entrypoints.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 398,
+      "name": "shell regression: scripts/test-brand-legacy-cli.sh",
+      "command": "run_shell_regression scripts/test-brand-legacy-cli.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 399,
+      "name": "shell regression: scripts/test-brand-legacy-owner-update.sh",
+      "command": "run_shell_regression scripts/test-brand-legacy-owner-update.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 400,
+      "name": "shell regression: scripts/test-brand-namespace-rollback.sh",
+      "command": "run_shell_regression scripts/test-brand-namespace-rollback.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 401,
+      "name": "shell regression: scripts/test-brand-native-installer-invocation.sh",
+      "command": "run_shell_regression scripts/test-brand-native-installer-invocation.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 402,
+      "name": "shell regression: scripts/test-brand-niri-hotkeys.sh",
+      "command": "run_shell_regression scripts/test-brand-niri-hotkeys.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 403,
+      "name": "shell regression: scripts/test-brand-owner-audit.sh",
+      "command": "run_shell_regression scripts/test-brand-owner-audit.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 404,
+      "name": "shell regression: scripts/test-brand-post-cutover-migration-guards.sh",
+      "command": "run_shell_regression scripts/test-brand-post-cutover-migration-guards.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 405,
+      "name": "shell regression: scripts/test-brand-single-owner.sh",
+      "command": "run_shell_regression scripts/test-brand-single-owner.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 406,
+      "name": "shell regression: scripts/test-brand-uninstall.sh",
+      "command": "run_shell_regression scripts/test-brand-uninstall.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 407,
+      "name": "shell regression: scripts/test-brand-upgrade-rollback.sh",
+      "command": "run_shell_regression scripts/test-brand-upgrade-rollback.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 408,
+      "name": "shell regression: scripts/test-brightness-init-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-brightness-init-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 409,
+      "name": "shell regression: scripts/test-brightness-service-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-brightness-service-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 410,
+      "name": "shell regression: scripts/test-calendar-sync-privacy.sh",
+      "command": "run_shell_regression scripts/test-calendar-sync-privacy.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 411,
+      "name": "shell regression: scripts/test-cliphist-migration-034.sh",
+      "command": "run_shell_regression scripts/test-cliphist-migration-034.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 412,
+      "name": "shell regression: scripts/test-config-namespace-contract.sh",
+      "command": "run_shell_regression scripts/test-config-namespace-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 413,
+      "name": "shell regression: scripts/test-config-namespace-migration.sh",
+      "command": "run_shell_regression scripts/test-config-namespace-migration.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 414,
+      "name": "shell regression: scripts/test-connected-corner-silhouette.sh",
+      "command": "run_shell_regression scripts/test-connected-corner-silhouette.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 415,
+      "name": "shell regression: scripts/test-critical-panel-isolation-regression.sh",
+      "command": "run_shell_regression scripts/test-critical-panel-isolation-regression.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 416,
+      "name": "shell regression: scripts/test-critical-panel-isolation.sh",
+      "command": "run_shell_regression scripts/test-critical-panel-isolation.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 417,
+      "name": "shell regression: scripts/test-desktop-items-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-desktop-items-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 418,
+      "name": "shell regression: scripts/test-device-state-persistence.sh",
+      "command": "run_shell_regression scripts/test-device-state-persistence.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 419,
+      "name": "shell regression: scripts/test-doctor-dependency-routing.sh",
+      "command": "run_shell_regression scripts/test-doctor-dependency-routing.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 420,
+      "name": "shell regression: scripts/test-equalizer-active-preset.sh",
+      "command": "run_shell_regression scripts/test-equalizer-active-preset.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 421,
+      "name": "shell regression: scripts/test-equalizer-boundary-contract.sh",
+      "command": "run_shell_regression scripts/test-equalizer-boundary-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 422,
+      "name": "shell regression: scripts/test-equalizer-service-contract.sh",
+      "command": "run_shell_regression scripts/test-equalizer-service-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 423,
+      "name": "shell regression: scripts/test-family-mount-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-family-mount-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 424,
+      "name": "shell regression: scripts/test-family-transition-input-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-family-transition-input-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 425,
+      "name": "shell regression: scripts/test-family-transition-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-family-transition-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 426,
+      "name": "shell regression: scripts/test-family-workarea-guard.sh",
+      "command": "run_shell_regression scripts/test-family-workarea-guard.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 427,
+      "name": "shell regression: scripts/test-font-sync-service-guards.sh",
+      "command": "run_shell_regression scripts/test-font-sync-service-guards.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 428,
+      "name": "shell regression: scripts/test-gamemode-niri-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-gamemode-niri-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 429,
+      "name": "shell regression: scripts/test-hyprsunset-service-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-hyprsunset-service-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 430,
+      "name": "shell regression: scripts/test-icon-theme-service-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-icon-theme-service-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 431,
+      "name": "shell regression: scripts/test-keyboard-indicator-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-keyboard-indicator-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 432,
+      "name": "shell regression: scripts/test-local-distribution.sh",
+      "command": "run_shell_regression scripts/test-local-distribution.sh",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 433,
+      "name": "shell regression: scripts/test-local-music-mpd-source-contract.sh",
+      "command": "run_shell_regression scripts/test-local-music-mpd-source-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 434,
+      "name": "shell regression: scripts/test-local-music-source-contracts.sh",
+      "command": "run_shell_regression scripts/test-local-music-source-contracts.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 435,
+      "name": "shell regression: scripts/test-local-required-contracts.sh",
+      "command": "run_shell_regression scripts/test-local-required-contracts.sh",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 436,
+      "name": "shell regression: scripts/test-lyrics-service-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-lyrics-service-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 437,
+      "name": "shell regression: scripts/test-maintainer-validator-log-contract.sh",
+      "command": "run_shell_regression scripts/test-maintainer-validator-log-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 438,
+      "name": "shell regression: scripts/test-make-install-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-make-install-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 439,
+      "name": "shell regression: scripts/test-material-theme-loader-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-material-theme-loader-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 440,
+      "name": "shell regression: scripts/test-native-benchmark-deep-contract.sh",
+      "command": "run_shell_regression scripts/test-native-benchmark-deep-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 441,
+      "name": "shell regression: scripts/test-native-production-contract.sh",
+      "command": "run_shell_regression scripts/test-native-production-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 442,
+      "name": "shell regression: scripts/test-native-selector-behavior.sh",
+      "command": "run_shell_regression scripts/test-native-selector-behavior.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 443,
+      "name": "shell regression: scripts/test-native-selector-contract.sh",
+      "command": "run_shell_regression scripts/test-native-selector-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 444,
+      "name": "shell regression: scripts/test-network-service-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-network-service-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 445,
+      "name": "shell regression: scripts/test-news-service-contract.sh",
+      "command": "run_shell_regression scripts/test-news-service-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 446,
+      "name": "shell regression: scripts/test-nightlight-service-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-nightlight-service-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 447,
+      "name": "shell regression: scripts/test-niri-keybind-launcher-contract.sh",
+      "command": "run_shell_regression scripts/test-niri-keybind-launcher-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 448,
+      "name": "shell regression: scripts/test-optional-audio-deps-contract.sh",
+      "command": "run_shell_regression scripts/test-optional-audio-deps-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 449,
+      "name": "shell regression: scripts/test-packaging-contract.sh",
+      "command": "run_shell_regression scripts/test-packaging-contract.sh",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 450,
+      "name": "shell regression: scripts/test-panel-style-adapter.sh",
+      "command": "run_shell_regression scripts/test-panel-style-adapter.sh",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 451,
+      "name": "shell regression: scripts/test-performance-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-performance-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 452,
+      "name": "shell regression: scripts/test-perimeter-compatibility-placement-contract.sh",
+      "command": "run_shell_regression scripts/test-perimeter-compatibility-placement-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 453,
+      "name": "shell regression: scripts/test-perimeter-contracts.sh",
+      "command": "run_shell_regression scripts/test-perimeter-contracts.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 454,
+      "name": "shell regression: scripts/test-perimeter-family-contracts.sh",
+      "command": "run_shell_regression scripts/test-perimeter-family-contracts.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 455,
+      "name": "shell regression: scripts/test-perimeter-retirement-contract.sh",
+      "command": "run_shell_regression scripts/test-perimeter-retirement-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 456,
+      "name": "shell regression: scripts/test-perimeter-route-contracts.sh",
+      "command": "run_shell_regression scripts/test-perimeter-route-contracts.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 457,
+      "name": "shell regression: scripts/test-perimeter-settings-contracts.sh",
+      "command": "run_shell_regression scripts/test-perimeter-settings-contracts.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 458,
+      "name": "shell regression: scripts/test-perimeter-source-contracts.sh",
+      "command": "run_shell_regression scripts/test-perimeter-source-contracts.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 459,
+      "name": "shell regression: scripts/test-qml-local-module-contract.sh",
+      "command": "run_shell_regression scripts/test-qml-local-module-contract.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 460,
+      "name": "shell regression: scripts/test-qml-local-module-guard-regression.sh",
+      "command": "run_shell_regression scripts/test-qml-local-module-guard-regression.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 461,
+      "name": "shell regression: scripts/test-qml-parser-qt-version.sh",
+      "command": "run_shell_regression scripts/test-qml-parser-qt-version.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 462,
+      "name": "shell regression: scripts/test-resource-usage-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-resource-usage-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 463,
+      "name": "shell regression: scripts/test-reviewed-replacement-manifests.sh",
+      "command": "run_shell_regression scripts/test-reviewed-replacement-manifests.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 464,
+      "name": "shell regression: scripts/test-runtime-orphan-cleanup.sh",
+      "command": "run_shell_regression scripts/test-runtime-orphan-cleanup.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 465,
+      "name": "shell regression: scripts/test-screen-time-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-screen-time-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 466,
+      "name": "shell regression: scripts/test-service-lease-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-service-lease-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 467,
+      "name": "shell regression: scripts/test-setup-entrypoint-syntax-recovery.sh",
+      "command": "run_shell_regression scripts/test-setup-entrypoint-syntax-recovery.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 468,
+      "name": "shell regression: scripts/test-setup-recovery-runtime-refresh.sh",
+      "command": "run_shell_regression scripts/test-setup-recovery-runtime-refresh.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 469,
+      "name": "shell regression: scripts/test-setup-sync-atomic.sh",
+      "command": "run_shell_regression scripts/test-setup-sync-atomic.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 470,
+      "name": "shell regression: scripts/test-shell-updates-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-shell-updates-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 471,
+      "name": "shell regression: scripts/test-taskbar-list-runtime.sh",
+      "command": "run_shell_regression scripts/test-taskbar-list-runtime.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 472,
+      "name": "shell regression: scripts/test-tlp-integration-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-tlp-integration-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 473,
+      "name": "shell regression: scripts/test-tlp-settings-ui-guards.sh",
+      "command": "run_shell_regression scripts/test-tlp-settings-ui-guards.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 474,
+      "name": "shell regression: scripts/test-translation-service-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-translation-service-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 475,
+      "name": "shell regression: scripts/test-uninstall-path-safety.sh",
+      "command": "run_shell_regression scripts/test-uninstall-path-safety.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 476,
+      "name": "shell regression: scripts/test-update-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-update-lifecycle.sh",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 477,
+      "name": "shell regression: scripts/test-update-service-guards.sh",
+      "command": "run_shell_regression scripts/test-update-service-guards.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 478,
+      "name": "shell regression: scripts/test-voice-search-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-voice-search-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 479,
+      "name": "shell regression: scripts/test-waffle-clipboard-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-waffle-clipboard-lifecycle.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 480,
+      "name": "shell regression: scripts/test-weather-log-privacy.sh",
+      "command": "run_shell_regression scripts/test-weather-log-privacy.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 481,
+      "name": "shell regression: scripts/test-weather-orbital-visual-lock.sh",
+      "command": "run_shell_regression scripts/test-weather-orbital-visual-lock.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 482,
+      "name": "shell regression: scripts/test-weather-request-generation.sh",
+      "command": "run_shell_regression scripts/test-weather-request-generation.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 483,
+      "name": "shell regression: scripts/test-weather-tab-motion.sh",
+      "command": "run_shell_regression scripts/test-weather-tab-motion.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 484,
+      "name": "shell regression: scripts/test-window-preview-cache-behavior.sh",
+      "command": "run_shell_regression scripts/test-window-preview-cache-behavior.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 485,
+      "name": "shell regression: scripts/test-window-preview-consumer-identity.sh",
+      "command": "run_shell_regression scripts/test-window-preview-consumer-identity.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 486,
+      "name": "shell regression: scripts/test-window-preview-eager-capture.sh",
+      "command": "run_shell_regression scripts/test-window-preview-eager-capture.sh",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 487,
+      "name": "shell regression: scripts/test-window-preview-lifecycle.sh",
+      "command": "run_shell_regression scripts/test-window-preview-lifecycle.sh",
+      "result": "FAIL",
+      "exit": 1
+    },
+    {
+      "number": 488,
+      "name": "Make contract: prefix/path relocation",
+      "command": "run_make_contract test-prefix-install",
+      "result": "FAIL",
+      "exit": 2
+    },
+    {
+      "number": 489,
+      "name": "Make contract: package metadata",
+      "command": "run_make_contract test-package-metadata",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 490,
+      "name": "Make contract: package lifecycle hooks",
+      "command": "run_make_contract test-package-hooks",
+      "result": "PASS",
+      "exit": 0
+    },
+    {
+      "number": 491,
+      "name": "source tree remains clean after validation",
+      "command": "source_tree_clean",
+      "result": "PASS",
+      "exit": 0
+    }
+  ]
+}

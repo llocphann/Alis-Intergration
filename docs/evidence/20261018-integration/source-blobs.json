@@ -1,0 +1,372 @@
+{
+  "hostSha": "53953bdd666972be9f9bfa0754b2ded0e02cf73b",
+  "integrationSha": "5e7cc82041d113b08d1f39960636811c81338781",
+  "integrationTrackedBlobs": [
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "84db688d45df098e579b86b441e65b8563d7fcb5",
+      "path": ".github/workflows/cpu-vendor-probe.yml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7a60b85e148f80966a550e5ab6a762a907c69ca6",
+      "path": ".gitignore"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6380570b80c410bd15b58bef81a26284fd9d26a7",
+      "path": "AGENTS.md"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "df2360f71a3e15d7c303c56f43c46aafc8ea4d6b",
+      "path": "HadalisSession.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+      "path": "LICENSE"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b8f8cdd2b58690963ded2aba6792f27494b9e56c",
+      "path": "Makefile"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d29d2f833716fda98b92b8573139c3ab902ae43a",
+      "path": "README.md"
+    },
+    {
+      "mode": "100755",
+      "type": "blob",
+      "sha": "72f2e6fd570b4109018ac2a7087bffbbc4a74246",
+      "path": "assets/helpers/inir-battery-charge-limit"
+    },
+    {
+      "mode": "100755",
+      "type": "blob",
+      "sha": "a8482778d392396b5f092095da71f4753d2a1dfa",
+      "path": "assets/helpers/inir-thinkfan"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e0324f65fe314c67a29bed96e0d70d8362af123f",
+      "path": "assets/polkit/org.inir.battery-charge-limit.policy"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2fe76a045f9448022e970291fd6f3f9ce5c2c0c5",
+      "path": "assets/polkit/org.inir.thinkfan.policy"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "443a26c3c21be642b8334d55ecd04ac421a967c9",
+      "path": "assets/tlp/tlp-settings-schema.json"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "66d6bcfc3cd6fbbca697ce2c9b04dbd600a7918d",
+      "path": "manifest.json"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4a103b1adde9bac50de06af4e7891df7c24cbad2",
+      "path": "modules/settings/ObsidianThemeSettings.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "81c9a5792cae7e71600aafd71c28d22fe724d70b",
+      "path": "modules/settings/ObsidianTodoSettings.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7a2070b256f68d712e17c6affe8b7669cf0c2b57",
+      "path": "modules/settings/ThinkfanSettings.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a6e14e557af09258878b7ec332a460731bb1e679",
+      "path": "modules/settings/TlpPowerSettings.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "358dbaaf33ceaed759b43004002e81bfd2505da5",
+      "path": "modules/settings/TlpSettingRow.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "bdebc711068e10e006a1919703e773762de88c3f",
+      "path": "modules/waffle/settings/WTlpPowerSettings.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "71831bc1a682775b5e20bb1b35e1586763d335aa",
+      "path": "modules/waffle/settings/WTlpSettingRow.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "59c2fbab5d772b08fbc16b28c643bbc9e5b256dc",
+      "path": "scripts/install.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4c6352c6da2a7df3cca54c60a54985b8565260b3",
+      "path": "scripts/integration_test_host.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "541e2c9de151d5cd68bc67ad2dba7fdb6a4a9593",
+      "path": "scripts/integrations/obsidian_theme.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d9b67e6948b28016649b4679c3994300d0df4676",
+      "path": "scripts/notes/zettelkasten.py"
+    },
+    {
+      "mode": "100755",
+      "type": "blob",
+      "sha": "072761cc4e9451e45f5b5116b58380c9edcc4434",
+      "path": "scripts/test-battery-charge-limit-helper.sh"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8681f2d67d38669d353fea17bc5b4812d30ede7d",
+      "path": "scripts/test-fan-worker-contract.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a5ffb8af4b988c398c974058d449bc83b17f6bbb",
+      "path": "scripts/test-host-location.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "cc7191856255b577c05d35b8f396f250eef9c3bf",
+      "path": "scripts/test-host-runtime.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "22cb0043fc9c5d5e226d03e0e38f4670e3a4265c",
+      "path": "scripts/test-install.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "597318a553d0d4616ed76a54f4f970200d011632",
+      "path": "scripts/test-obsidian-path-settings-runtime.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "bed0654d69199912c9d4df03f6c69cbaa2952662",
+      "path": "scripts/test-obsidian-theme.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5c850ebcba27bef489ab5388d11a552ea267cd27",
+      "path": "scripts/test-obsidian-todo-settings.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9754220692cc9f627aa734a6f31c558f97a8193d",
+      "path": "scripts/test-obsidian-worker-contracts.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7b84873232056679ba3f877841b99ac269572463",
+      "path": "scripts/test-plugin-metadata.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "6e96e6b6ee345c31cf576389bab7b3bb2c21bcee",
+      "path": "scripts/test-qml.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "22527c0621a96fb3e3167a18a927e25f2aaa9b85",
+      "path": "scripts/test-settings-host-runtime.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9bd91f0195d5f926c342a24dcc7497d8c3a08b00",
+      "path": "scripts/test-thinkfan-helper.sh"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2a1750039dec7b447f41993eb45f069844057cf9",
+      "path": "scripts/test-thinkfan-settings.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ce661daf9d8db29e8ceb73d6712c949a8de8429c",
+      "path": "scripts/test-tlp-allowed-limits-parity.cjs"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f523d27ab5cbbf9c7494ae8906363f83f84ec699",
+      "path": "scripts/test-tlp-settings-ui-guards.sh"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "3436daaf58659fc86e882718a382b69fe74110de",
+      "path": "scripts/test-tlp-vendor-probes.py"
+    },
+    {
+      "mode": "100755",
+      "type": "blob",
+      "sha": "052e406846ceec15551588161f19be05d3adeca1",
+      "path": "scripts/test-todo-obsidian-daily-helper.py"
+    },
+    {
+      "mode": "100755",
+      "type": "blob",
+      "sha": "26409cf5981969bb59fa421266a57e8452fbcdb5",
+      "path": "scripts/test-todo-obsidian-helper.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5d210c4c0a58427b1d8ec51498543f7b583f2248",
+      "path": "scripts/test-todo-obsidian-tasks-runtime.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "8ea256ac878a20ef9ab1b6e4ff53e451d7417327",
+      "path": "scripts/test-worker-lifecycle.sh"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "74c508c5db1dcad2a27d7841a1bfc0dc034c08d9",
+      "path": "scripts/test-zettelkasten-failure-runtime.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a62b4c235cedb38e3672baef2cb593fbad17c8f9",
+      "path": "scripts/test-zettelkasten-image-runtime.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7eb8d91c2efcd373f2ecf0e8d9cea51d2a4a7316",
+      "path": "scripts/test-zettelkasten-images.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "0b60ea0e9db40ce19d17343da47e1796208b5ba2",
+      "path": "scripts/test-zettelkasten-quicknote.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "4a1e09e1a9239ec39c2576d3f2915fd1feb795ce",
+      "path": "scripts/todo/agenda_metadata.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "7f9d3c546c54a1a020052170a84779182d6025e7",
+      "path": "scripts/todo/obsidian_daily_todo.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ee5358a3118601fcfcb219d32908ddfb6fa46ff4",
+      "path": "scripts/todo/obsidian_tasks.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ef1560718166f7b06829dd656430791ec9f2be17",
+      "path": "scripts/todo/obsidian_todo.py"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "126d95327d47188fc2f2afcfa794b5d020454917",
+      "path": "services/DailyNoteTodoBackend.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "225d26219f85c8b72f578780d092f4eddb254e08",
+      "path": "services/ObsidianTheme.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "133245d0405f2b1fdf2e660cd366252195e55a3c",
+      "path": "services/ObsidianTodoBackend.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ac06c692c0f53a6ad275bf5090dce4c8386193d3",
+      "path": "services/ThinkFanService.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2879ddcda8e13cd432936c24cd05e84259b621b0",
+      "path": "services/TlpRuntimeCapabilities.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b00f2d7f898092538ee2434a208b4e6229345886",
+      "path": "services/TlpService.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "2c74a3631644a29086bebc85b638881934da1776",
+      "path": "services/TlpSettingsService.qml"
+    },
+    {
+      "mode": "100644",
+      "type": "blob",
+      "sha": "f7c06793931eb02853816512329add7656259ea0",
+      "path": "services/Zettelkasten.qml"
+    }
+  ]
+}

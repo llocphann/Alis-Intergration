@@ -1,0 +1,158 @@
+{
+  "hostSha": "53953bdd666972be9f9bfa0754b2ded0e02cf73b",
+  "checks": [
+    {
+      "argv": [
+        "python3",
+        "scripts/test-hadalird-arch-package.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:04.692014+00:00",
+      "outputSha256": "384690c3ad23a53100a17a33b0852c630147dda2f01e6ce6918e4d381aa883fe"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-hadalird-gateway-bootstrap.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:06.210098+00:00",
+      "outputSha256": "9f4ad276e91b56ceb8c93ffbe4d2a396259188aa7e56eaeadb5fa9c3ff8ac618"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-hadalird-install-lifecycle.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:06.280697+00:00",
+      "outputSha256": "2f02e6d061c92f39a364c68f93cefbbb11d3aabe2b11747bd42e7c1523521df9"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-hadalird-manager.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:06.358838+00:00",
+      "outputSha256": "400e53c35e3f7c9f0cbe00310793b585e5e5e917fe3a272141d761c8f068f763"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-hadalird-obsidian-wrapper.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:06.938524+00:00",
+      "outputSha256": "80c364f1e1471fbbabb4bc3762cdfd2c8f5a390bfd51037187087abc3f8c27ec"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-hadalird-optional.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:06.971971+00:00",
+      "outputSha256": "663057b69425f4cd040d1502aa54d43b9881cddee9e319cc63e89e2d77ef2a2f"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-hadalird-polkit-visibility.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:11.792832+00:00",
+      "outputSha256": "02ed9c2c6bae0b5b2bba6cd1d7c99c1e3db7dc09b7cb4ff02c563831e7752262"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-hadalird-preferences-migration.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:13.282292+00:00",
+      "outputSha256": "e6a9614b740076b23e271a95820f67d594b9aa1d72ffd9a948b46a0a4fc35e07"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-hadalird-settings-flow.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:20.260450+00:00",
+      "outputSha256": "a6f816761ef5b456e8d799855ecf78c033c1978fd80d154aded715c4653eae4b"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-hadalird-system-provision.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:20.301373+00:00",
+      "outputSha256": "4e0f7458d69344e9656deadf1fe17dc821ceb6cd5cc5a0a6a95f717443010e2c"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-integration-setup.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:20.389035+00:00",
+      "outputSha256": "8dee8ef7b6f99c0e1dd5d964b7746e32755254c750de45cfd0c2adaea9d21b5a"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-integration-recovery-runtime.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:20.746207+00:00",
+      "outputSha256": "d56585f12077fd87e37508eb5dfb9016c5db96d5aa71fae21e4b932b3121fb73"
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/test-tlp-settings-ui-guards.sh"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:24.033647+00:00",
+      "outputSha256": "f401e51c4d770b9324eb03b027a74edc9e9a3fde7a5d4527c723f7d399a0181d"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-p0-settings-navigation-contract.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:24.086967+00:00",
+      "outputSha256": "4a7ead20a8081322d7d1d75c4b1d31fe20490b51ec05f81b7956c4cbeecfa1a8"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-thinkfan-system-monitor-contract.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:24.116728+00:00",
+      "outputSha256": "2f5f7621c0341a4fcf76a7f02da73f614fcc69b7ce87f5a58b2b39b550ab5443"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-todo-obsidian-settings-deeplink.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:24.148104+00:00",
+      "outputSha256": "c907a7f0742f31d0cfef9321c56702e82869d176f331644adf002f4587abf588"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/test-todo-obsidian-settings-ui.py"
+      ],
+      "exit": 0,
+      "startedAt": "2026-10-18T09:17:24.225388+00:00",
+      "outputSha256": "bf97aecf71fe087b73f382b44e6c258d614c53eaf73e9a3174356add564ae8f1"
+    }
+  ]
+}

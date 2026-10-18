@@ -1,0 +1,412 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-18T09:50:25.284133+00:00",
+  "status": "Awaiting Owner verification",
+  "claims": "Scoped local fixture evidence only. Full maintainer validation is FAIL. No CI, installed-package, hardware or Owner acceptance is claimed.",
+  "sources": {
+    "host": {
+      "repository": "llocphann/Alis",
+      "ref": "dev",
+      "sha": "53953bdd666972be9f9bfa0754b2ded0e02cf73b",
+      "tree": "4a41b51ce77c7ab9fcb8e10b96863df6a97b5773"
+    },
+    "integration": {
+      "repository": "llocphann/Alis-Intergration",
+      "ref": "main",
+      "sha": "5e7cc82041d113b08d1f39960636811c81338781",
+      "tree": "26fc1d9b6f965e2e2de7966b709f6f743fde3630"
+    },
+    "evidenceOnlySuccessor": "This receipt may be committed as a documentation-only descendant. Tested runtime/fixture blobs are recorded in source-blobs.json; this file does not attest a future SHA."
+  },
+  "issues": [
+    "llocphann/Alis-Intergration#1",
+    "llocphann/Alis-Intergration#2",
+    "llocphann/Alis-Intergration#3",
+    "llocphann/Alis-Intergration#4",
+    "llocphann/Alis-Intergration#5",
+    "llocphann/Alis-Intergration#6",
+    "llocphann/Alis#119"
+  ],
+  "packageMakeTest": {
+    "integrationSha": "5e7cc82041d113b08d1f39960636811c81338781",
+    "hostSha": "53953bdd666972be9f9bfa0754b2ded0e02cf73b",
+    "argv": [
+      "make",
+      "test"
+    ],
+    "exit": 0,
+    "finishedAt": "2026-10-18T09:17:28.797840+00:00",
+    "scriptEntrypoints": 25,
+    "logSha256": "52befbf9b1eb30b1b0e373e4162faa05d957884fb78a44d90cc93ed97fba6726",
+    "fixtureScope": "Private nested Niri/Quickshell, synthetic vaults and injected status helpers; no real privileged hardware or vault action."
+  },
+  "hostFocusedChecks": {
+    "file": "host-focused-checks.json",
+    "pass": 17,
+    "fail": 0
+  },
+  "actualPayloadParity": {
+    "file": "payload-parity.json",
+    "exit": 0
+  },
+  "maintainerValidation": {
+    "file": "maintainer-final-checks.json",
+    "hostSha": "53953bdd666972be9f9bfa0754b2ded0e02cf73b",
+    "exit": 1,
+    "result": "FAIL",
+    "reportedCounts": {
+      "run": 491,
+      "pass": 441,
+      "fail": 49,
+      "skip": 2
+    },
+    "integrationNamedChecks": [
+      {
+        "number": 8,
+        "name": "Retired IME integration source guard",
+        "command": "python3 scripts/test-input-method-decoupling.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 128,
+        "name": "Python regression: scripts/test-agenda-obsidian-runtime.py",
+        "command": "python3 scripts/test-agenda-obsidian-runtime.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 209,
+        "name": "Python regression: scripts/test-hadalird-arch-package.py",
+        "command": "python3 scripts/test-hadalird-arch-package.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 210,
+        "name": "Python regression: scripts/test-hadalird-gateway-bootstrap.py",
+        "command": "python3 scripts/test-hadalird-gateway-bootstrap.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 211,
+        "name": "Python regression: scripts/test-hadalird-install-lifecycle.py",
+        "command": "python3 scripts/test-hadalird-install-lifecycle.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 212,
+        "name": "Python regression: scripts/test-hadalird-manager.py",
+        "command": "python3 scripts/test-hadalird-manager.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 213,
+        "name": "Python regression: scripts/test-hadalird-obsidian-wrapper.py",
+        "command": "python3 scripts/test-hadalird-obsidian-wrapper.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 214,
+        "name": "Python regression: scripts/test-hadalird-optional.py",
+        "command": "python3 scripts/test-hadalird-optional.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 215,
+        "name": "Python regression: scripts/test-hadalird-polkit-visibility.py",
+        "command": "python3 scripts/test-hadalird-polkit-visibility.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 216,
+        "name": "Python regression: scripts/test-hadalird-preferences-migration.py",
+        "command": "python3 scripts/test-hadalird-preferences-migration.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 217,
+        "name": "Python regression: scripts/test-hadalird-settings-flow.py",
+        "command": "python3 scripts/test-hadalird-settings-flow.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 218,
+        "name": "Python regression: scripts/test-hadalird-system-provision.py",
+        "command": "python3 scripts/test-hadalird-system-provision.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 223,
+        "name": "Python regression: scripts/test-integration-recovery-runtime.py",
+        "command": "python3 scripts/test-integration-recovery-runtime.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 224,
+        "name": "Python regression: scripts/test-integration-setup.py",
+        "command": "python3 scripts/test-integration-setup.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 285,
+        "name": "Python regression: scripts/test-runtime-integration-dependencies.py",
+        "command": "python3 scripts/test-runtime-integration-dependencies.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 313,
+        "name": "Python regression: scripts/test-thinkfan-system-monitor-contract.py",
+        "command": "python3 scripts/test-thinkfan-system-monitor-contract.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 317,
+        "name": "Python regression: scripts/test-todo-obsidian-daily-backend-contract.py",
+        "command": "python3 scripts/test-todo-obsidian-daily-backend-contract.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 318,
+        "name": "Python regression: scripts/test-todo-obsidian-read-backend-contract.py",
+        "command": "python3 scripts/test-todo-obsidian-read-backend-contract.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 319,
+        "name": "Python regression: scripts/test-todo-obsidian-settings-deeplink.py",
+        "command": "python3 scripts/test-todo-obsidian-settings-deeplink.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 320,
+        "name": "Python regression: scripts/test-todo-obsidian-settings-ui.py",
+        "command": "python3 scripts/test-todo-obsidian-settings-ui.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 350,
+        "name": "Python regression: scripts/test-zettelkasten-service-contract.py",
+        "command": "python3 scripts/test-zettelkasten-service-contract.py",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 472,
+        "name": "shell regression: scripts/test-tlp-integration-lifecycle.sh",
+        "command": "run_shell_regression scripts/test-tlp-integration-lifecycle.sh",
+        "result": "PASS",
+        "exit": 0
+      },
+      {
+        "number": 473,
+        "name": "shell regression: scripts/test-tlp-settings-ui-guards.sh",
+        "command": "run_shell_regression scripts/test-tlp-settings-ui-guards.sh",
+        "result": "PASS",
+        "exit": 0
+      }
+    ],
+    "earlierCompletedRun": "maintainer-initial-checks.json"
+  },
+  "runOutcomeChanges": {
+    "noLongerFail": [
+      "Python regression: scripts/test-abyss-body-reveal-readiness-runtime.py",
+      "Python regression: scripts/test-p0-settings-navigation-contract.py",
+      "Python regression: scripts/test-thinkfan-system-monitor-contract.py",
+      "Python regression: scripts/test-todo-obsidian-settings-deeplink.py",
+      "Python regression: scripts/test-todo-obsidian-settings-ui.py"
+    ],
+    "newFail": [
+      "Python regression: scripts/test-bar-cava-profile-runtime.py"
+    ],
+    "interpretation": "Four Integration route contracts were intentionally fixed. Unrelated runtime variation is retained without crediting it to these changes; no aggregate performance or whole-host acceptance claim."
+  },
+  "baselineEvidence": {
+    "file": "baseline-comparison.json",
+    "limitation": "Only the recorded checks/bytes were reproduced or compared. Other full-suite failures remain unverified outside Integration scope."
+  },
+  "resolvedIntegrationFailures": [
+    "Four stale host route contracts now follow metadata-driven plugin tabs, generic System Battery and legacy deep links.",
+    "Management offers explicit Use Alis tasks recovery when the package is absent/disabled; private Niri tests preserve synthetic task bytes.",
+    "Malformed/nonzero Quicknote receipts cannot report a save or overwrite prior saved paths; successful recovery is tested.",
+    "Native fixture uses canonical config/alis; package and host agree on original inir helper/policy/schema identities and five payload hashes."
+  ],
+  "installedReadOnlySnapshot": {
+    "package": {
+      "available": true,
+      "diagnostic": "ready",
+      "version": "0.2.2",
+      "sourceSha": "d03f4b5e6d8dc70bfd062a2e80c2cddf32bc56c4",
+      "pluginMetadataAvailable": false
+    },
+    "helpers": {
+      "checkedAt": "2026-10-18T09:19:31.514486+00:00",
+      "scope": "file presence/hash only; no helper or privileged operation executed",
+      "files": [
+        {
+          "target": "/usr/libexec/inir-battery-charge-limit",
+          "expectedSha256": "8244445450870f78507dee75ef62005acb1338e0f3fee635d9dc92fac3e93562",
+          "exists": true,
+          "linked": false,
+          "rootOwned": true,
+          "sha256": "8244445450870f78507dee75ef62005acb1338e0f3fee635d9dc92fac3e93562",
+          "matches": true
+        },
+        {
+          "target": "/usr/libexec/inir-thinkfan",
+          "expectedSha256": "d0d66270170999a86a791fd0da9a6e8a8c431dcd5f39b59a53fb7ab3d48d6f16",
+          "exists": true,
+          "linked": false,
+          "rootOwned": true,
+          "sha256": "d0d66270170999a86a791fd0da9a6e8a8c431dcd5f39b59a53fb7ab3d48d6f16",
+          "matches": true
+        },
+        {
+          "target": "/usr/share/polkit-1/actions/org.inir.battery-charge-limit.policy",
+          "expectedSha256": "f201c62a44715372c9d463f1c5cc492d48fcc54834ed6137b5103d22257921c5",
+          "exists": true,
+          "linked": false,
+          "rootOwned": true,
+          "sha256": "f201c62a44715372c9d463f1c5cc492d48fcc54834ed6137b5103d22257921c5",
+          "matches": true
+        },
+        {
+          "target": "/usr/share/polkit-1/actions/org.inir.thinkfan.policy",
+          "expectedSha256": "13bfd4dc99baa4aa5b2b09db6d7e3cd45765967487ebe0b82597e6cfd13ca2ef",
+          "exists": true,
+          "linked": false,
+          "rootOwned": true,
+          "sha256": "13bfd4dc99baa4aa5b2b09db6d7e3cd45765967487ebe0b82597e6cfd13ca2ef",
+          "matches": true
+        },
+        {
+          "target": "/usr/share/inir/tlp-settings-schema.json",
+          "expectedSha256": "b23cdaa8b3bb4fd3f8bd36e1bb1c8b61fcce0018eaa5175656353af42d309adb",
+          "exists": true,
+          "linked": false,
+          "rootOwned": true,
+          "sha256": "b23cdaa8b3bb4fd3f8bd36e1bb1c8b61fcce0018eaa5175656353af42d309adb",
+          "matches": true
+        }
+      ]
+    },
+    "gateway": {
+      "checkedAt": "2026-10-18T09:20:40.485177+00:00",
+      "scope": "read-only file hashes; no installed helper executed",
+      "files": [
+        {
+          "target": "/usr/libexec/alis-hadalird-system-provision",
+          "exists": false,
+          "linked": false
+        },
+        {
+          "target": "/usr/share/polkit-1/actions/org.alis.hadalird-system-provision.policy",
+          "exists": false,
+          "linked": false
+        }
+      ]
+    },
+    "limitation": "Read-only presence/hash inspection only; no installer, helper, authorization, service or hardware action executed."
+  },
+  "remainingAcceptance": [
+    {
+      "gate": "installed-package",
+      "state": "UNRUN",
+      "issues": [
+        1,
+        3,
+        4
+      ],
+      "step": "Explicitly upgrade/install the candidate package and record its real manifest/source SHA; verify native enable/disable, refresh, update/rollback/remove and preservation of user data."
+    },
+    {
+      "gate": "privileged-setup",
+      "state": "UNRUN",
+      "issues": [
+        3,
+        4
+      ],
+      "step": "Owner-supervised setup integrations install/reinstall/update/rollback/remove/status with native Polkit approve/cancel/deny, stage receipts, uncertain recovery without replay and preserved owner configuration."
+    },
+    {
+      "gate": "hardware",
+      "state": "UNRUN",
+      "issues": [
+        2,
+        6
+      ],
+      "step": "Owner verifies real TLP vendor/battery and Thinkfan sensors, fail-safe/firmware ownership and rejected/failed actions without unintended state changes."
+    },
+    {
+      "gate": "obsidian",
+      "state": "UNRUN",
+      "issues": [
+        2
+      ],
+      "step": "Owner verifies actual Obsidian theme/Todo/Tasks/DailyNote/Quicknotes/images using a disposable vault, including read-only/conflict/failed-save draft preservation."
+    },
+    {
+      "gate": "native-ui",
+      "state": "UNRUN",
+      "issues": [
+        3,
+        5,
+        6
+      ],
+      "step": "Verify native/Abyss/Waffle Settings, zero/one/many plugins, capability subtabs, narrow widths, keyboard/accessibility, multi-output and Polkit focus; generic Battery and supported legacy routes remain usable."
+    },
+    {
+      "gate": "broad-host",
+      "state": "FAIL",
+      "issue": "llocphann/Alis#119",
+      "step": "Resolve/classify the listed full-suite failures in their owning core work. Scoped Integration passes do not make the host validation green."
+    },
+    {
+      "gate": "owner",
+      "state": "UNRUN",
+      "step": "Explicit maintainer approval is required before closing any issue as completed."
+    }
+  ],
+  "excludedRuns": [
+    {
+      "status": "STOPPED",
+      "reason": "GitHub connector publication changed commit identity while preserving exact source tree; restarting at published SHA",
+      "localHostSha": "9fd79775df08383cbf8352dbcdedb9f17b8ea740",
+      "publishedHostSha": "9522a051318f63e51638bc0acfb45cd6aa8b8193",
+      "accepted": false
+    },
+    {
+      "status": "STOPPED",
+      "hostSha": "9522a051318f63e51638bc0acfb45cd6aa8b8193",
+      "exit": "not captured",
+      "reason": "turn interrupted; session handles disappeared and no validator process or final summary remained",
+      "accepted": false,
+      "replacement": "maintainer-final.log"
+    }
+  ],
+  "fixtureScreenshots": {
+    "scope": "Private nested-Niri fixture, injected status helpers and synthetic configuration. These images are illustrative and do not prove installed desktop or Owner acceptance.",
+    "files": [
+      "management.png",
+      "obsidian-todo.png"
+    ]
+  },
+  "rawEvidencePolicy": "Full logs are retained in a private local archive; only check names/outcomes, source hashes and non-personal fixtures are published."
+}

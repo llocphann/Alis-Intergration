@@ -1,0 +1,16 @@
+{
+  "hostSha": "53953bdd666972be9f9bfa0754b2ded0e02cf73b",
+  "integrationSha": "5e7cc82041d113b08d1f39960636811c81338781",
+  "exit": 0,
+  "finishedAt": "2026-10-18T09:18:18.538810+00:00",
+  "scope": "actual committed payload staged into a temporary system root; no privileged/native system action",
+  "pluginCount": 3,
+  "approvedPayloads": {
+    "assets/helpers/inir-battery-charge-limit": "8244445450870f78507dee75ef62005acb1338e0f3fee635d9dc92fac3e93562",
+    "assets/helpers/inir-thinkfan": "d0d66270170999a86a791fd0da9a6e8a8c431dcd5f39b59a53fb7ab3d48d6f16",
+    "assets/polkit/org.inir.battery-charge-limit.policy": "f201c62a44715372c9d463f1c5cc492d48fcc54834ed6137b5103d22257921c5",
+    "assets/polkit/org.inir.thinkfan.policy": "13bfd4dc99baa4aa5b2b09db6d7e3cd45765967487ebe0b82597e6cfd13ca2ef",
+    "assets/tlp/tlp-settings-schema.json": "b23cdaa8b3bb4fd3f8bd36e1bb1c8b61fcce0018eaa5175656353af42d309adb"
+  },
+  "preservedOwnerConfiguration": true
+}
