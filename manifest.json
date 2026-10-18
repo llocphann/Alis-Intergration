@@ -1,6 +1,6 @@
 {
   "id": "hadalird",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "host": "Hadalis",
   "hostApi": 1,
   "session": "HadalisSession.qml",
@@ -8,6 +8,57 @@
     "tlp",
     "thinkfan",
     "obsidian"
+  ],
+  "plugins": [
+    {
+      "id": "tlp",
+      "name": "TLP",
+      "icon": "battery_saver",
+      "capabilities": [
+        {
+          "id": "power",
+          "name": "Power",
+          "settings": "tlp",
+          "waffleSettings": "tlpWaffle"
+        }
+      ]
+    },
+    {
+      "id": "thinkfan",
+      "name": "Thinkfan",
+      "icon": "mode_fan",
+      "capabilities": [
+        {
+          "id": "cooling",
+          "name": "Cooling",
+          "settings": "thinkfan"
+        }
+      ]
+    },
+    {
+      "id": "obsidian",
+      "name": "Obsidian",
+      "icon": "diamond",
+      "capabilities": [
+        {
+          "id": "theming",
+          "name": "Theming",
+          "settings": "obsidian"
+        },
+        {
+          "id": "quicknotes",
+          "name": "Quicknotes",
+          "settings": "obsidianTodo",
+          "view": "quicknotes"
+        },
+        {
+          "id": "todo",
+          "name": "Todo",
+          "settings": "obsidianTodo",
+          "view": "todo"
+        }
+      ]
+    }
   ],
   "settings": {
     "tlp": "modules/settings/TlpPowerSettings.qml",

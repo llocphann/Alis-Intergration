@@ -9,13 +9,19 @@ import qs.modules.common.functions
 import qs.modules.common.widgets
 import qs.modules.settings
 SettingsCardSection {
+    id: root
+    // Additive API: legacy hosts retain the combined editor.
+    property string settingsView: "all"
     objectName: "hadalirdObsidianTodoSettings"
     settingsTaskSection: "obsidian"
     expanded: true
     icon: "checklist"
-    title: Translation.tr("To-do & Quick Notes")
+    title: root.settingsView === "todo" ? Translation.tr("To-do")
+        : root.settingsView === "quicknotes" ? Translation.tr("Quick Notes")
+        : Translation.tr("To-do & Quick Notes")
 
     SettingsGroup {
+        visible: root.settingsView !== "quicknotes"
         ContentSubsection {
             title: Translation.tr("To-do")
             tooltip: Translation.tr("Choose the task store; your Hadalis backup is preserved.")
@@ -603,6 +609,7 @@ SettingsCardSection {
     }
 
     SettingsGroup {
+        visible: root.settingsView !== "todo"
         ContentSubsection {
             title: Translation.tr("Quick Notes")
             tooltip: Translation.tr("Capture to Zettelkasten without clearing the Notepad draft.")

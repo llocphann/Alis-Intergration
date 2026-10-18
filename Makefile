@@ -5,6 +5,8 @@ TLP_CONFDIR ?= /etc/tlp.d
 
 .PHONY: test install uninstall install-helpers
 test:
+	@python3 scripts/test-plugin-metadata.py
+	@python3 scripts/test-zettelkasten-failure-runtime.py
 	@python3 scripts/test-host-location.py
 	@python3 scripts/test-install.py
 	@sh scripts/test-battery-charge-limit-helper.sh

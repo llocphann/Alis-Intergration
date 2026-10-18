@@ -31,7 +31,7 @@ Item {
     property string lastCreatedPath: ""
     property string lastCreatedFullPath: ""
 
-    readonly property string helperPath:
+    property string helperPath:
         decodeURIComponent(String(Qt.resolvedUrl("../scripts/notes/zettelkasten.py")).replace(/^file:\/\//, ""))
 
     signal captured(var payload)
@@ -135,6 +135,10 @@ Item {
                 root._setError("capture_timeout", "Zettelkasten quick-note capture timed out")
                 return
             }
+            if (exitCode !== 0) {
+                root._setError("capture_failed", "Zettelkasten helper failed; no saved-note receipt was accepted")
+                return
+            }
             const output = String(captureCollector.text ?? "").trim()
             if (output.length === 0) {
                 root._setError("capture_failed", "Zettelkasten helper returned no result")
@@ -149,8 +153,19 @@ Item {
                     )
                     return
                 }
-                root.lastCreatedPath = String(payload.notePath ?? "")
-                root.lastCreatedFullPath = String(payload.noteFullPath ?? "")
+                if (Array.isArray(payload) || typeof payload.notePath !== "string"
+                        || typeof payload.noteFullPath !== "string"
+                        || !payload.notePath.endsWith(".md")
+                        || payload.notePath.startsWith("/")
+                        || payload.notePath.split("/").some(part => !part || part === "." || part === "..")
+                        || !payload.noteFullPath.startsWith("/")
+                        || !payload.noteFullPath.endsWith("/" + payload.notePath)
+                        || /[\x00-\x1f\x7f]/.test(payload.notePath + payload.noteFullPath)) {
+                    root._setError("capture_invalid_output", "Zettelkasten helper returned no valid saved-note receipt")
+                    return
+                }
+                root.lastCreatedPath = payload.notePath
+                root.lastCreatedFullPath = payload.noteFullPath
                 root._clearError()
                 root.captured(payload)
             } catch (error) {

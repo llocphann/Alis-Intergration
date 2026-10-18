@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 todo=(ROOT/'modules/settings/ObsidianTodoSettings.qml').read_text()
 required = [
-    'title: Translation.tr("To-do & Quick Notes")',
+    'Translation.tr("To-do & Quick Notes")',
     'title: Translation.tr("Task source")',
     'Translation.tr("Note path pattern")',
     'Translation.tr("Heading")',
@@ -30,7 +30,7 @@ for token in required:
 assert 'Config.setNestedValue("todo.backend", "obsidian")' not in todo
 for token in ['Day Planner', 'Planner heading', 'font.pixelSize: Appearance.font.pixelSize.smallest', 'id: zettelkastenVaultPath', 'Translation.tr("Vault path override")']:
     assert token not in todo, token
-assert todo.count('title: Translation.tr("To-do & Quick Notes")')==1
+assert todo.count('Translation.tr("To-do & Quick Notes")')==1
 assert todo.count('placeholderText: ""')>=3
 assert '/^\\/+|\\/+$/g' in todo
 assert 'notes.zettelkasten.folder' in todo and 'notes.zettelkasten.defaultType' in todo

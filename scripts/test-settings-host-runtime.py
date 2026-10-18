@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix="hadalird-native-") as name:
     managed = vault / "Managed.md"
     managed.write_text("# Todo\n<!-- hadalis:todo:start -->\n- [ ] first\n<!-- hadalis:todo:end -->\n")
     (vault / "Daily.md").write_text("## Tasks\n- [ ] first daily\n## Notes\n")
-    config = private / "config/illogical-impulse"
+    config = private / "config/alis"
     config.mkdir(parents=True)
     options = json.loads((HOST / "defaults/config.json").read_text())
     options["integrations"]["hadalird"] = {key:False for key in ("tlp","thinkfan","obsidian")}
@@ -61,10 +61,12 @@ import qs.modules.waffle.settings as WSettings
 ShellRoot {
  id:root
  readonly property var waffle:waffleHost.item
+ readonly property var waffleIntegrations:waffleIntegrationHost.item
  Component.onCompleted:Quickshell.watchFiles=false
  FloatingWindow {
   id:window;visible:true;implicitWidth:1100;implicitHeight:900;color:"#111820"
-  IntegrationsConfig {id:integrations;anchors.fill:parent}
+  IntegrationsConfig {id:integrations;width:1100;height:parent.height}
+  Loader {id:waffleIntegrationHost;width:320;height:600;visible:false;source:Quickshell.shellPath("modules/waffle/settings/pages/WIntegrationsPage.qml")}
   Loader {id:waffleHost;anchors.fill:parent;source:Quickshell.shellPath("modules/waffle/settings/pages/WTlpPage.qml");onLoaded:item.visible=false}
   ThinkfanSettings {id:fanUi;width:800;visible:false}
   TlpPowerSettings {id:classic;width:800;visible:false}
@@ -74,12 +76,40 @@ ShellRoot {
  TestCase {
   id:test;when:false;optional:true
   function check(v,m){if(!v)throw new Error(m)}
+  function capture(name){
+   const directory=Quickshell.env("ALIS_INTEGRATION_CAPTURE_DIR")
+   if(!directory)return
+   wait(300)
+   let finished=false
+   check(integrations.grabToImage(result=>{result.saveToFile(directory+"/"+name+".png");finished=true}),"capture failed")
+   tryVerify(()=>finished,2000)
+  }
   function ownedRow(host,name){const item=findChild(host,name);check(item!==null,"missing optional row "+name);return item}
   function runChecks(){try{
    tryCompare(Config,"ready",true,4000);tryCompare(Hadalird,"available",true,4000)
    tryCompare(waffleHost,"status",Loader.Ready,2000)
+   tryCompare(waffleIntegrationHost,"status",Loader.Ready,2000)
    check(Hadalird.session===null,"default-off package started workers")
    check(findChild(integrations,"hadalirdObsidianTodoSettings")===null,"disabled Obsidian rendered owned controls")
+   const installed = Hadalird.installedPlugins
+   check(waffleIntegrations.primaryTabs.length===4,"Waffle plugin tabs missing")
+   check(installed.length===3 && integrations.primaryTabs.length===4,"N installed plugins must have N+1 tabs")
+   Hadalird.installedPlugins=[]
+   check(integrations.primaryTabs.length===1 && integrations.activePlugin==="management","empty package did not fall back to Management")
+   Hadalird.installedPlugins=installed.slice(0,1)
+   check(integrations.primaryTabs.length===2,"single plugin must have two primary tabs")
+   integrations.activePlugin=installed[0].id
+   Hadalird.installedPlugins=[]
+   check(integrations.activePlugin==="management","removed selection did not recover")
+   Hadalird.installedPlugins=installed
+   const tabOptions=findChild(findChild(integrations,"integrationPrimaryTabs"),"settingsTaskOptions")
+   for(const width of [320,500,800]){
+    integrations.width=width
+    tryCompare(integrations,"width",width,1000);wait(50)
+    const buttons=tabOptions.children.filter(item=>item.hasOwnProperty("modelData") && item.hasOwnProperty("toggled"))
+    check(buttons.length===4 && buttons.every(button=>button.x>=-.01 && button.x+button.width<=tabOptions.width+.1),"plugin tabs overflow width "+width)
+   }
+   capture("management")
    const preferences=JSON.stringify(Config.options)
    check(classicRow.implicitHeight===0 && waffleRow.implicitHeight===0,"disabled rows started an editor")
    waffle.visible=true;wait(100);waffle.visible=false
@@ -88,17 +118,29 @@ ShellRoot {
    tryVerify(()=>Hadalird.session!==null,2000)
    const session=Hadalird.session
    session.batteryHelperPath=Quickshell.env("FIXTURE_HELPER");session.fanHelperPath=Quickshell.env("FIXTURE_HELPER")
+   integrations.activateSettingsSearchSection("Obsidian Todo")
+   check(integrations.capabilityTabs.length===3,"Obsidian capability tabs missing")
+   const capabilityTabs=findChild(findChild(integrations,"integrationCapabilityTabs"),"settingsTaskOptions")
+   tryVerify(()=>capabilityTabs.children.filter(child=>child.hasOwnProperty("modelData")).length===3,1000)
+   tryVerify(()=>capabilityTabs.children.filter(child=>child.hasOwnProperty("modelData")).every(button=>button.buttonText.length>0 && button.width>50 && capabilityTabs.width>200),2000)
    tryVerify(()=>findChild(integrations,"hadalirdObsidianTodoSettings")!==null,3000)
    const pattern=findChild(integrations,"obsidianTodoNotePattern"),heading=findChild(integrations,"obsidianTodoHeading"),folder=findChild(integrations,"obsidianQuickNoteFolder")
    check(pattern && heading && folder,"owned Todo/capture editors missing")
+   check(pattern.visible && !folder.visible,"Todo tab exposed Quicknotes controls")
+   capture("obsidian-todo")
    pattern.text=" /Capture/My Tasks.md/ ";pattern.editingFinished()
-   heading.text=" New tasks ";heading.editingFinished();folder.text=" Capture/Fleeting ";folder.editingFinished()
+   heading.text=" New tasks ";heading.editingFinished()
+   integrations.selectCapability("quicknotes")
+   tryVerify(()=>findChild(integrations,"obsidianQuickNoteFolder")?.visible===true,2000)
+   const quickFolder=findChild(integrations,"obsidianQuickNoteFolder")
+   check(!findChild(integrations,"obsidianTodoNotePattern").visible,"Quicknotes tab exposed Todo controls")
+   quickFolder.text=" Capture/Fleeting ";quickFolder.editingFinished()
    tryCompare(Config.options.todo.obsidian.dailyNote,"folder","Capture",1000)
    check(Config.options.todo.obsidian.dailyNote.format==="My Tasks.md" && Config.options.todo.obsidian.dailyNote.plannerHeading==="New tasks","extracted task fields lost parsing/save behavior")
    check(Config.options.notes.zettelkasten.folder==="Capture/Fleeting","extracted capture field did not save")
    integrations.activateSettingsSearchSection("Calendar Sync")
    tryVerify(()=>findChild(integrations,"hadalirdObsidianTodoSettings")===null,1000)
-   integrations.activateSettingsSearchSection("To-do & Quick Notes")
+   integrations.activateSettingsSearchSection("Obsidian Todo")
    tryVerify(()=>findChild(integrations,"obsidianTodoNotePattern")!==null,2000)
    check(findChild(integrations,"obsidianTodoNotePattern").text==="Capture/My Tasks.md","reopening task fields lost saved state")
    Config.setNestedValue("integrations.hadalird.tlp",true)
@@ -121,6 +163,12 @@ ShellRoot {
    waffle.visible=true
    tryVerify(()=>findChild(waffle,"hadalirdWaffleTlpSettings")!==null,3000)
    check(findChild(waffle,"hadalirdWaffleTlpSettings").selectedCategoryIndex===2 && findChild(waffle,"hadalirdWaffleTlpSettings").filterText==="CPU","Waffle reopen lost category/filter")
+   waffle.visible=false
+   Config.setNestedValue("panelFamily","waffle")
+   waffleIntegrationHost.visible=true;waffleIntegrations.activePlugin="tlp"
+   tryVerify(()=>findChild(waffleIntegrations,"hadalirdWaffleTlpSettings")!==null,2000)
+   waffleIntegrationHost.visible=false
+   tryVerify(()=>findChild(waffleIntegrations,"hadalirdWaffleTlpSettings")===null,1000)
    Config.setNestedValue("integrations.hadalird.thinkfan",true)
    fanUi.visible=true
    tryVerify(()=>findChild(fanUi,"hadalirdThinkfanSettings")!==null,2000)

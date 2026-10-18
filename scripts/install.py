@@ -5,6 +5,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -29,6 +30,56 @@ EXPECTED_ENTRYPOINTS = {
 }
 
 
+def plugin_metadata(data):
+    """Normalize declarative navigation only; never import optional code."""
+    plugins = data.get("plugins", [])  # Older API 1 packages remain usable.
+    integrations = data.get("integrations", [])
+    settings = data.get("settings", {})
+    if not isinstance(plugins, list) or len(plugins) > 32 or not isinstance(integrations, list):
+        raise ValueError("Invalid plugin catalog")
+    if not isinstance(settings, dict) or any(
+            not isinstance(key, str) or not isinstance(path, str)
+            or not re.fullmatch(r"modules/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.qml", path)
+            for key, path in settings.items()):
+        raise ValueError("Unsafe plugin settings path")
+    normalized, seen = [], set()
+    def token(value):
+        return isinstance(value, str) and re.fullmatch(r"[a-z][a-z0-9_-]{0,47}", value)
+    def label(value):
+        return isinstance(value, str) and 0 < len(value) <= 80 and value.isprintable()
+    for plugin in plugins:
+        if not isinstance(plugin, dict):
+            raise ValueError("Invalid plugin metadata")
+        ident, name, icon = (plugin.get(key) for key in ("id", "name", "icon"))
+        if not token(ident) or ident == "management" or ident in seen or ident not in integrations or not label(name) or not token(icon):
+            raise ValueError("Invalid plugin identity")
+        seen.add(ident)
+        capabilities = plugin.get("capabilities")
+        if not isinstance(capabilities, list) or not 0 < len(capabilities) <= 16:
+            raise ValueError("Invalid plugin capabilities")
+        items, ids = [], set()
+        for capability in capabilities:
+            if not isinstance(capability, dict):
+                raise ValueError("Invalid plugin capability")
+            cid, title, entry = (capability.get(key) for key in ("id", "name", "settings"))
+            if not token(cid) or cid in ids or not label(title) or not isinstance(entry, str) or entry not in settings:
+                raise ValueError("Invalid plugin settings reference")
+            ids.add(cid)
+            item = {"id": cid, "name": title, "settings": entry}
+            if "waffleSettings" in capability:
+                waffle = capability["waffleSettings"]
+                if not isinstance(waffle, str) or waffle not in settings:
+                    raise ValueError("Invalid Waffle settings reference")
+                item["waffleSettings"] = waffle
+            if "view" in capability:
+                if entry != "obsidianTodo" or capability["view"] not in ("todo", "quicknotes"):
+                    raise ValueError("Unsupported settings view")
+                item["view"] = capability["view"]
+            items.append(item)
+        normalized.append({"id": ident, "name": name, "icon": icon, "capabilities": items})
+    return normalized
+
+
 def validate_manifest(manifest):
     if not isinstance(manifest, dict) or manifest.get("id") != "hadalird" or (
             type(manifest.get("hostApi")) is not int or manifest["hostApi"] != 1):
@@ -51,6 +102,7 @@ def validate_manifest(manifest):
         "managedTodo": backends.get("managedTodo"),
         "dailyTodo": backends.get("dailyTodo"),
     }
+    plugin_metadata(manifest)
     if entries != EXPECTED_ENTRYPOINTS:
         raise ValueError("Package entrypoints do not match host API 1")
 
@@ -96,7 +148,7 @@ def assemble(source, target, sha):
         else:
             shutil.copy2(original, output)
     files = payload_inventory(target)
-    if not all(path in files for path in EXPECTED_ENTRYPOINTS.values()):
+    if not all(path in files for path in (*EXPECTED_ENTRYPOINTS.values(), *manifest["settings"].values())):
         raise ValueError("Missing mandatory package entrypoint")
     manifest.update(sourceSha=sha, files=files)
     (target / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

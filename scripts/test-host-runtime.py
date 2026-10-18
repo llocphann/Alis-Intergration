@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix="hadalird-native-") as name:
     managed = vault / "Managed.md"
     managed.write_text("# Todo\n<!-- hadalis:todo:start -->\n- [ ] first\n<!-- hadalis:todo:end -->\n")
     (vault / "Daily.md").write_text("## Tasks\n- [ ] first daily\n## Notes\n")
-    config = private / "config/illogical-impulse"
+    config = private / "config/alis"
     config.mkdir(parents=True)
     options = json.loads((HOST / "defaults/config.json").read_text())
     options["integrations"]["hadalird"] = {key:False for key in ("tlp","thinkfan","obsidian")}

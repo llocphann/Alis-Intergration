@@ -13,8 +13,18 @@ enabled in Hadalis. Missing packages report unavailable rather than claiming an
 operation succeeded. `make uninstall` deactivates only this package's owned
 link; releases, user configuration, vaults and system services are preserved.
 
-Privileged helper installation is separate: `sudo make install-helpers`.
-This installs helper/polkit/schema files and does not enable services or create
+The supported Alis host entrypoint for system provisioning is
+`./setup integrations install` (or `reinstall`, `update`, `rollback`, `remove`).
+Use `./setup integrations install --dry-run` to review the stages and
+`./setup integrations status` to reconcile package/helper receipts. Mutations
+require explicit confirmation and native Polkit permission. Core Alis
+`./setup install`, `reinstall` and `update` accept `--integration-helpers` as an
+explicit opt-in; ordinary setup never provisions these helpers. Interrupted
+or uncertain transactions require inspection and an explicit
+`status --acknowledge-uncertain` before retry; they are never replayed.
+
+For distribution packaging, `make install-helpers DESTDIR=/staging/root`
+installs helper/polkit/schema files without enabling services or creating
 TLP configuration overrides. Prefixes and `DESTDIR` are supported for packaging.
 `LIBEXECDIR`, `POLKIT_ACTIONS_DIR`, `INIR_SYSTEM_SHAREDIR` and `TLP_CONFDIR`
 control helper, policy, schema and profile locations; helper installation does
@@ -42,6 +52,10 @@ no user vault, privileged settings or existing data is changed by task tracking.
 
 Classic and Waffle TLP editors and Obsidian task/capture settings are owned
 here. Hadalis retains navigation, optional loaders, generic Battery controls
-and the preserved internal Todo store. The version 0.2 settings entrypoints
-are additive for host API 1; update Hadalird before the corresponding host
-cutover. Integration enable switches remain off by default.
+and the preserved internal Todo store. Version 0.3 adds declarative `plugins` metadata to host API 1: each installed
+plugin names its capabilities by validated `settings` keys, with an optional
+`waffleSettings` presentation. Obsidian exposes Theming, Quicknotes and Todo;
+its combined legacy editor remains supported. Discovery reads metadata and
+verifies the complete immutable payload without loading QML. Hosts without
+this navigation extension retain the existing API 1 entrypoints. Integration
+enable switches remain off by default.

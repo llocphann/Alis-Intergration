@@ -76,7 +76,7 @@ ShellRoot {
     with private_wayland(private) as env:
         if env is None:
             raise SystemExit("SKIP: optional notes image worker requires private Niri")
-        user_config = private / "config/illogical-impulse"
+        user_config = private / "config/alis"
         user_config.mkdir(parents=True)
         (user_config / "config.json").write_text(json.dumps(options))
         store = private / "state/quickshell/user"
