@@ -114,6 +114,13 @@ ShellRoot {
    check(classicRow.implicitHeight===0 && waffleRow.implicitHeight===0,"disabled rows started an editor")
    waffle.visible=true;wait(100);waffle.visible=false
    check(JSON.stringify(Config.options)===preferences,"disabled settings mutated preferences")
+   const savedSource=JSON.stringify(Config.options.todo.obsidian)
+   Config.setNestedValue("todo.backend","obsidian")
+   const restore=findChild(integrations,"integrationRestoreInternalTodos")
+   tryVerify(()=>restore!==null && restore.visible && restore.enabled,3000)
+   restore.clicked()
+   tryCompare(Todo,"backend","internal",1000)
+   check(JSON.stringify(Config.options.todo.obsidian)===savedSource && Hadalird.session===null,"disabled-plugin recovery changed source paths or started workers")
    Config.setNestedValue("integrations.hadalird.obsidian",true)
    tryVerify(()=>Hadalird.session!==null,2000)
    const session=Hadalird.session
