@@ -1,0 +1,346 @@
+/* Alis-owned semantic colors; layered after the selected theme and user snippets. */
+/* Resolve dependent properties on body, the same scope as Alis overrides.
+   Primitives stay dark-to-light in both modes; semantics select their role. */
+body.theme-dark:not(.theme-light) {
+  --color-base-00: var(--cc-p00) !important;
+  --color-base-05: var(--cc-p01) !important;
+  --color-base-10: var(--cc-p02) !important;
+  --color-base-20: var(--cc-p03) !important;
+  --color-base-25: var(--cc-p04) !important;
+  --color-base-30: var(--cc-p05) !important;
+  --color-base-35: var(--cc-p06) !important;
+  --color-base-40: var(--cc-p07) !important;
+  --color-base-50: var(--cc-p08) !important;
+  --color-base-60: var(--cc-p09) !important;
+  --color-base-70: var(--cc-p11) !important;
+  --color-base-100: var(--cc-p13) !important;
+  color-scheme: dark;
+  --bg-contrast-amount: 15% !important;
+  --fg-contrast-amount: 40% !important;
+  --medium-contrast-amount: 20% !important;
+  --active-contrast-amount: 10% !important;
+  /* Use consecutive palette stops, from the outer canvas toward inner UI. */
+  --av-ui-background: var(--cc-p01) !important;
+  --av-ui-surface: var(--cc-p02) !important;
+  --av-ui-raised: var(--cc-p03) !important;
+  --av-ui-hover: var(--cc-p04) !important;
+  --av-ui-active: var(--cc-p05) !important;
+  --av-ui-underlying: var(--cc-p00) !important;
+  --av-ui-text: var(--cc-p13) !important;
+  --av-ui-muted: var(--cc-p12) !important;
+  --av-ui-faint: var(--cc-p11) !important;
+  --av-ui-accent: var(--cc-accent) !important;
+  --av-ui-on-accent: var(--cc-p00) !important;
+  --av-state-muted: var(--cc-p10) !important;
+  --background-activated-tab-header-dark: var(--av-ui-surface) !important;
+  --modal-background: var(--av-ui-raised) !important;
+  --menu-background: var(--av-ui-raised) !important;
+  --prompt-background: var(--av-ui-raised) !important;
+}
+body.theme-light:not(.theme-dark) {
+  --color-base-00: var(--cc-p13) !important;
+  --color-base-05: var(--cc-p11) !important;
+  --color-base-10: var(--cc-p09) !important;
+  --color-base-20: var(--cc-p08) !important;
+  --color-base-25: var(--cc-p07) !important;
+  --color-base-30: var(--cc-p06) !important;
+  --color-base-35: var(--cc-p05) !important;
+  --color-base-40: var(--cc-p04) !important;
+  --color-base-50: var(--cc-p03) !important;
+  --color-base-60: var(--cc-p02) !important;
+  --color-base-70: var(--cc-p01) !important;
+  --color-base-100: var(--cc-p00) !important;
+  color-scheme: light;
+  --bg-contrast-amount: 70% !important;
+  --fg-contrast-amount: 30% !important;
+  --medium-contrast-amount: 60% !important;
+  --active-contrast-amount: 30% !important;
+  --av-ui-background: var(--cc-p13) !important;
+  --av-ui-surface: color-mix(in srgb, var(--cc-p13) 86%, var(--cc-p12)) !important;
+  --av-ui-raised: var(--cc-p12) !important;
+  --av-ui-hover: color-mix(in srgb, var(--av-ui-text) 8%, var(--av-ui-background)) !important;
+  --av-ui-active: color-mix(in srgb, var(--av-ui-accent) 20%, var(--av-ui-background)) !important;
+  --av-ui-underlying: var(--cc-p11) !important;
+  --av-ui-text: var(--cc-p01) !important;
+  --av-ui-muted: var(--cc-p06) !important;
+  --av-ui-faint: var(--cc-p07) !important;
+  --av-ui-accent: color-mix(in srgb, var(--cc-accent) 38%, var(--cc-p00)) !important;
+  --av-ui-on-accent: var(--cc-p13) !important;
+  --av-state-muted: var(--cc-p07) !important;
+}
+/* Native Graph's CSS probes and the runtime adapter share these body roles. */
+body.theme-dark, body.theme-light:not(.theme-dark) {
+  --graph-text: var(--av-ui-text) !important;
+  --graph-node: color-mix(in srgb, var(--av-ui-accent) 70%, var(--av-ui-muted)) !important;
+  --graph-node-focused: var(--av-ui-accent) !important;
+  --graph-node-unresolved: var(--av-ui-faint) !important;
+  --graph-node-tag: var(--av-state-success) !important;
+  --graph-node-attachment: var(--av-state-warning) !important;
+  --graph-line: color-mix(in srgb, var(--av-ui-muted) 40%, var(--av-ui-background)) !important;
+  --av-graph-group-00: var(--av-ui-accent) !important;
+  --av-graph-group-10: color-mix(in srgb, var(--av-ui-accent) 85%, var(--av-ui-muted)) !important;
+  --av-graph-group-20: color-mix(in srgb, var(--av-ui-accent) 70%, var(--av-ui-muted)) !important;
+  --av-graph-group-40: color-mix(in srgb, var(--av-ui-accent) 55%, var(--av-ui-muted)) !important;
+  --av-graph-group-60: color-mix(in srgb, var(--av-ui-accent) 40%, var(--av-ui-muted)) !important;
+  --av-graph-group-70: color-mix(in srgb, var(--av-ui-accent) 25%, var(--av-ui-muted)) !important;
+  --av-graph-group-90: color-mix(in srgb, var(--av-ui-accent) 10%, var(--av-ui-muted)) !important;
+  --av-graph-group-99: var(--av-ui-muted) !important;
+}
+body.theme-dark, body.theme-light:not(.theme-dark) {
+  --av-ui-border: color-mix(in srgb, var(--cc-p06) var(--av-border-strength), transparent) !important;
+  --av-ui-focus: var(--av-ui-accent) !important;
+  --av-loader-ink: var(--av-ui-accent) !important;
+  --av-loader-secondary: color-mix(in srgb, var(--av-ui-accent) 70%, var(--cc-p08)) !important;
+  --av-loader-tertiary: color-mix(in srgb, var(--av-ui-accent) 50%, var(--cc-p06)) !important;
+  --av-loader-quaternary: color-mix(in srgb, var(--av-ui-accent) 35%, var(--cc-p04)) !important;
+  --contrast-color: var(--av-ui-text) !important;
+  --background-primary: var(--av-ui-background) !important;
+  --background-primary-alt: var(--av-ui-surface) !important;
+  --background-secondary: var(--av-ui-surface) !important;
+  --background-secondary-alt: var(--av-ui-raised) !important;
+  --background-tertiary: var(--av-ui-raised) !important;
+  --background-underlying: var(--av-ui-underlying) !important;
+  --workspace-background-translucent: var(--av-ui-underlying) !important;
+  --background-mod-left-split: var(--av-ui-background) !important;
+  --background-mod-root-split: var(--av-ui-background) !important;
+  --background-mod-right-split: var(--av-ui-background) !important;
+  --background-modifier-border: var(--av-ui-border) !important;
+  --background-modifier-border-muted: color-mix(in srgb, var(--av-ui-border) 50%, transparent) !important;
+  --background-modifier-border-hover: color-mix(in srgb, var(--av-ui-muted) 70%, transparent) !important;
+  --background-modifier-border-focus: var(--av-ui-focus) !important;
+  --background-modifier-hover: var(--av-ui-hover) !important;
+  --background-modifier-active-hover: var(--av-ui-active) !important;
+  --background-modifier-form-field: var(--av-ui-surface) !important;
+  --background-modifier-form-field-highlighted: var(--av-ui-raised) !important;
+  --text-normal: var(--av-ui-text) !important;
+  --text-muted: var(--av-ui-muted) !important;
+  --text-faint: var(--av-ui-faint) !important;
+  --text-accent: var(--av-ui-accent) !important;
+  --text-accent-hover: var(--av-ui-focus) !important;
+  --text-on-accent: var(--av-ui-on-accent) !important;
+  --text-success: var(--av-state-success) !important;
+  --text-warning: var(--av-state-warning) !important;
+  --text-error: var(--av-state-danger) !important;
+  --text-selection: color-mix(in srgb, var(--av-ui-accent) 25%, transparent) !important;
+  --text-highlight-bg: color-mix(in srgb, var(--av-state-warning) 22%, transparent) !important;
+  --interactive-normal: var(--av-ui-surface) !important;
+  --interactive-hover: var(--av-ui-hover) !important;
+  --interactive-accent: var(--av-ui-accent) !important;
+  --interactive-accent-hover: color-mix(in srgb, var(--av-ui-accent) 85%, var(--av-ui-text)) !important;
+  --color-accent: var(--av-ui-accent) !important;
+  --color-accent-1: var(--av-ui-accent) !important;
+  --color-accent-2: var(--interactive-accent-hover) !important;
+  --color-accent-3: color-mix(in srgb, var(--av-ui-accent) 28%, transparent) !important;
+  --titlebar-background: var(--av-ui-underlying) !important;
+  --titlebar-background-focused: var(--av-ui-underlying) !important;
+  --tab-container-background: transparent !important;
+  --tab-background-active: var(--av-ui-background) !important;
+  --tab-text-color: var(--av-ui-muted) !important;
+  --tab-text-color-active: var(--av-ui-text) !important;
+  --tab-text-color-focused: var(--av-ui-text) !important;
+  --tab-text-color-active-current: var(--av-ui-text) !important;
+  --tab-text-color-focused-active-current: var(--av-ui-text) !important;
+  --ribbon-background: var(--av-ui-underlying) !important;
+  --nav-item-color: var(--av-ui-muted) !important;
+  --nav-item-color-hover: var(--av-ui-text) !important;
+  --nav-item-color-active: var(--av-ui-text) !important;
+  --nav-item-background-hover: var(--av-ui-hover) !important;
+  --nav-item-background-active: var(--av-ui-active) !important;
+  --nav-indentation-guide-color: var(--av-ui-border) !important;
+  --code-background: var(--av-ui-surface) !important;
+  --code-normal: var(--av-ui-text) !important;
+  --code-comment: var(--av-ui-muted) !important;
+  --code-keyword: var(--av-state-purple) !important;
+  --code-function: var(--av-state-blue) !important;
+  --code-string: var(--av-state-success) !important;
+  --code-value: var(--av-state-orange) !important;
+  --caret-color: var(--av-ui-accent) !important;
+  --blockquote-border-color: var(--av-ui-border) !important;
+  --hr-color: var(--av-ui-border) !important;
+  --h1-color: var(--av-ui-text) !important;
+  --h2-color: var(--av-ui-text) !important;
+  --scrollbar-bg: transparent !important;
+  --scrollbar-thumb-bg: color-mix(in srgb, var(--av-ui-muted) 38%, transparent) !important;
+  --scrollbar-active-thumb-bg: var(--av-ui-muted) !important;
+  --ice-blue: var(--av-ui-text) !important;
+  --sky-blue: var(--cc-p12) !important;
+  --powder-blue: var(--cc-p11) !important;
+  --light-cyan: var(--cc-p10) !important;
+  --soft-cyan: var(--av-state-warning) !important;
+  --seafoam: var(--av-state-success) !important;
+  --mint: var(--av-state-success) !important;
+  --cyan: var(--av-state-info) !important;
+  --cool-cyan: var(--av-state-info) !important;
+  --light-blue: var(--av-state-blue) !important;
+  --teal: var(--av-ui-accent) !important;
+  --deep-teal: var(--cc-p08) !important;
+  --dark-teal: var(--cc-p07) !important;
+  --pine: var(--cc-p07) !important;
+  --deep-pine: var(--cc-p06) !important;
+  --forest-teal: var(--cc-p06) !important;
+  --deep-sea: var(--cc-p06) !important;
+  --charcoal-teal: var(--cc-p07) !important;
+  --cool-gray: var(--av-ui-muted) !important;
+  --bright-accent: var(--av-ui-accent) !important;
+  --default-text-color: var(--av-ui-text) !important;
+  --highlight: var(--av-ui-accent) !important;
+  --shadow: var(--cc-p00) !important;
+  --border-theme-base: var(--av-ui-underlying) !important;
+  --border-theme-pane: var(--av-ui-background) !important;
+  --border-theme-grid: var(--av-ui-border) !important;
+  --border-theme-mark: var(--av-ui-active) !important;
+  --border-theme-yellow: var(--av-state-warning) !important;
+  --border-theme-text: var(--av-ui-muted) !important;
+  --border-theme-accent: var(--av-ui-accent) !important;
+  --border-theme-muted: var(--av-ui-muted) !important;
+  --lake-bg: var(--av-ui-background) !important;
+  --lake-surface: var(--av-ui-surface) !important;
+  --lake-surface-2: var(--av-ui-raised) !important;
+  --lake-surface-3: var(--av-ui-hover) !important;
+  --lake-surface-4: var(--av-ui-active) !important;
+  --lake-active: var(--av-ui-active) !important;
+  --lake-text: var(--av-ui-text) !important;
+  --lake-text-soft: var(--av-ui-muted) !important;
+  --lake-accent: var(--av-ui-accent) !important;
+  --lake-accent-soft: var(--av-ui-accent) !important;
+  --lake-border: var(--av-ui-border) !important;
+  --lake-border-2: var(--background-modifier-border-hover) !important;
+  --lake-border-3: var(--av-ui-focus) !important;
+  --lake-shadow: 0 6px 18px color-mix(in srgb, var(--cc-p00) 20%, transparent) !important;
+  --bases-bg: var(--av-ui-background) !important;
+  --bases-bg-alt: var(--av-ui-surface) !important;
+  --bases-header: var(--av-ui-raised) !important;
+  --bases-hover: var(--av-ui-hover) !important;
+  --bases-active: var(--av-ui-active) !important;
+  --bases-text: var(--av-ui-text) !important;
+  --bases-text-soft: var(--av-ui-muted) !important;
+  --bases-heading: var(--av-ui-text) !important;
+  --bases-accent: var(--av-ui-accent) !important;
+  --bases-border: var(--av-ui-border) !important;
+  --bases-border-2: var(--background-modifier-border-hover) !important;
+  --bases-map-marker-icon-color: var(--av-ui-background) !important;
+  --av-game-background: var(--av-ui-background) !important;
+  --av-game-surface: var(--av-ui-surface) !important;
+  --av-game-raised: var(--av-ui-raised) !important;
+  --av-difficulty-easy: var(--av-state-success) !important;
+  --av-difficulty-medium: var(--av-state-warning) !important;
+  --av-difficulty-hard: var(--av-state-danger) !important;
+  --av-finance-positive: var(--av-state-success) !important;
+  --av-finance-negative: var(--av-state-danger) !important;
+  --av-finance-warning: var(--av-state-warning) !important;
+  --av-zettel-literature: var(--av-state-purple) !important;
+  --av-zettel-fleeting: var(--av-state-orange) !important;
+  --av-zettel-permanent: var(--av-state-success) !important;
+  --av-globe-ocean: var(--av-ui-background) !important;
+  --av-globe-land: var(--av-ui-surface) !important;
+  --av-globe-border: var(--cc-p07) !important;
+  --av-globe-highlight: var(--av-ui-accent) !important;
+  --vault-note-paper: color-mix(in srgb, var(--av-ui-background) 86%, var(--av-ui-surface)) !important;
+  --vault-note-paper-rule: color-mix(in srgb, var(--av-ui-muted) 30%, transparent) !important;
+  --vault-note-paper-margin-rule: color-mix(in srgb, var(--av-ui-accent) 24%, transparent) !important;
+  --vault-note-paper-edge: var(--av-ui-border) !important;
+  --vault-note-paper-stain: color-mix(in srgb, var(--av-ui-muted) 13%, transparent) !important;
+  --vault-note-paper-pencil: color-mix(in srgb, var(--av-ui-muted) 6%, transparent) !important;
+  --vault-note-paper-tape: color-mix(in srgb, var(--av-ui-surface) 82%, var(--av-ui-raised)) !important;
+  --vault-note-paper-tape-edge: color-mix(in srgb, var(--av-ui-muted) 58%, transparent) !important;
+}
+/* Alis supplies primitives and legacy roles with !important. Keep its live
+   primitives, but let Abyssal assign the requested surface/ink hierarchy. */
+body.theme-dark:not(.theme-light),
+body.theme-light:not(.theme-dark) {
+  --border-theme-base: var(--av-ui-underlying) !important;
+  --border-theme-pane: var(--av-ui-background) !important;
+  --border-theme-grid: var(--av-ui-border) !important;
+  --border-theme-mark: var(--av-ui-active) !important;
+  --border-theme-yellow: var(--av-state-warning) !important;
+  --border-theme-text: var(--av-ui-muted) !important;
+  --border-theme-accent: var(--av-ui-accent) !important;
+  --border-theme-muted: var(--av-ui-muted) !important;
+  --background-primary: var(--av-ui-background) !important;
+  --background-primary-alt: var(--av-ui-surface) !important;
+  --background-secondary: var(--av-ui-surface) !important;
+  --background-secondary-alt: var(--av-ui-raised) !important;
+  --background-modifier-border: var(--av-ui-border) !important;
+  --background-modifier-border-hover: var(--av-ui-muted) !important;
+  --background-modifier-form-field: var(--av-ui-surface) !important;
+  --text-normal: var(--av-ui-text) !important;
+  --text-muted: var(--av-ui-muted) !important;
+  --text-faint: var(--av-ui-faint) !important;
+  --text-accent: var(--av-ui-accent) !important;
+  --interactive-accent: var(--av-ui-accent) !important;
+  --interactive-accent-hover: var(--av-ui-accent) !important;
+  --color-accent: var(--av-ui-accent) !important;
+  --color-accent-1: var(--av-ui-accent) !important;
+  --color-accent-2: var(--interactive-accent-hover) !important;
+  --color-accent-3: color-mix(in srgb, var(--av-ui-accent) 28%, transparent) !important;
+  --text-on-accent: var(--av-ui-on-accent) !important;
+  --default-text-color: var(--av-ui-text) !important;
+  --highlight: var(--av-ui-accent) !important;
+}
+
+/* Border pins the underlay to tertiary (a raised surface). The outer canvas
+   instead follows the same darkest primitive as Alis Screen Edges. */
+body.theme-dark:not(.theme-light) {
+  --background-underlying: var(--av-ui-underlying) !important;
+  background-color: var(--av-ui-underlying);
+}
+/* Legacy popup rules paint the underlay directly. Keep floating UI on the
+   raised surface even when a later vault snippet supplies its own background. */
+body.theme-dark:not(.theme-light) :is(.menu, .modal, .prompt, .popover, .hover-popover, .popover-hover, .suggestion-container, .tooltip) {
+  background-color: var(--av-ui-raised);
+}
+
+/* Preserve the owner's Carbon Cyan folder and Lake roles. State/domain colors
+   have their own names; decorative folder aliases must not become status colors. */
+body.theme-dark:not(.theme-light) {
+  /* The neutral ramp defines surfaces. Sidebar groups also carry the theme hue.
+     Keep the two owner-approved darkest groups on their original stops. */
+  --av-nav-tone-00: color-mix(in srgb, var(--av-ui-accent) 78%, var(--cc-p09)) !important;
+  --av-nav-tone-10: color-mix(in srgb, var(--av-ui-accent) 70%, var(--cc-p08)) !important;
+  --av-nav-tone-20: color-mix(in srgb, var(--av-ui-accent) 64%, var(--cc-p07)) !important;
+  --av-nav-tone-30: color-mix(in srgb, var(--av-ui-accent) 56%, var(--cc-p07)) !important;
+  --av-nav-tone-40: color-mix(in srgb, var(--av-ui-accent) 48%, var(--cc-p06)) !important;
+  --av-nav-tone-50: color-mix(in srgb, var(--av-ui-accent) 40%, var(--cc-p05)) !important;
+  --av-nav-tone-60: color-mix(in srgb, var(--av-ui-accent) 32%, var(--cc-p05)) !important;
+  --av-nav-tone-70: color-mix(in srgb, var(--av-ui-accent) 24%, var(--cc-p04)) !important;
+  --av-nav-tone-80: color-mix(in srgb, var(--av-ui-accent) 16%, var(--cc-p03)) !important;
+  --av-nav-tone-90: var(--cc-p02) !important;
+  --av-nav-tone-99: var(--cc-p01) !important;
+  --mint: var(--cc-p09) !important;
+  --cyan: var(--cc-p08) !important;
+  --cool-cyan: var(--cc-p08) !important;
+  --soft-cyan: var(--cc-p10) !important;
+  --seafoam: var(--cc-p09) !important;
+  --light-blue: var(--cc-p07) !important;
+  --teal: var(--cc-p07) !important;
+  --deep-teal: var(--cc-p06) !important;
+  --dark-teal: var(--cc-p06) !important;
+  --pine: var(--cc-p05) !important;
+  --deep-pine: var(--cc-p05) !important;
+  --forest-teal: var(--cc-p04) !important;
+  --deep-sea: var(--cc-p03) !important;
+  --charcoal-teal: var(--cc-p02) !important;
+  --cool-gray: var(--cc-p01) !important;
+  /* Lake backgrounds inherit the shared surface ladder declared above. */
+  --lake-accent-soft: color-mix(in srgb, var(--cc-accent) 70%, var(--cc-p12)) !important;
+  --lake-border: color-mix(in srgb, var(--cc-p06) 38%, transparent) !important;
+  --lake-border-2: color-mix(in srgb, var(--cc-p06) 62%, transparent) !important;
+  --lake-border-3: color-mix(in srgb, var(--cc-p07) 78%, transparent) !important;
+  --lake-shadow: 0 10px 30px color-mix(in srgb, var(--cc-p00) 76%, transparent) !important;
+}
+
+/* Sidebar theme palette: variable bindings only; retain the original selectors
+   and interaction formulas instead of replacing every label with one ink. */
+body.theme-dark:not(.theme-light) .workspace-leaf-content[data-type="file-explorer"] {
+  --mint: var(--av-nav-tone-00) !important;
+  --cyan: var(--av-nav-tone-10) !important;
+  --light-blue: var(--av-nav-tone-20) !important;
+  --teal: var(--av-nav-tone-30) !important;
+  --dark-teal: var(--av-nav-tone-40) !important;
+  --pine: var(--av-nav-tone-50) !important;
+  --deep-pine: var(--av-nav-tone-60) !important;
+  --forest-teal: var(--av-nav-tone-70) !important;
+  --deep-sea: var(--av-nav-tone-80) !important;
+  --charcoal-teal: var(--av-nav-tone-90) !important;
+  --cool-gray: var(--av-nav-tone-99) !important;
+}

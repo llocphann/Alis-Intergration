@@ -1,0 +1,38 @@
+{
+  "states": {
+    "success": -55,
+    "warning": -150,
+    "danger": 165,
+    "info": 0,
+    "orange": -170,
+    "purple": 80,
+    "blue": 25,
+    "pink": 125
+  },
+  "markers": {
+    "restaurant": "warning",
+    "cafe": "orange",
+    "bar": "purple",
+    "tourist": "blue",
+    "other": "muted"
+  },
+  "callouts": {
+    "problem": "danger",
+    "question": "success",
+    "theorem": "warning",
+    "example": "orange",
+    "definition": "info",
+    "corollary": "purple",
+    "proposition": "info",
+    "lemma": "blue",
+    "proof": "success",
+    "remark": "warning",
+    "note": "info",
+    "summary": "blue",
+    "key": "warning",
+    "algorithm": "info",
+    "exercise": "orange",
+    "warning": "orange",
+    "important": "danger"
+  }
+}

@@ -72,7 +72,7 @@ SettingsCardSection {
   RowLayout {
    Layout.fillWidth:true
    MaterialTextField {objectName:"obsidianVaultConfigPath";Layout.fillWidth:true;wrapMode:TextInput.NoWrap;text:Config.options?.integrations?.obsidian?.configPath ?? "";placeholderText:".obsidian (inside the shared vault)";onEditingFinished:Config.setNestedValue("integrations.obsidian.configPath",text.trim())}
-   RippleButtonWithIcon {materialIcon:"folder_open";onClicked:picker.open()}
+   RippleButtonWithIcon {materialIcon:"folder_open";mainText:Translation.tr("Browse");onClicked:picker.open()}
   }
   StyledText {text:"Application configuration folder";color:Appearance.colors.colSubtext}
   MaterialTextField {objectName:"obsidianApplicationConfigPath";Layout.fillWidth:true;wrapMode:TextInput.NoWrap;text:Config.options?.integrations?.obsidian?.applicationConfigPath ?? "";placeholderText:"Auto-detect Obsidian's application config";onEditingFinished:Config.setNestedValue("integrations.obsidian.applicationConfigPath",text.trim())}
@@ -82,14 +82,18 @@ SettingsCardSection {
    MaterialTextField {Layout.fillWidth:true;wrapMode:TextInput.NoWrap;text:Config.options?.integrations?.obsidian?.applicationPath ?? "obsidian";placeholderText:"obsidian";onEditingFinished:Config.setNestedValue("integrations.obsidian.applicationPath",text.trim() || "obsidian")}
    DialogButton {buttonText:"Open Obsidian";onClicked:Quickshell.execDetached([String(Config.options?.integrations?.obsidian?.applicationPath || "obsidian").trim()])}
   }
-  ContentSubsection {title:"CSS Snippet theming"}
-  StyledText {Layout.fillWidth:true;wrapMode:Text.WordWrap;text:"Hadalis follows the active theme’s color ramp through 99_Hadalis_Theme.css in this vault’s snippets folder. Shared by To-do, Quick Notes and Wull.";color:Appearance.colors.colSubtext}
-  SettingsSwitch {text:"Follow shell colors automatically";autoToggle:false;checked:ObsidianTheme.enabled;onToggledByUser:checked=>Config.setNestedValue("integrations.obsidian.autoTheme",checked)}
-  StyledText {Layout.fillWidth:true;wrapMode:Text.WordWrap;color:ObsidianTheme.error ? Appearance.colors.colError : Appearance.colors.colSubtext;text:ObsidianTheme.error || (ObsidianTheme.info.activeTheme ? "Active theme: "+ObsidianTheme.info.activeTheme+" · "+ObsidianTheme.info.profile+"\n"+(ObsidianTheme.info.snippetPath || ObsidianTheme.info.configPath) : "Choose a shared vault or detect the open Obsidian vault.")}
+  ContentSubsection {title:Translation.tr("Auto theming")}
+  SettingsSwitch {text:Translation.tr("Follow Alis colors");autoToggle:false;checked:ObsidianTheme.enabled;onToggledByUser:checked=>Config.setNestedValue("integrations.obsidian.autoTheme",checked)}
+  StyledText {
+   Layout.fillWidth:true;wrapMode:Text.WordWrap
+   color:ObsidianTheme.error ? Appearance.colors.colError : Appearance.colors.colSubtext
+   text:ObsidianTheme.error || (ObsidianTheme.info.activeTheme ? ObsidianTheme.info.activeTheme+" · "+(ObsidianTheme.info.enabled ? Translation.tr("Applied") : Translation.tr("Not applied")) : Translation.tr("Choose a vault"))
+   StyledToolTip {text:ObsidianTheme.info.snippetPath || ""}
+  }
   RowLayout {
-   DialogButton {buttonText:"Detect theme";enabled:!ObsidianTheme.busy;onClicked:ObsidianTheme.inspect()}
-   DialogButton {buttonText:"Apply CSS Snippet";enabled:!ObsidianTheme.busy;onClicked:ObsidianTheme.apply()}
-   DialogButton {buttonText:"Disable CSS Snippet";enabled:!ObsidianTheme.busy && (ObsidianTheme.info.enabled ?? false);onClicked:ObsidianTheme.restore()}
+   DialogButton {buttonText:Translation.tr("Detect");enabled:!ObsidianTheme.busy;onClicked:ObsidianTheme.inspect()}
+   DialogButton {buttonText:Translation.tr("Apply");enabled:!ObsidianTheme.busy;onClicked:ObsidianTheme.apply()}
+   DialogButton {buttonText:Translation.tr("Disable");enabled:!ObsidianTheme.busy && (ObsidianTheme.info.enabled ?? false);onClicked:ObsidianTheme.restore()}
   }
   DialogButton {buttonText:"Use detected vault";visible:!Todo.sharedVaultPath && !!ObsidianTheme.info.vaultPath;onClicked:Config.setNestedValue("todo.obsidian.vaultPath",ObsidianTheme.info.vaultPath)}
  }

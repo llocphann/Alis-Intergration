@@ -31,6 +31,12 @@ control helper, policy, schema and profile locations; helper installation does
 not create profile directories or overrides. TLP (including its optional
 Radio Device Wizard), Thinkfan and Obsidian remain separately installed apps.
 
+## Obsidian automatic colors
+
+Alis Settings → Integrations → Obsidian → Auto theming is the only controller. “Follow Alis colors” updates `99_Alis_Theme.css` after the vault's existing snippets; Apply performs a one-time update and Disable removes only this owned selection. The generator owns the dark-to-light ramp, dark/light surface roles, theme-tinted sidebar, startup masks and numeric accent/status channels. It preserves the selected theme, fonts, notes and original snippets. A recognized old `99_Hadalis_Theme` selection is retired without deleting its bytes; an unrecognized user file is preserved. The new destination also refuses to overwrite unowned CSS.
+
+No auto-theme setting or synchronization plugin is needed inside Obsidian. This integration runs on Linux with Alis and the optional Integration package; Windows/macOS are unsupported. The startup templates preserve the vault's original animations. Saved Graph/Local Graph color groups are explicit numeric Obsidian overrides, so they keep their saved colors: CSS cannot rewrite their in-memory values. Graph files are not modified and Obsidian CLI evaluation is never used.
+
 Run `make test` for scoped filesystem/helper and installation contracts.
 Native tests prefer a sibling `Alis` host checkout, with a sibling `Hadalis`
 checkout accepted for legacy fixtures. Set `ALIS_ROOT=/path/to/Alis` to pin the

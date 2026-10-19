@@ -12,7 +12,7 @@ Item {
  readonly property string vaultPath:HostServices.Todo.sharedVaultPath
  readonly property string configPath:options?.configPath ?? ""
  readonly property string applicationConfigPath:options?.applicationConfigPath ?? ""
- readonly property var palette:({background:hex(Appearance.colors.colLayer0Base),foreground:hex(Appearance.m3colors.m3onSurface),accent:hex(Appearance.colors.colPrimary)})
+ readonly property var palette:({background:hex(Appearance.m3colors.transparent ? Appearance.m3colors.m3background : Appearance.colors.colLayer0Base),foreground:hex(Appearance.m3colors.m3onSurface),accent:hex(Appearance.colors.colPrimary)})
  readonly property string signature:JSON.stringify({vault:vaultPath,config:configPath,application:applicationConfigPath,palette:palette})
  // A direct alias preserves Process notifications without evaluating a JS
  // binding after the worker context has been torn down.
