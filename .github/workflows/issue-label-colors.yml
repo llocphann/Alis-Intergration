@@ -1,0 +1,31 @@
+name: Alis-Intergration Issue label colors
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/issue-label-palette.json'
+      - 'scripts/sync-issue-labels.py'
+      - '.github/workflows/issue-label-colors.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: integration-issue-label-colors
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout matching source
+        uses: actions/checkout@v4
+      - name: Apply Alis custom label colors without altering issue assignments
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python3 scripts/sync-issue-labels.py
