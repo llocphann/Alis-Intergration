@@ -249,7 +249,7 @@ ColumnLayout {
                 ? Translation.tr("Staged for Apply")
                 : Translation.tr("Will inherit after Apply")
         if (root.managed)
-            return Translation.tr("Overridden by iNiR")
+            return Translation.tr("Overridden by Alis")
         if (root.inheritedValue.length > 0)
             return Translation.tr("Inherited: %1").arg(root.inheritedValue)
         return Translation.tr("TLP default")
@@ -276,7 +276,7 @@ ColumnLayout {
     function toggleToolTip(): string {
         const action = root.managed
             ? Translation.tr("Disable this override to inherit TLP's value after Apply.")
-            : Translation.tr("Enable an iNiR override for this setting.")
+            : Translation.tr("Enable an Alis override for this setting.")
         const parameter = Translation.tr("Parameter: %1").arg(root.settingKey)
         const state = Translation.tr("State: %1").arg(root.stateText())
         const note = root.wrapToolTip(Translation.tr(root.groupDescription))

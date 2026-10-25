@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Owned Obsidian task/capture settings contract; host routing is tested in Hadalis."""
+"""Owned Obsidian task/capture settings contract; host routing is tested in Alis."""
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 todo=(ROOT/'modules/settings/ObsidianTodoSettings.qml').read_text()
@@ -60,6 +60,7 @@ for removed_copy in (
 for stale in (
     "Use one Markdown note source. The path may be fixed or contain date tokens",
     "Physical Obsidian vault folder. Hadalis resolves the configured note strictly inside this directory.",
+    "Physical Obsidian vault folder. Alis resolves the configured note strictly inside this directory.",
     "Dashboard Quick Notes are drafts until capture. A successful capture creates one filesystem-canonical Zettelkasten note, then clears the unchanged draft.",
     "The generated Markdown follows the vault's Zettelkasten schema:",
 ):

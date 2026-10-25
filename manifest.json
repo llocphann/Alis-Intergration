@@ -1,7 +1,7 @@
 {
   "id": "hadalird",
-  "version": "0.3.0",
-  "host": "Hadalis",
+  "version": "0.3.1",
+  "host": "Alis",
   "hostApi": 1,
   "session": "HadalisSession.qml",
   "integrations": [
@@ -80,5 +80,6 @@
   "uiDerivedFrom": {
     "repository": "llocphann/Hadalis",
     "sourceSha": "53af215df39bce6cf7fda5c226bbb37bb14f6b9e"
-  }
+  },
+  "name": "Alis-Intergration"
 }

@@ -1,0 +1,2 @@
+# Opaque historic note fixture: preserve CRLF bytes, verified by provenance and readback tests.
+scripts/fixtures/rebrand-v1/managed-note.md binary

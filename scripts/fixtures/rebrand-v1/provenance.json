@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "kind": "sanitized pre-patch persisted fixture",
+  "hostSha": "36b163a52298a3d9cfc5b021097531a89c7d17dd",
+  "integrationSha": "9d67e80024dba838b9574e52e65bff71ec4eac3c",
+  "capturedAt": "2026-10-25T13:38:37.001162+00:00",
+  "method": "Config.flushWrites and Todo.addItem executed on the pinned pre-patch host; package bytes assembled by its pinned pre-patch installer. Placeholder vault paths and invented task records only.",
+  "captureExit": 0,
+  "captureLogSha256": "c1e895a57455f2876db1e2bc755879a36107ab64f68652fea83c5d20c2149d30",
+  "files": {
+    "managed-note.md": "5d70b6877176959ea6af1c6307fb5a37b872766096f86470de95363fbd329481",
+    "todo.txt": "08711fa36724ce85d0b744118150b55e576074c1adec9b282394f3a17db5ea96",
+    "todo.json": "167fc6e6e854edd52b29c2d675c50dfdf093004cece8d5107052cb283b0f6ad6",
+    "config.json": "27d0c55faf79957bca9a72fba122caa074cd7ce35daff64a10f7a382576d342a",
+    "legacy-package.tar.gz": "dde52a39f53580a0943bc8885f14ec02ed824ddbcd078a1cded5f6473314c00b",
+    "legacy-host-discovery.py": "6ee4bcd31c82ccdd70dbd7319edb38ec07ec76d75011ddfccea30c1a9898ab56"
+  }
+}

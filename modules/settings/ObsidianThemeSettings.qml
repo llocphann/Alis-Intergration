@@ -83,7 +83,7 @@ SettingsCardSection {
    DialogButton {buttonText:"Open Obsidian";onClicked:Quickshell.execDetached([String(Config.options?.integrations?.obsidian?.applicationPath || "obsidian").trim()])}
   }
   ContentSubsection {title:"CSS Snippet theming"}
-  StyledText {Layout.fillWidth:true;wrapMode:Text.WordWrap;text:"Hadalis follows the active theme’s color ramp through 99_Hadalis_Theme.css in this vault’s snippets folder. Shared by To-do, Quick Notes and Wull.";color:Appearance.colors.colSubtext}
+  StyledText {Layout.fillWidth:true;wrapMode:Text.WordWrap;text:"Alis follows the active theme’s color ramp through the legacy 99_Hadalis_Theme.css in this vault’s snippets folder. Shared by To-do, Quick Notes and Wull.";color:Appearance.colors.colSubtext}
   SettingsSwitch {text:"Follow shell colors automatically";autoToggle:false;checked:ObsidianTheme.enabled;onToggledByUser:checked=>Config.setNestedValue("integrations.obsidian.autoTheme",checked)}
   StyledText {Layout.fillWidth:true;wrapMode:Text.WordWrap;color:ObsidianTheme.error ? Appearance.colors.colError : Appearance.colors.colSubtext;text:ObsidianTheme.error || (ObsidianTheme.info.activeTheme ? "Active theme: "+ObsidianTheme.info.activeTheme+" · "+ObsidianTheme.info.profile+"\n"+(ObsidianTheme.info.snippetPath || ObsidianTheme.info.configPath) : "Choose a shared vault or detect the open Obsidian vault.")}
   RowLayout {

@@ -73,10 +73,10 @@ ColumnLayout {
                 : Translation.tr("The installed TLP runtime is unavailable")
         if (!TlpSettingsService.configAvailable)
             return TlpSettingsService.statusReason === "managed-config-invalid"
-                ? Translation.tr("The iNiR TLP override file is invalid; reset overrides to recover")
+                ? Translation.tr("The Alis TLP override file is invalid; reset overrides to recover")
                 : Translation.tr("TLP configuration could not be read")
         return TlpSettingsService.enabled
-            ? Translation.tr("TLP %1 is active · %2 iNiR overrides").arg(
+            ? Translation.tr("TLP %1 is active · %2 Alis overrides").arg(
                 TlpSettingsService.tlpVersion).arg(TlpSettingsService.managedCount)
             : Translation.tr("TLP %1 is disabled by configuration").arg(TlpSettingsService.tlpVersion)
     }
@@ -112,7 +112,7 @@ ColumnLayout {
 
         WSettingsButton {
             label: Translation.tr("Apply all staged changes")
-            description: Translation.tr("Validate, write both iNiR drop-ins, run TLP once, and verify")
+            description: Translation.tr("Validate, write both Alis drop-ins, run TLP once, and verify")
             buttonText: TlpSettingsService.busy ? Translation.tr("Applying…") : Translation.tr("Apply")
             accent: true
             enabled: TlpSettingsService.hasPendingChanges
@@ -142,10 +142,10 @@ ColumnLayout {
         }
 
         WSettingsButton {
-            label: Translation.tr("Reset general iNiR overrides")
+            label: Translation.tr("Reset general Alis overrides")
             description: TlpSettingsService.statusReason === "managed-config-invalid"
-                ? Translation.tr("Delete the invalid iNiR-owned override file and keep battery charge care")
-                : Translation.tr("Keep battery charge care and all non-iNiR TLP files")
+                ? Translation.tr("Delete the invalid Alis-owned override file and keep battery charge care")
+                : Translation.tr("Keep battery charge care and all non-Alis TLP files")
             buttonText: Translation.tr("Reset")
             enabled: TlpSettingsService.canResetOverrides
             onButtonClicked: TlpSettingsService.reset()

@@ -1,6 +1,6 @@
 # Alis-Intergration agent workflow — repository-owned GitHub Issues
 
-These rules apply to Local and Cloud AI editing Integration (Hadalird). The canonical tracker is **[Alis-Intergration GitHub Issues](https://github.com/llocphann/Alis-Intergration/issues)** (not Alis Issues). Prior Alis `AI-*`, `HELPER-*` and `INT-*` Issues marked MOVED are closed historical pointers.
+These rules apply to Local and Cloud AI editing Alis-Intergration. The canonical tracker is **[Alis-Intergration GitHub Issues](https://github.com/llocphann/Alis-Intergration/issues)** (not Alis Issues). Prior Alis `AI-*`, `HELPER-*` and `INT-*` Issues marked MOVED are closed historical pointers.
 
 1. Work on **Alis-Intergration `main`**. Refetch HEAD and affected files before each edit; do not modify Alis `stable`. Host-side Alis shell files are maintained on `Alis/dev` and must be coordinated separately.
 2. Create/update Integration-owned tasks **in this repo's Issues**. Search open and closed Issues by code/behavior and follow any historical MOVED pointer before creating a new one; never write active tasks or statuses into Markdown.

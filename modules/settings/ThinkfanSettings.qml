@@ -47,7 +47,7 @@ SettingsCardSection {
                 : root.thinkFanManaged
                     ? Translation.tr("ThinkFan is managing the fan. Saved per-profile levels remain editable and will resume when managed mode is disabled.")
                 : !ThinkFanService.fanLevelControlSupported
-                    ? Translation.tr("The installed fan-control helper is too old for per-profile levels. Update the Hadalird helpers so /usr/libexec/inir-thinkfan is refreshed.")
+                    ? Translation.tr("The installed fan-control helper is too old for per-profile levels. Update the Alis-Intergration helpers so /usr/libexec/inir-thinkfan is refreshed.")
                 : ThinkFanService.directControlAvailable
                     ? Translation.tr("Direct fan control is available. Level 0 means automatic firmware control.")
                 : ThinkFanService.available
