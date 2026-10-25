@@ -216,7 +216,11 @@ def main():
     parser.add_argument("action", choices=("install", "uninstall"))
     parser.add_argument("--data-home", type=Path, default=Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")))
     args = parser.parse_args()
-    data_root = (args.data_home / "hadalird").resolve()
+    canonical = args.data_home / "alis-intergration"
+    legacy = args.data_home / "hadalird"
+    if legacy.is_dir() and not legacy.is_symlink() and not canonical.exists():
+        os.replace(legacy, canonical)
+    data_root = canonical.resolve()
     data_root.mkdir(parents=True, exist_ok=True)
     with (data_root / ".install.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)

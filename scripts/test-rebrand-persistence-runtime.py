@@ -30,7 +30,7 @@ def module(name, path):
     return value
 
 installer = module('persistence_installer', ROOT / 'scripts/install.py')
-manager = module('persistence_manager', HOST / 'scripts/hadalird-manager.py')
+manager = module('persistence_manager', HOST / 'scripts/alis-intergration-manager.py')
 expected_tasks = json.loads((FIXTURE / 'todo.json').read_text())
 settings = json.loads((FIXTURE / 'config.json').read_text())
 old_bytes = (FIXTURE / 'managed-note.md').read_bytes()
@@ -47,12 +47,12 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-persistence-') as name:
     scripts = shell / 'scripts'
     scripts.mkdir()
     for entry in (HOST / 'scripts').iterdir():
-        if entry.name != 'hadalird-manager.py':
+        if entry.name != 'alis-intergration-manager.py':
             (scripts / entry.name).symlink_to(entry)
     # Only the read-only status transport is injected. Production QML,
     # discovery, settings, persisted data and package workers remain real.
     status_calls = private / 'status-calls.jsonl'
-    (scripts / 'hadalird-manager.py').write_text(
+    (scripts / 'alis-intergration-manager.py').write_text(
         'import json,sys\nfrom pathlib import Path\n'
         + f'p=Path({str(status_calls)!r})\n'
         + 'with p.open("a") as f:f.write(json.dumps(sys.argv[1:])+"\\n")\n'
@@ -72,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-persistence-') as name:
     (vault / '.obsidian/appearance.json').write_text('{"cssTheme":"Owner theme","enabledCssSnippets":[]}\n')
     settings['notes']['zettelkasten']['vaultPath'] = str(vault)
     (config_dir / 'config.json').write_text(json.dumps(settings))
-    data = private / 'data/hadalird'
+    data = private / 'data/alis-intergration'
     data.mkdir(parents=True)
     old_release = data / 'releases/old'
     old_release.mkdir(parents=True)

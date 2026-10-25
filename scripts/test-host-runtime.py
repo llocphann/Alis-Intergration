@@ -30,10 +30,10 @@ with tempfile.TemporaryDirectory(prefix="hadalird-native-") as name:
                       + "with Path("+repr(str(calls))+").open('a') as f:f.write(json.dumps(sys.argv[1:])+chr(10))\n"
                       + "print(json.dumps({'schema':1,'available':False,'supported':False,'configAvailable':False,'enabled':False,'active':False,'managed':False,'stateKnown':False,'statusReason':'fixture','reason':'fixture','effective':{},'managedValues':{}}))\n")
     helper.chmod(0o755)
-    package = private / "data/hadalird/releases/fixture"
+    package = private / "data/alis-intergration/releases/fixture"
     package.parent.mkdir(parents=True)
     installer.assemble(ROOT, package, "f"*40)
-    (private / "data/hadalird/current").symlink_to("releases/fixture")
+    (private / "data/alis-intergration/current").symlink_to("releases/fixture")
     vault = private / "Vault có spaces"
     (vault / ".obsidian").mkdir(parents=True)
     (vault / ".obsidian/appearance.json").write_text(json.dumps({"cssTheme":"Fixture","enabledCssSnippets":[]}))

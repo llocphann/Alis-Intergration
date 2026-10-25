@@ -25,10 +25,10 @@ with tempfile.TemporaryDirectory(prefix="hadalird-note-image-") as name:
         (shell / entry).symlink_to(HOST / entry)
     source = private / "Ảnh.png"
     source.write_bytes(PNG)
-    package = private / "data/hadalird/releases/fixture"
+    package = private / "data/alis-intergration/releases/fixture"
     package.parent.mkdir(parents=True)
     installer.assemble(ROOT, package, "f" * 40)
-    (private / "data/hadalird/current").symlink_to("releases/fixture")
+    (private / "data/alis-intergration/current").symlink_to("releases/fixture")
     vault = private / "Vault có dấu"
     config = vault / "Custom Config"
     config.mkdir(parents=True)

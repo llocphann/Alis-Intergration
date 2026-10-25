@@ -8,7 +8,7 @@ data migration, backfill, directory move, permission change or worker restart.
 | Contract | Preserved value and reason |
 |---|---|
 | Package/API identity | `id: hadalird`, API 1 and `HadalisSession.qml`; existing hosts validate these exact entrypoints. |
-| Release ownership | `$XDG_DATA_HOME/hadalird/releases/<sourceSha>`, `current`, `.previous`, `.install.lock` and bundled `optional/hadalird`; one store and one active package. |
+| Release ownership | `$XDG_DATA_HOME/alis-intergration/releases/<sourceSha>`, `current`, `.previous`, `.install.lock` and bundled `optional/alis-intergration` (with legacy `hadalird` directory migration/fallback); one store and one active package. |
 | Saved preferences | `integrations.hadalird.{tlp,thinkfan,obsidian}` remains authoritative. An enabled choice survives update/removal; a missing package stays unavailable and never starts workers. |
 | IPC | `alis ipc integrations refresh` and `status` are the public commands. Existing `alis ipc hadalird` clients address the same singleton and retain identical behavior. Older API 1 hosts can use the legacy target. |
 | QML identities | Existing singleton names, `objectName` values, settings/backend entrypoints and machine test receipt tokens remain compatible. |

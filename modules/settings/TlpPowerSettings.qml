@@ -32,6 +32,7 @@ ColumnLayout {
 
     Component.onCompleted: root._refreshTlpDemand()
 
+    width: parent ? parent.width : 0
     Layout.fillWidth: true
     spacing: SettingsMaterialPreset.pageSpacing
 

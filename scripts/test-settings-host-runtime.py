@@ -30,10 +30,10 @@ with tempfile.TemporaryDirectory(prefix="hadalird-native-") as name:
                       + "with Path("+repr(str(calls))+").open('a') as f:f.write(json.dumps(sys.argv[1:])+chr(10))\n"
                       + "print(json.dumps({'schema':1,'available':True,'supported':True,'configAvailable':True,'enabled':True,'tlpVersion':'1.11.0','active':False,'managed':False,'stateKnown':False,'statusReason':'fixture','reason':'fixture','effective':{'CPU_BOOST_ON_AC':'1','CPU_BOOST_ON_BAT':'0'},'managed':{}}))\n")
     helper.chmod(0o755)
-    package = private / "data/hadalird/releases/fixture"
+    package = private / "data/alis-intergration/releases/fixture"
     package.parent.mkdir(parents=True)
     installer.assemble(ROOT, package, "f"*40)
-    (private / "data/hadalird/current").symlink_to("releases/fixture")
+    (private / "data/alis-intergration/current").symlink_to("releases/fixture")
     vault = private / "Vault có spaces"
     (vault / ".obsidian").mkdir(parents=True)
     (vault / ".obsidian/appearance.json").write_text(json.dumps({"cssTheme":"Fixture","enabledCssSnippets":[]}))
@@ -163,6 +163,7 @@ ShellRoot {
    const tlpRail=findChild(classicBody,"tlpCategoryRail")
    const tlpTabs=findChild(classicBody,"tlpCategoryTabs")
    check(tlpNav!==null && tlpNav.parent===classicBody && tlpRail!==null && tlpRail.visible && tlpTabs!==null && tlpTabs.taskNavigation && !tlpTabs.useAbyssPillShape,"TLP category sub-tabs did not render directly as an Abyss Panel Style rail")
+   tryVerify(()=>tlpTabs.width>200,2000)
    for(const width of [360,520,800]){
     classic.width=width
     tryCompare(classic,"width",width,1000);wait(50)

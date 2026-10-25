@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix="hadalird-install-") as name:
     for args in (("init", "-b", "main"), ("add", "."),
                  ("-c", "user.name=Fixture", "-c", "user.email=fixture@invalid", "commit", "-m", "fixture")):
         subprocess.run(["git", *args], cwd=source, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    data = private / "data/hadalird"
+    data = private / "data/alis-intergration"
     data.mkdir(parents=True)
     release = installer.install(data, source)
     assert (data / "current").resolve() == release

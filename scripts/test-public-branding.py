@@ -20,8 +20,9 @@ protected = [
     'assets/helpers/inir-thinkfan', 'assets/helpers/inir-battery-charge-limit',
     'alis-hadalird-gateway', 'alis-hadalird-system-provision',
     'org.alis.hadalird-system-provision.policy',
-    'optional/hadalird', 'scripts/hadalird-manager.py', 'scripts/hadalird-status.py',
-    'scripts/hadalird-system-package.py',
+    'optional/alis-intergration', 'optional/hadalird',
+    'scripts/alis-intergration-manager.py', 'scripts/alis-intergration-status.py',
+    'scripts/alis-intergration-system-package.py',
 ]
 
 def public(text, location):
@@ -43,7 +44,7 @@ for path in package_qml + host_qml:
         assert '"Alis-Intergration " + Hadalird.version' in source
 
 for root, names in ((ROOT, ('scripts/install.py', 'scripts/notes/zettelkasten.py', 'scripts/todo/obsidian_todo.py')),
-                    (HOST, ('scripts/hadalird-manager.py', 'scripts/hadalird-system-package.py'))):
+                    (HOST, ('scripts/alis-intergration-manager.py', 'scripts/alis-intergration-system-package.py'))):
     for name in names:
         for node in ast.walk(ast.parse((root / name).read_text())):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):

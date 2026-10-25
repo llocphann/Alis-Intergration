@@ -14,7 +14,7 @@ def module(name, path):
     spec.loader.exec_module(result)
     return result
 installer = module("installer", ROOT / "scripts/install.py")
-host = module("discovery", HOST / "scripts/hadalird-status.py")
+host = module("discovery", HOST / "scripts/alis-intergration-status.py")
 manifest = json.loads((ROOT / "manifest.json").read_text())
 for count in (0, 1, len(manifest["plugins"])):
     data = {**manifest, "plugins": manifest["plugins"][:count]}

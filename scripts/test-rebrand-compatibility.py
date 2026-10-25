@@ -34,7 +34,7 @@ def module(name, path):
     return value
 
 installer = module('rebrand_installer', ROOT / 'scripts/install.py')
-manager = module('rebrand_manager', HOST / 'scripts/hadalird-manager.py')
+manager = module('rebrand_manager', HOST / 'scripts/alis-intergration-manager.py')
 legacy_reader = module('legacy_reader', FIXTURE / 'legacy-host-discovery.py')
 todo = module('rebrand_todo', ROOT / 'scripts/todo/obsidian_todo.py')
 new_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
@@ -54,7 +54,7 @@ def archive(folder):
 
 with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
     private = Path(name)
-    home = private / 'data/hadalird'
+    home = private / 'data/alis-intergration'
     home.mkdir(parents=True)
     old_files = manager.unpack((FIXTURE / 'legacy-package.tar.gz').read_bytes())
     old_release = home / 'releases' / old_sha
@@ -110,7 +110,7 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
     def preserved_state():
         assert snapshot(preserved) == preserved_bytes
         assert snapshot(old_release) == old_bytes
-        assert sorted(p.name for p in home.parent.iterdir()) == ['hadalird']
+        assert sorted(p.name for p in home.parent.iterdir()) == ['alis-intergration']
 
     assert operate('status')['installedSha'] == old_sha
     assert operate('check')['updateAvailable']
@@ -150,7 +150,7 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
         assert len(calls) == downloads, 'idempotent reinstall fetched or rewrote a release'
         preserved_state()
     # A fresh manager object models process restart, not cached in-memory state.
-    restarted = module('rebrand_manager_restart', HOST / 'scripts/hadalird-manager.py')
+    restarted = module('rebrand_manager_restart', HOST / 'scripts/alis-intergration-manager.py')
     assert restarted.operate('status', home, HOST)['installedSha'] == new_sha
     assert operate('rollback')['installedSha'] == old_sha
     assert operate('rollback')['installedSha'] == new_sha
@@ -177,7 +177,7 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
     assert note.read_bytes().endswith(b'Unrelated owner bytes.\r\n')
     assert note.read_bytes().count(b'<!-- hadalis:todo:start -->') == 1
 
-    fresh_home = private / 'fresh-data/hadalird'
+    fresh_home = private / 'fresh-data/alis-intergration'
     assert manager.operate('install', fresh_home, HOST, revision_fetch=lambda:new_sha, archive_fetch=fetch)['available']
     assert manager.discovery.inspect(HOST, fresh_home.parent)['available']
     assert [p['id'] for p in manager.discovery.inspect(HOST, fresh_home.parent)['plugins']] == ['tlp','thinkfan','obsidian']
