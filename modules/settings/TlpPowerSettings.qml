@@ -294,73 +294,44 @@ ColumnLayout {
         }
     }
 
-    SettingsCardSection {
-        expanded: true
-        collapsible: false
-        icon: "category"
-        title: Translation.tr("Configuration categories")
+    Item {
+        id: categoryRailContainer
+        objectName: "tlpCategoryNavigator"
+        visible: root.navigationCategories.length > 0
+        Layout.fillWidth: true
+        implicitHeight: categoryTabs.implicitHeight + padding * 2
+        readonly property bool abyssTaskStyle: Config.options?.panelFamily === "abyss"
+        readonly property real padding: abyssTaskStyle ? SettingsMaterialPreset.taskTabPadding : 0
 
-        SettingsGroup {
-            GridLayout {
-                Layout.fillWidth: true
-                Layout.alignment: Qt.AlignLeft
-                columns: 5
-                rows: 2
-                flow: GridLayout.LeftToRight
-                columnSpacing: SettingsMaterialPreset.groupSpacing
-                rowSpacing: SettingsMaterialPreset.groupSpacing
+        Rectangle {
+            objectName: "tlpCategoryRail"
+            anchors.fill: parent
+            visible: categoryRailContainer.abyssTaskStyle
+            color: SettingsMaterialPreset.taskRailColor
+            radius: SettingsMaterialPreset.taskRailRadius
+        }
 
-                Repeater {
-                    model: root.navigationCategories
-
-                    delegate: SelectionGroupButton {
-                        required property var modelData
-                        required property int index
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 0
-                        Layout.preferredWidth: 1
-                        leftmost: true
-                        rightmost: true
-                        buttonIcon: String(modelData?.icon ?? "tune")
-                        buttonText: Translation.tr(TlpSettingsService.categoryLabel(modelData))
-                        leftAlignContent: true
-                        toggled: root.selectedCategoryIndex === index
-                        enabled: !TlpSettingsService.busy
-                        onClicked: root.selectCategory(index)
-                    }
-                }
-            }
-
-            SettingsDivider {}
-
-            MaterialTextField {
-                Layout.fillWidth: true
-                placeholderText: Translation.tr("Filter by name, parameter, or description")
-                text: root.filterText
-                onTextEdited: root.filterText = text
-            }
-
-            StyledText {
-                visible: root.selectedCategory !== null
-                Layout.fillWidth: true
-                text: root.selectedCategory
-                    ? Translation.tr(String(root.selectedCategory.description ?? "")) : ""
-                color: Appearance.colors.colSubtext
-                wrapMode: Text.WordWrap
-                font.pixelSize: Appearance.font.pixelSize.smaller
-            }
-
-            StyledText {
-                visible: root.profileGuidanceVisible
-                Layout.fillWidth: true
-                text: Translation.tr("Profiled settings should be overridden together so values do not carry over between TLP profiles.")
-                color: Appearance.colors.colSubtext
-                wrapMode: Text.WordWrap
-                font.pixelSize: Appearance.font.pixelSize.smaller
-            }
+        ConfigSelectionArray {
+            id: categoryTabs
+            objectName: "tlpCategoryTabs"
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: parent.padding
+            y: parent.padding
+            enableSettingsSearch: false
+            enabled: !TlpSettingsService.busy
+            taskNavigation: true
+            useAbyssPillShape: false
+            currentValue: root.selectedCategoryIndex
+            options: root.navigationCategories.map((category, index) => ({
+                displayName: Translation.tr(TlpSettingsService.categoryLabel(category)),
+                icon: String(category?.icon ?? "tune"),
+                value: index,
+                enabled: !TlpSettingsService.busy
+            }))
+            onSelected: value => root.selectCategory(Number(value))
         }
     }
-
 
     Repeater {
         model: root.visibleGroups
@@ -401,23 +372,6 @@ ColumnLayout {
                         singleSettingGroup: groupCard.singleSettingGroup
                     }
                 }
-            }
-        }
-    }
-
-    SettingsCardSection {
-        visible: root.selectedCategory !== null && root.visibleGroups.length === 0
-        expanded: true
-        collapsible: false
-        icon: "search_off"
-        title: Translation.tr("No matching settings")
-
-        SettingsGroup {
-            StyledText {
-                Layout.fillWidth: true
-                text: Translation.tr("Try another search term or clear the category filter.")
-                color: Appearance.colors.colSubtext
-                horizontalAlignment: Text.AlignHCenter
             }
         }
     }

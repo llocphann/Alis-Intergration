@@ -154,6 +154,30 @@ ShellRoot {
    tryCompare(TlpSettingsService,"schemaLoaded",true,3000)
    tryCompare(TlpSettingsService,"statusReason","fixture",3000)
    tryCompare(TlpSettingsService,"busy",false,2000)
+   const previousFamily=Config.options.panelFamily
+   Config.setNestedValue("panelFamily","abyss")
+   classic.visible=true
+   tryVerify(()=>findChild(classic,"hadalirdTlpPowerSettings")!==null,3000)
+   const classicBody=findChild(classic,"hadalirdTlpPowerSettings")
+   const tlpNav=findChild(classicBody,"tlpCategoryNavigator")
+   const tlpRail=findChild(classicBody,"tlpCategoryRail")
+   const tlpTabs=findChild(classicBody,"tlpCategoryTabs")
+   check(tlpNav!==null && tlpNav.parent===classicBody && tlpRail!==null && tlpRail.visible && tlpTabs!==null && tlpTabs.taskNavigation && !tlpTabs.useAbyssPillShape,"TLP category sub-tabs did not render directly as an Abyss Panel Style rail")
+   for(const width of [360,520,800]){
+    classic.width=width
+    tryCompare(classic,"width",width,1000);wait(50)
+    const buttons=tlpTabs.children.filter(item=>item.hasOwnProperty("modelData") && item.hasOwnProperty("toggled"))
+    check(buttons.length===10 && buttons.every(button=>button.buttonText.length>0 && button.x>=-.01 && button.x+button.width<=tlpTabs.width+.1),"TLP category tabs overflow width "+width)
+    check(buttons[5].width<buttons[4].width,"TLP category tabs did not size naturally to tab label content")
+   }
+   classicBody.filterText="CPU"
+   const tlpButtons=tlpTabs.children.filter(item=>item.hasOwnProperty("modelData") && item.hasOwnProperty("toggled"))
+   tlpButtons[4].clicked()
+   tryCompare(classic,"selectedCategoryIndex",4,1000)
+   check(tlpButtons[4].toggled && classicBody.filterText==="","TLP category tab selection did not update category or clear filter")
+   classic.selectedCategoryIndex=0
+   classic.visible=false
+   Config.setNestedValue("panelFamily",previousFamily)
    let c=ownedRow(classicRow,"hadalirdTlpSettingRow"),w=ownedRow(waffleRow,"hadalirdWaffleTlpSettingRow")
    check(c.definition.key==="CPU_BOOST_ON_AC" && w.definition.key===c.definition.key,"required row definition lost at load")
    classicRow.definition=({key:"CPU_BOOST_ON_BAT",type:"select",profile:"BAT",options:["0","1"]})

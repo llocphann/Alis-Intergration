@@ -96,14 +96,26 @@ assert_contains 'showStatus: false' "$power" \
     'inline charge-limit controls must stay on the Automatic suspend row without a status sub-row'
 assert_contains '.filter(category => String(category?.id ?? "") !== "battery-care")' "$power" \
     'Configuration categories must exclude the battery-care tab after merging it into Battery'
-assert_contains 'columns: 5' "$power" \
-    'Configuration categories must render five tabs per row'
-assert_contains 'rows: 2' "$power" \
-    'Configuration categories must stay at two rows'
-assert_contains 'model: root.navigationCategories' "$power" \
-    'Configuration categories must consume the filtered ten-category model'
-assert_contains 'leftAlignContent: true' "$power" \
-    'Configuration category tabs must opt into scoped left alignment'
+assert_not_contains 'columns: 5' "$power" \
+    'TLP category sub-tabs must not use a rigid five-column grid'
+assert_not_contains 'title: Translation.tr("Configuration categories")' "$power" \
+    'TLP category sub-tabs must not be wrapped in a Configuration categories card box'
+assert_not_contains 'Filter by name, parameter, or description' "$power" \
+    'TLP category sub-tabs must not render a filter input box'
+assert_contains 'objectName: "tlpCategoryNavigator"' "$power" \
+    'TLP category sub-tabs must render as a standalone secondary tab navigator'
+assert_contains 'objectName: "tlpCategoryRail"' "$power" \
+    'TLP category sub-tabs must render inside a subtle Abyss task rail'
+assert_contains 'objectName: "tlpCategoryTabs"' "$power" \
+    'TLP category sub-tabs must use a responsive ConfigSelectionArray tab flow'
+assert_contains 'taskNavigation: true' "$power" \
+    'TLP category sub-tabs must use shared Settings task-navigation styling and keyboard navigation'
+assert_contains 'useAbyssPillShape: false' "$power" \
+    'TLP category sub-tabs must align with Abyss Panel Style task tabs'
+assert_contains 'options: root.navigationCategories.map(' "$power" \
+    'TLP category sub-tabs must consume the filtered ten-category model'
+assert_contains 'onSelected: value => root.selectCategory(Number(value))' "$power" \
+    'TLP category selection must route through root.selectCategory'
 assert_not_contains 'text: Translation.tr("Config: %1").arg(TlpSettingsService.configFile)' "$power" \
     'Battery/TLP summary must not expose the managed config path in the primary card'
 assert_contains ': Translation.tr("Effective values")' "$power" \
