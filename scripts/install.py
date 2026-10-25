@@ -115,8 +115,11 @@ def payload_inventory(folder):
     for path in folder.rglob("*"):
         if path.is_symlink():
             raise ValueError("Symlink found in immutable package release")
+        rel = path.relative_to(folder)
+        if "__pycache__" in rel.parts and path.is_file() and path.suffix in (".pyc", ".pyo"):
+            continue
         if path.is_file():
-            name = str(path.relative_to(folder))
+            name = rel.as_posix()
             if name != "manifest.json":
                 files[name] = digest(path)
         elif not path.is_dir():

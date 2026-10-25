@@ -50,6 +50,16 @@ with tempfile.TemporaryDirectory(prefix="hadalird-install-") as name:
     (release / "services/unlisted.qml").symlink_to(source / "README.md")
     expect_reinstall_rejected("linked release payload accepted")
     (release / "services/unlisted.qml").unlink()
+    pycache = release / "scripts/todo/__pycache__"
+    pycache.mkdir(parents=True, exist_ok=True)
+    (pycache / "obsidian_todo.cpython-314.pyc").write_bytes(b"bytecode")
+    assert installer.install(data, source) == release
+    (pycache / "unlisted.qml").write_text("unlisted")
+    expect_reinstall_rejected("unlisted non-bytecode in __pycache__ accepted")
+    (pycache / "unlisted.qml").unlink()
+    (pycache / "linked.pyc").symlink_to(source / "README.md")
+    expect_reinstall_rejected("symlink in __pycache__ accepted")
+    (pycache / "linked.pyc").unlink()
     assert installer.install(data, source) == release
 
     original_source_manifest = (source / "manifest.json").read_text()

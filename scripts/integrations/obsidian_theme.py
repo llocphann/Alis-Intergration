@@ -6,6 +6,7 @@ The selected theme and user snippets remain untouched; no Obsidian companion is 
 No note contents are read. Input/output is one JSON document on stdio.
 """
 import colorsys,json,os,re,stat,sys,tempfile
+sys.dont_write_bytecode = True
 from pathlib import Path
 SNIPPET='99_Alis_Theme'
 LEGACY_SNIPPET='99_Hadalis_Theme'

@@ -13,6 +13,7 @@ import os
 import re
 import stat
 import sys
+sys.dont_write_bytecode = True
 from urllib.parse import unquote, urlsplit, quote
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath

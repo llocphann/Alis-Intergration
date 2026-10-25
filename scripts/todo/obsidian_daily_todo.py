@@ -11,6 +11,7 @@ import codecs
 import json
 import re
 import sys
+sys.dont_write_bytecode = True
 from datetime import date as Date
 from pathlib import Path, PurePosixPath
 from typing import Any

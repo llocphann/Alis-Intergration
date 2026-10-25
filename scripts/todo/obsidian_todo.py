@@ -6,6 +6,8 @@ Tasks-aware Obsidian CLI mutation is implemented separately.
 """
 
 from __future__ import annotations
+import sys
+sys.dont_write_bytecode = True
 import agenda_metadata
 
 import argparse
@@ -15,7 +17,6 @@ import json
 import os
 import re
 import stat
-import sys
 import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any
