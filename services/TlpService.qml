@@ -167,7 +167,7 @@ Item {
     }
 
     function _matchesRequestedPolicy(): bool {
-        // Disabled requires only iNiR ownership to be absent; user TLP limits may remain.
+        // Disabled requires only Alis ownership to be absent; user TLP limits may remain.
         if (!root.enabled)
             return !root.managed
 
@@ -194,7 +194,7 @@ Item {
 
         if (root._matchesRequestedPolicy()) {
             root._reconcileAfterDetect = false
-            root._log("[TLP] Battery charge policy already matches iNiR ownership/state")
+            root._log("[TLP] Battery charge policy already matches Alis ownership/state")
             return
         }
 
@@ -369,7 +369,7 @@ Item {
         interval: 120000
         repeat: true
         // Startup detection remains unconditional. Once settled, keep periodic
-        // status verification only while Hadalis requests or still owns a
+        // status verification only while Alis requests or still owns a
         // charge-limit policy, or while an apply operation is in flight.
         running: root.enabled || root.managed || root.busy
         onTriggered: root._detect()

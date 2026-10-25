@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Safe Markdown bridge for the Hadalis Todo Obsidian backend.
+"""Safe Markdown bridge for the Alis Todo Obsidian backend.
 
 The filesystem mutation commands are deliberately structural and conservative.
 Tasks-aware Obsidian CLI mutation is implemented separately.
@@ -29,7 +29,7 @@ _TASK_RE = re.compile(
 )
 _FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 
-# Metadata whose completion behavior belongs to Obsidian Tasks, not Hadalis.
+# Metadata whose completion behavior belongs to Obsidian Tasks, not Alis.
 _RICH_TASK_TOKENS = (
     "🔁", "📅", "⏳", "🛫", "➕", "✅", "❌", "🏁",
     "🔺", "⏫", "🔼", "🔽", "⏬", "🆔", "⛔",

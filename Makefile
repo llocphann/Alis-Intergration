@@ -5,6 +5,8 @@ TLP_CONFDIR ?= /etc/tlp.d
 
 .PHONY: test install uninstall install-helpers
 test:
+	@python3 scripts/test-public-branding.py
+	@python3 scripts/test-rebrand-compatibility.py
 	@python3 scripts/test-plugin-metadata.py
 	@python3 scripts/test-zettelkasten-failure-runtime.py
 	@python3 scripts/test-host-location.py
@@ -30,6 +32,7 @@ test:
 	@python3 scripts/test-qml.py
 	@python3 scripts/test-host-runtime.py
 	@python3 scripts/test-settings-host-runtime.py
+	@python3 scripts/test-rebrand-persistence-runtime.py
 
 install:
 	@python3 scripts/install.py install

@@ -24,7 +24,7 @@ SettingsCardSection {
         visible: root.settingsView !== "quicknotes"
         ContentSubsection {
             title: Translation.tr("To-do")
-            tooltip: Translation.tr("Choose the task store; your Hadalis backup is preserved.")
+            tooltip: Translation.tr("Choose the task store; your Alis backup is preserved.")
 
             RowLayout {
                 Layout.fillWidth: true
@@ -43,7 +43,7 @@ SettingsCardSection {
                     StyledText {
                         text: Todo.backend === "obsidian"
                             ? Translation.tr("Obsidian is canonical")
-                            : Translation.tr("Hadalis internal Todo is canonical")
+                            : Translation.tr("Alis internal Todo is canonical")
                         color: Appearance.colors.colOnSurface
                         font.pixelSize: Appearance.font.pixelSize.small
                         font.weight: Font.DemiBold
@@ -121,14 +121,14 @@ SettingsCardSection {
                             color: Appearance.colors.colPrimary
                         }
                         StyledText {
-                            text: Translation.tr("Use Hadalis")
+                            text: Translation.tr("Use Alis")
                             color: Appearance.colors.colOnLayer1
                             font.pixelSize: Appearance.font.pixelSize.small
                         }
                     }
 
                     StyledToolTip {
-                        text: Translation.tr("Restore the preserved Hadalis store.")
+                        text: Translation.tr("Restore the preserved Alis store.")
                     }
                 }
             }
@@ -383,7 +383,7 @@ SettingsCardSection {
                 }
 
                 StyledToolTip {
-                    text: Translation.tr("Create the note if needed, then append the two Hadalis managed markers. Existing content is preserved.")
+                    text: Translation.tr("Create the note if needed, then append the two Alis managed markers. Existing content is preserved.")
                 }
             }
 

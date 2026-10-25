@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install a committed Hadalird release without enabling its integrations."""
+"""Install a committed Alis-Intergration release without enabling its integrations."""
 import argparse
 import fcntl
 import hashlib
@@ -167,7 +167,7 @@ def install(data_root, source=ROOT):
     sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip()
     dirty = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=all"], cwd=source, text=True)
     if dirty:
-        raise ValueError("Commit source changes before installing an exact Hadalird revision")
+        raise ValueError("Commit source changes before installing an exact Alis-Intergration revision")
     releases = data_root / "releases"
     releases.mkdir(parents=True, exist_ok=True)
     link = owned_link(data_root)
@@ -218,11 +218,11 @@ def main():
     with (data_root / ".install.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if args.action == "install":
-            print("Installed Hadalird:", install(data_root))
+            print("Installed Alis-Intergration:", install(data_root))
         else:
             uninstall(data_root)
             print("Disabled the package link; releases and user data are preserved")
-    print("Run inir ipc hadalird refresh, or restart Hadalis, to apply the change")
+    print("Run alis ipc integrations refresh (legacy host: alis ipc hadalird refresh), or restart Alis, to apply the change")
 
 
 if __name__ == "__main__":

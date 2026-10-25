@@ -1,15 +1,15 @@
-# Hadalird
+# Alis-Intergration
 
-Optional small and medium application integrations for Hadalis: TLP, Thinkfan
-and Obsidian. Hadalis owns generic Battery, Power Profiles, Todo, Notes,
-configuration and UI primitives. Hadalird owns the integration workers,
+Optional small and medium application integrations for Alis: TLP, Thinkfan
+and Obsidian. Alis owns generic Battery, Power Profiles, Todo, Notes,
+configuration and UI primitives. Alis-Intergration owns the integration workers,
 application-specific settings, byte-safe vault helpers and privileged helper
 payloads. Existing integration preferences and application data are retained.
 
 Install a committed revision with `make install`. Installation does not enable
 an integration, launch Obsidian, change fan/charge policies, or stop existing
 system services. Each integration loads one disposable QML tree when explicitly
-enabled in Hadalis. Missing packages report unavailable rather than claiming an
+enabled in Alis. Missing packages report unavailable rather than claiming an
 operation succeeded. `make uninstall` deactivates only this package's owned
 link; releases, user configuration, vaults and system services are preserved.
 
@@ -57,7 +57,7 @@ still owns its optional QML services, Settings, helpers and package-local tests;
 no user vault, privileged settings or existing data is changed by task tracking.
 
 Classic and Waffle TLP editors and Obsidian task/capture settings are owned
-here. Hadalis retains navigation, optional loaders, generic Battery controls
+here. Alis retains navigation, optional loaders, generic Battery controls
 and the preserved internal Todo store. Version 0.3 adds declarative `plugins` metadata to host API 1: each installed
 plugin names its capabilities by validated `settings` keys, with an optional
 `waffleSettings` presentation. Obsidian exposes Theming, Quicknotes and Todo;
@@ -65,3 +65,17 @@ its combined legacy editor remains supported. Discovery reads metadata and
 verifies the complete immutable payload without loading QML. Hosts without
 this navigation extension retain the existing API 1 entrypoints. Integration
 enable switches remain off by default.
+
+## Compatibility and preserved data
+
+The public package name is Alis-Intergration. API 1 retains its `hadalird`
+machine identity, `HadalisSession.qml`, installed release/config locations,
+saved preferences and existing note markers. New hosts expose
+`alis ipc integrations refresh`; older clients/hosts can keep using
+`alis ipc hadalird refresh`. Both targets use one package owner.
+
+The fixed-hash helper/Polkit payload, including its legacy native policy
+wording, remains an explicit security compatibility exception. This rebrand
+does not reinstall helpers, move directories or rewrite notes. See
+[compatibility contracts](docs/COMPATIBILITY.md) and the
+[pre-edit identifier inventory](docs/compatibility/INT-R05-identifiers.json).

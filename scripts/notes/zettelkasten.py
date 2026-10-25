@@ -591,7 +591,7 @@ def migrate_notepad_json(
     if any(markers.get(entry["importId"], 0) > 1 for entry in entries):
         raise ZettelError(
             "migration_target_conflict",
-            "duplicate Hadalis import markers exist in the Zettelkasten target",
+            "duplicate Alis import markers exist in the Zettelkasten target",
         )
 
     _revalidate_source(source, raw, "while preparing migration")

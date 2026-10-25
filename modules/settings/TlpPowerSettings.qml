@@ -79,10 +79,10 @@ ColumnLayout {
                 : Translation.tr("The installed TLP runtime is unavailable")
         if (!TlpSettingsService.configAvailable)
             return TlpSettingsService.statusReason === "managed-config-invalid"
-                ? Translation.tr("The iNiR TLP override file is invalid; reset overrides to recover")
+                ? Translation.tr("The Alis TLP override file is invalid; reset overrides to recover")
                 : Translation.tr("TLP configuration could not be read")
         return TlpSettingsService.enabled
-            ? Translation.tr("TLP %1 is active · %2 iNiR overrides").arg(
+            ? Translation.tr("TLP %1 is active · %2 Alis overrides").arg(
                 TlpSettingsService.tlpVersion).arg(TlpSettingsService.managedCount)
             : Translation.tr("TLP %1 is disabled by configuration").arg(TlpSettingsService.tlpVersion)
     }
