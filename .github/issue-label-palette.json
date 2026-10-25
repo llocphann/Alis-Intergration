@@ -1,0 +1,22 @@
+{
+  "area:integration": {
+    "color": "2F9E44",
+    "description": "External integrations and helpers"
+  },
+  "complexity:high": {
+    "color": "7C3AED",
+    "description": "High-complexity task spanning rendering, lifecycle, performance or architecture"
+  },
+  "status:blocked": {
+    "color": "B42318",
+    "description": "Blocked by unmet external or technical gate"
+  },
+  "status:deferred": {
+    "color": "E8A317",
+    "description": "Scheduled for a later phase"
+  },
+  "status:awaiting-owner": {
+    "color": "C49B06",
+    "description": "Bot complete, pending owner verification"
+  }
+}
