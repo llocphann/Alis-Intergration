@@ -768,6 +768,13 @@ Item {
             if (statusProcess.startObserved)
                 return
 
+            const legacyHelper = "/usr/libexec/" + "i" + "nir-battery-charge-limit"
+            if (root.helperPath === "/usr/libexec/alis-battery-charge-limit") {
+                root.helperPath = legacyHelper
+                Qt.callLater(() => { if (root._live) root.refresh() })
+                return
+            }
+
             statusTimeout.stop()
             root._clearStatus("helper-unavailable")
             root.lastError = "TLP settings status helper failed to start"

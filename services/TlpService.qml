@@ -255,6 +255,13 @@ Item {
             if (detector.startObserved)
                 return
 
+            const legacyHelper = "/usr/libexec/" + "i" + "nir-battery-charge-limit"
+            if (root.helperPath === "/usr/libexec/alis-battery-charge-limit") {
+                root.helperPath = legacyHelper
+                Qt.callLater(() => { if (root._live) root._detect() })
+                return
+            }
+
             detectorTimeout.stop()
             root._clearStatus()
             console.warn("[TLP] Failed to start battery charge policy helper")

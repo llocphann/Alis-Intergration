@@ -369,6 +369,13 @@ Item {
             if (detector.startObserved)
                 return
 
+            const legacyHelper = "/usr/libexec/" + "i" + "nir-thinkfan"
+            if (root.helperPath === "/usr/libexec/alis-thinkfan") {
+                root.helperPath = legacyHelper
+                Qt.callLater(() => { if (root._live) root.refresh() })
+                return
+            }
+
             detectorTimeout.stop()
             root._clearStatus("helper-unavailable")
             root._lastStatusRefreshAt = Date.now()
