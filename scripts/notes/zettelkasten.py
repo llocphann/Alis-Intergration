@@ -23,7 +23,7 @@ ALLOWED_TYPES = ("Permanent", "Literature", "Fleeting")
 DEFAULT_FOLDER = "00_Capture/03_Zettelkasten"
 DEFAULT_TYPE = "Fleeting"
 
-_IMPORT_RE = re.compile(r'^hadalis_import_id:\s*"([^"]+)"\s*$')
+_IMPORT_RE = re.compile(r'^alis_import_id:\s*"([^"]+)"\s*$')
 _IMAGE_RE = re.compile(r'!\[[^\]\n]*\]\((file://[^)\r\n]+)\)')
 
 
@@ -267,7 +267,7 @@ def _render_markdown(
         "aliases: []",
     ]
     if import_id:
-        parts.append(f"hadalis_import_id: {json.dumps(import_id, ensure_ascii=False)}")
+        parts.append(f"alis_import_id: {json.dumps(import_id, ensure_ascii=False)}")
 
     parts.extend([
         "---",
@@ -504,7 +504,7 @@ def preview_notepad_migration(
 
 def _backup_notepad_source(source: Path, raw: bytes) -> tuple[Path, bool]:
     digest = _sha256_bytes(raw)
-    backup = source.parent / f".{source.name}.hadalis-zettel-backup-{digest[:12]}"
+    backup = source.parent / f".{source.name}.alis-zettel-backup-{digest[:12]}"
 
     try:
         if source.read_bytes() != raw:

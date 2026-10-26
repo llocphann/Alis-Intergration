@@ -1,16 +1,16 @@
 #!/bin/sh
 
-# iNiR owns only this TLP drop-in. Hardware access and vendor semantics remain
+# Alis owns only this TLP drop-in. Hardware access and vendor semantics remain
 # TLP's responsibility.
 config_dir=/etc/tlp.d
-config_file="$config_dir/99-inir-battery-charge-limit.conf"
+config_file="$config_dir/99-alis-battery-charge-limit.conf"
 
-# General TLP settings use a separate iNiR-owned drop-in. Keeping battery-care
+# General TLP settings use a separate Alis-owned drop-in. Keeping battery-care
 # ownership separate means disabling a charge limit can never discard unrelated
 # power settings staged from the Quickshell settings page.
-tlp_settings_config_file="$config_dir/99-inir-tlp-settings.conf"
-tlp_settings_schema=/usr/share/inir/tlp-settings-schema.json
-tlp_settings_lock=/run/lock/inir-tlp-settings.lock
+tlp_settings_config_file="$config_dir/99-alis-tlp-settings.conf"
+tlp_settings_schema=/usr/share/alis/tlp-settings-schema.json
+tlp_settings_lock=/run/lock/alis-tlp-settings.lock
 
 # TLP 1.10 writes PLATFORM_PROFILE_* to this kernel ABI and TLP 1.11 reads
 # platform_profile_choices before selecting from an ordered fallback list. Keep
@@ -68,8 +68,8 @@ tlp_settings_backup_file=""
 tlp_settings_had_config=0
 
 usage() {
-    printf '%s\n' 'Usage: inir-battery-charge-limit --status | --set <value> | --disable' >&2
-    printf '%s\n' '       inir-battery-charge-limit --config-status | --config-apply <operations...> | --config-reset' >&2
+    printf '%s\n' 'Usage: alis-battery-charge-limit --status | --set <value> | --disable' >&2
+    printf '%s\n' '       alis-battery-charge-limit --config-status | --config-apply <operations...> | --config-reset' >&2
     printf '%s\n' '       config operations: --set <key> <value> | --unset <key> | --charge-set <value> | --charge-disable' >&2
     return 2
 }
@@ -695,7 +695,7 @@ stage_policy() {
 
     tmp_file=$(mktemp "$config_file.tmp.XXXXXX") || return 1
     {
-        printf '%s\n' '# Managed by iNiR. Do not edit manually.'
+        printf '%s\n' '# Managed by Alis. Do not edit manually.'
         printf '# Battery/backend detected by TLP: %s (%s)\n' "$target_battery" "$target_plugin"
         if [ -n "$target_start" ]; then
             printf 'START_CHARGE_THRESH_%s=%s\n' "$target_battery" "$target_start"
@@ -758,7 +758,7 @@ set_policy() {
     expected_battery=$probe_config_battery
 
     stage_policy "$target_start" "$target_stop" "$expected_battery" "$expected_plugin" || {
-        printf '%s\n' 'Could not write the iNiR TLP policy.' >&2
+        printf '%s\n' 'Could not write the Alis TLP policy.' >&2
         return 1
     }
 
@@ -797,11 +797,11 @@ disable_policy() {
     local start_output="" start_rc=0
 
     # Ownership removal is unconditional. If TLP disappeared, keeping a stale
-    # iNiR drop-in would be worse than reporting that hardware reset was skipped.
+    # Alis drop-in would be worse than reporting that hardware reset was skipped.
     rm -f -- "$config_file" || return 1
 
     if ! find_tlp_runtime; then
-        printf '%s\n' 'iNiR policy removed, but TLP is unavailable; hardware defaults could not be restored.' >&2
+        printf '%s\n' 'Alis policy removed, but TLP is unavailable; hardware defaults could not be restored.' >&2
         return 1
     fi
 
@@ -814,7 +814,7 @@ disable_policy() {
     start_output=$(run_tlp_start 2>&1) || start_rc=$?
     [ -z "$start_output" ] || printf '%s\n' "$start_output" >&2
     if [ "$start_rc" -ne 0 ] || tlp_output_has_policy_error "$start_output"; then
-        printf '%s\n' 'iNiR policy removed, but re-applying the remaining TLP configuration failed.' >&2
+        printf '%s\n' 'Alis policy removed, but re-applying the remaining TLP configuration failed.' >&2
         return 1
     fi
 
@@ -937,7 +937,7 @@ tlp_settings_validate_platform_profile() {
         return 2
     fi
 
-    # Reading an existing iNiR drop-in must remain possible after a firmware or
+    # Reading an existing Alis drop-in must remain possible after a firmware or
     # hardware capability change. Runtime matching is therefore mandatory only
     # for a newly staged value, while stored values still undergo all safety and
     # version/shape checks above.
@@ -1093,17 +1093,17 @@ tlp_settings_managed_records() {
         key=${line%%=*}
         value=${line#*=}
         [ "$key" != "$line" ] || {
-            printf '%s\n' 'The iNiR TLP settings drop-in contains an invalid line.' >&2
+            printf '%s\n' 'The Alis TLP settings drop-in contains an invalid line.' >&2
             return 1
         }
         case "$value" in
             \"*\") value=${value#\"}; value=${value%\"} ;;
-            # Early iNiR builds used shell-style single quotes, which TLP's
+            # Early Alis builds used shell-style single quotes, which TLP's
             # config reader ignores. Accept them only so the next Apply can
             # migrate the owned drop-in to TLP's double-quoted syntax.
             \'*\') value=${value#\'}; value=${value%\'} ;;
             *)
-                printf 'The iNiR TLP setting %s is not safely quoted.\n' "$key" >&2
+                printf 'The Alis TLP setting %s is not safely quoted.\n' "$key" >&2
                 return 1
                 ;;
         esac
@@ -1341,7 +1341,7 @@ tlp_settings_write_records() {
     fi
 
     tlp_settings_tmp_file=$(mktemp "$tlp_settings_config_file.tmp.XXXXXX") || return 1
-    printf '%s\n' '# Managed by iNiR TLP Settings. Do not edit manually.' > "$tlp_settings_tmp_file" || return 1
+    printf '%s\n' '# Managed by Alis TLP Settings. Do not edit manually.' > "$tlp_settings_tmp_file" || return 1
     tab=$(printf '\t')
     sort "$records" | while IFS="$tab" read -r key value; do
         [ -n "$key" ] || continue
@@ -1418,7 +1418,7 @@ tlp_settings_apply() {
         return 2
     }
     tlp_settings_schema_ready || {
-        printf '%s\n' 'The iNiR TLP settings schema is unavailable.' >&2
+        printf '%s\n' 'The Alis TLP settings schema is unavailable.' >&2
         return 1
     }
     if ! find_tlp_runtime || [ -z "$tlp_lib_dir" ]; then
@@ -1547,7 +1547,7 @@ tlp_settings_apply() {
             expected_battery=$probe_config_battery
             stage_policy "$target_start" "$target_stop" "$expected_battery" "$expected_plugin" || {
                 rm -f -- "$records"
-                printf '%s\n' 'Could not stage the iNiR battery charge policy.' >&2
+                printf '%s\n' 'Could not stage the Alis battery charge policy.' >&2
                 return 1
             }
             charge_changed=1
@@ -1556,7 +1556,7 @@ tlp_settings_apply() {
             if [ -f "$config_file" ]; then
                 stage_policy_removal || {
                     rm -f -- "$records"
-                    printf '%s\n' 'Could not stage removal of the iNiR battery charge policy.' >&2
+                    printf '%s\n' 'Could not stage removal of the Alis battery charge policy.' >&2
                     return 1
                 }
                 charge_changed=1
@@ -1568,7 +1568,7 @@ tlp_settings_apply() {
         tlp_settings_write_records "$records" || {
             [ "$charge_changed" -eq 0 ] || restore_policy_file || true
             rm -f -- "$records"
-            printf '%s\n' 'Could not write the iNiR TLP settings drop-in.' >&2
+            printf '%s\n' 'Could not write the Alis TLP settings drop-in.' >&2
             return 1
         }
     fi
@@ -1632,7 +1632,7 @@ tlp_settings_apply() {
         fi
         if [ "$charge_changed" -eq 1 ]; then
             restore_policy_file || rollback_rc=1
-            # If this transaction introduced a threshold where no iNiR charge
+            # If this transaction introduced a threshold where no Alis charge
             # file existed before, reset the hardware before re-applying the
             # restored TLP configuration.
             if [ "$had_config" -eq 0 ]; then
@@ -1666,16 +1666,16 @@ tlp_settings_reset() {
 
     rm -f -- "$tlp_settings_config_file" || return 1
     if ! find_tlp_runtime || [ -z "$tlp_lib_dir" ]; then
-        printf '%s\n' 'iNiR TLP settings removed, but TLP is unavailable.' >&2
+        printf '%s\n' 'Alis TLP settings removed, but TLP is unavailable.' >&2
         return 1
     fi
     tlp_settings_schema_ready || {
-        printf '%s\n' 'iNiR TLP settings removed, but the settings schema is unavailable.' >&2
+        printf '%s\n' 'Alis TLP settings removed, but the settings schema is unavailable.' >&2
         return 1
     }
 
     probe_output=$(run_tlp_settings_probe 2>/dev/null) || {
-        printf '%s\n' 'iNiR TLP settings removed, but the remaining TLP configuration is unreadable.' >&2
+        printf '%s\n' 'Alis TLP settings removed, but the remaining TLP configuration is unreadable.' >&2
         return 1
     }
     enabled=$(printf '%s\n' "$probe_output" | tlp_settings_probe_enabled)
@@ -1683,7 +1683,7 @@ tlp_settings_reset() {
         apply_output=$(run_tlp_start 2>&1) || apply_rc=$?
         [ -z "$apply_output" ] || printf '%s\n' "$apply_output" >&2
         if [ "$apply_rc" -ne 0 ] || tlp_output_has_policy_error "$apply_output"; then
-            printf '%s\n' 'iNiR TLP settings removed, but re-applying the remaining TLP configuration failed.' >&2
+            printf '%s\n' 'Alis TLP settings removed, but re-applying the remaining TLP configuration failed.' >&2
             return 1
         fi
     fi
@@ -1692,12 +1692,12 @@ tlp_settings_reset() {
 
 acquire_tlp_settings_lock() {
     command -v flock >/dev/null 2>&1 || {
-        printf '%s\n' 'flock is required to change iNiR TLP settings.' >&2
+        printf '%s\n' 'flock is required to change Alis TLP settings.' >&2
         return 1
     }
     exec 9>"$tlp_settings_lock" || return 1
     flock -w 10 9 || {
-        printf '%s\n' 'Another iNiR TLP settings operation is still running.' >&2
+        printf '%s\n' 'Another Alis TLP settings operation is still running.' >&2
         return 1
     }
 }
@@ -1768,6 +1768,6 @@ main() {
 
 # Keeping main behind the installed basename lets the regression tests source
 # the pure adapter functions without introducing a test-only privileged mode.
-if [ "${0##*/}" = inir-battery-charge-limit ]; then
+if [ "${0##*/}" = alis-battery-charge-limit ]; then
     main "$@"
 fi

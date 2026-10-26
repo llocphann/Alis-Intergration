@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix="alis-capture-failures-") as name:
     config.mkdir(parents=True)
     options = json.loads((HOST / "defaults/config.json").read_text())
     options["todo"]["obsidian"]["vaultPath"] = str(vault)
-    options["integrations"]["hadalird"] = {key: False for key in ("tlp", "thinkfan", "obsidian")}
+    options["integrations"]["alisIntergration"] = {key: False for key in ("tlp", "thinkfan", "obsidian")}
     options["integrations"]["obsidian"]["autoTheme"] = False
     (config / "config.json").write_text(json.dumps(options))
     good = {"ok": True, "notePath": "Notes/saved.md", "noteFullPath": str(vault / "Notes/saved.md")}
@@ -66,7 +66,7 @@ ShellRoot {
    check(worker.item.capture("test","body"),"recovery did not start")
    tryCompare(worker.item,"busy",false,4000)
    check(worker.item.lastCreatedPath==="Notes/saved.md" && worker.item.errorCode==="" && captures===1,"recovery did not produce exactly one saved receipt")
-   check(Hadalird.session===null,"fixture enabled optional workers")
+   check(AlisIntergration.session===null,"fixture enabled optional workers")
    console.info("ZETTEL_FAILURE_RUNTIME_PASS")
   }catch(e){console.error("ZETTEL_FAILURE_RUNTIME_FAIL",e.message,e.stack)}Qt.quit()}
  }

@@ -21,8 +21,8 @@ import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-START_MARKER = "<!-- hadalis:todo:start -->"
-END_MARKER = "<!-- hadalis:todo:end -->"
+START_MARKER = "<!-- alis:todo:start -->"
+END_MARKER = "<!-- alis:todo:end -->"
 
 _TASK_RE = re.compile(
     r"^([\s\t>]*)([-*+]|[0-9]+[.)]) +\[(.)\] *(.*)$",
@@ -527,7 +527,7 @@ def _atomic_replace_if_unchanged(doc: dict[str, Any], new_raw: bytes) -> None:
     fd = -1
     temp_name = ""
     try:
-        fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.hadalis.", dir=str(path.parent))
+        fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.alis.", dir=str(path.parent))
         os.fchmod(fd, original_mode)
         with os.fdopen(fd, "wb") as stream:
             fd = -1
@@ -713,7 +713,7 @@ def preview_internal_migration(
 def _create_migration_backup(doc: dict[str, Any]) -> tuple[Path, bool]:
     path: Path = doc["resolved"]
     digest = _sha256_bytes(doc["raw"])
-    backup = path.parent / f".{path.name}.hadalis-backup-{digest[:12]}"
+    backup = path.parent / f".{path.name}.alis-backup-{digest[:12]}"
 
     try:
         current = path.read_bytes()

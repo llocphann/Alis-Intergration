@@ -147,7 +147,7 @@ class ZettelkastenTests(unittest.TestCase):
         notes = sorted((vault / "00_Capture/03_Zettelkasten").glob("*.md"))
         self.assertEqual(len(notes), 2)
         marker_count = sum(
-            "hadalis_import_id:" in note.read_text(encoding="utf-8")
+            "alis_import_id:" in note.read_text(encoding="utf-8")
             for note in notes
         )
         self.assertEqual(marker_count, 2)

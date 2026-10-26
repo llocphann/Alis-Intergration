@@ -32,4 +32,4 @@ for forbidden in (
           f"Fan preferences must persist independently of runtime helper readiness: {forbidden}")
 
 
-print('HADALIRD_THINKFAN_SETTINGS_PASS')
+print('ALIS_INTERGRATION_THINKFAN_SETTINGS_PASS')

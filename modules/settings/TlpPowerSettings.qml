@@ -10,7 +10,7 @@ import "." as Integration
 
 ColumnLayout {
     id: root
-    objectName: "hadalirdTlpPowerSettings"
+    objectName: "alisIntergrationTlpPowerSettings"
 
     property bool _tlpDemandRefreshed: false
 

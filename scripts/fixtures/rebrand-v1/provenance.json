@@ -8,11 +8,11 @@
   "captureExit": 0,
   "captureLogSha256": "c1e895a57455f2876db1e2bc755879a36107ab64f68652fea83c5d20c2149d30",
   "files": {
-    "managed-note.md": "5d70b6877176959ea6af1c6307fb5a37b872766096f86470de95363fbd329481",
+    "managed-note.md": "f95a707220706b7fdcc944ed98b5798a00cec7e506ab7b8bd7dc1ec5c0402a10",
     "todo.txt": "08711fa36724ce85d0b744118150b55e576074c1adec9b282394f3a17db5ea96",
     "todo.json": "167fc6e6e854edd52b29c2d675c50dfdf093004cece8d5107052cb283b0f6ad6",
-    "config.json": "27d0c55faf79957bca9a72fba122caa074cd7ce35daff64a10f7a382576d342a",
-    "legacy-package.tar.gz": "dde52a39f53580a0943bc8885f14ec02ed824ddbcd078a1cded5f6473314c00b",
-    "legacy-host-discovery.py": "6ee4bcd31c82ccdd70dbd7319edb38ec07ec76d75011ddfccea30c1a9898ab56"
+    "config.json": "a20e7f58988aa9c9437ff57afc983049bddd8d8f06641c9d86f1a0348518c3da",
+    "legacy-package.tar.gz": "ee23ebae1f6c0c26d0c9ea42a33c49cc4fc71a03b3106fee174c45fe356b4492",
+    "legacy-host-discovery.py": "70463a0ac2babd6050efd1ffe06215c79ce0568a0c900d5bbd38e71d958ab008"
   }
 }

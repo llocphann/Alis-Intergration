@@ -4,8 +4,8 @@ import QtQuick
 Item {
     id: root
     required property var host
-    property string batteryHelperPath: "/usr/libexec/inir-battery-charge-limit"
-    property string fanHelperPath: "/usr/libexec/inir-thinkfan"
+    property string batteryHelperPath: "/usr/libexec/alis-battery-charge-limit"
+    property string fanHelperPath: "/usr/libexec/alis-thinkfan"
     readonly property var tlp: charge.item
     readonly property var tlpSettings: settings.item
     readonly property var tlpCapabilities: capabilities.item

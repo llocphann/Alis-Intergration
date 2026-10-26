@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parents[1]
 HOST = resolve_host_root(ROOT)
 sys.path.insert(0,str(HOST/"scripts"))
 from native_test_session import private_wayland,run_qs
-with tempfile.TemporaryDirectory(prefix="hadalis-obsidian-path-ui-") as name:
+with tempfile.TemporaryDirectory(prefix="alis-obsidian-path-ui-") as name:
  folder=Path(name)
  for entry in ["modules","services","GlobalStates.qml","qmldir","assets","scripts","defaults","translations"]:(folder/entry).symlink_to(HOST/entry)
  (folder/"shell.qml").write_text(r'''
@@ -20,7 +20,7 @@ ShellRoot {
  Component.onCompleted:Quickshell.watchFiles=false
  FloatingWindow {
   id:window;visible:true;implicitWidth:1120;implicitHeight:850;color:"#111820"
-  Loader {id:page;anchors.fill:parent;source:Quickshell.env("HADALIRD_SETTINGS")}
+  Loader {id:page;anchors.fill:parent;source:Quickshell.env("ALIS_INTERGRATION_SETTINGS")}
  }
  TestCase {
   id:test;when:false;optional:true
@@ -51,7 +51,7 @@ ShellRoot {
   cfg=folder/"config/alis";cfg.mkdir(parents=True,exist_ok=True)
   data=json.loads((HOST/"defaults/config.json").read_text());data["panelFamily"]="abyss";data["integrations"]["obsidian"]["autoTheme"]=False
   (cfg/"config.json").write_text(json.dumps(data));env["QT_QUICK_BACKEND"]="software"
-  env["HADALIRD_SETTINGS"]=(ROOT/"modules/settings/ObsidianThemeSettings.qml").as_uri()
+  env["ALIS_INTERGRATION_SETTINGS"]=(ROOT/"modules/settings/ObsidianThemeSettings.qml").as_uri()
   result=run_qs(folder,env,25)
   if result.returncode or "OBSIDIAN_PATH_UI_PASS" not in result.stdout or any(x in result.stdout for x in ["OBSIDIAN_PATH_UI_FAIL","ReferenceError:","TypeError:","Binding loop","Failed to load configuration"]):print(result.stdout);raise SystemExit(1)
   print("OBSIDIAN_PATH_UI_PASS ordered paths, one shared vault field, legacy migration, clear and independent config saves")

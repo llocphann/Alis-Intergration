@@ -17,7 +17,7 @@ spec = importlib.util.spec_from_file_location("installer", ROOT / "scripts/insta
 installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNwmLDhPwAFFAKA8JVvSQAAAABJRU5ErkJggg==")
-with tempfile.TemporaryDirectory(prefix="hadalird-note-image-") as name:
+with tempfile.TemporaryDirectory(prefix="alis-intergration-note-image-") as name:
     private = Path(name)
     shell = private / "shell"
     shell.mkdir()
@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix="hadalird-note-image-") as name:
     options = json.loads((HOST / "defaults/config.json").read_text())
     options["panelFamily"] = "abyss"
     options["abyss"]["companion"]["enabled"] = False
-    options["integrations"]["hadalird"].update(tlp=False, thinkfan=False, obsidian=True)
+    options["integrations"]["alisIntergration"].update(tlp=False, thinkfan=False, obsidian=True)
     options["integrations"]["obsidian"].update(autoTheme=False, configPath=str(config))
     options["todo"]["obsidian"]["vaultPath"] = str(vault)
     (shell / "shell.qml").write_text(r'''

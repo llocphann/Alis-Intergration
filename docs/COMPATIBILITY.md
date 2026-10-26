@@ -7,15 +7,15 @@ data migration, backfill, directory move, permission change or worker restart.
 
 | Contract | Preserved value and reason |
 |---|---|
-| Package/API identity | `id: hadalird`, API 1 and `HadalisSession.qml`; existing hosts validate these exact entrypoints. |
-| Release ownership | `$XDG_DATA_HOME/alis-intergration/releases/<sourceSha>`, `current`, `.previous`, `.install.lock` and bundled `optional/alis-intergration` (with legacy `hadalird` directory migration/fallback); one store and one active package. |
-| Saved preferences | `integrations.hadalird.{tlp,thinkfan,obsidian}` remains authoritative. An enabled choice survives update/removal; a missing package stays unavailable and never starts workers. |
-| IPC | `alis ipc integrations refresh` and `status` are the public commands. Existing `alis ipc hadalird` clients address the same singleton and retain identical behavior. Older API 1 hosts can use the legacy target. |
+| Package/API identity | `id: alis-intergration`, API 1 and `AlisSession.qml`; existing hosts validate these exact entrypoints. |
+| Release ownership | `$XDG_DATA_HOME/alis-intergration/releases/<sourceSha>`, `current`, `.previous`, `.install.lock` and bundled `optional/alis-intergration` (with legacy `alis-intergration` directory migration/fallback); one store and one active package. |
+| Saved preferences | `integrations.alisIntergration.{tlp,thinkfan,obsidian}` remains authoritative. An enabled choice survives update/removal; a missing package stays unavailable and never starts workers. |
+| IPC | `alis ipc integrations refresh` and `status` are the public commands. Existing `alis ipc alis-intergration` clients address the same singleton and retain identical behavior. Older API 1 hosts can use the legacy target. |
 | QML identities | Existing singleton names, `objectName` values, settings/backend entrypoints and machine test receipt tokens remain compatible. |
-| Notes and Tasks | Existing `Hadalis/Todo.md` choices, `hadalis:todo` section markers, `hadalis_import_id`, Obsidian Tasks protocol tokens and backup/lock names retain their exact bytes and meaning. Custom paths are never renamed. |
-| Theme ownership | Recognized `99_Hadalis_Theme` snippets and their ownership headers remain legacy data contracts; the rebrand never rewrites or deletes a vault. A separately installed theme revision may support `99_Alis_Theme`. |
-| Host selection | `ALIS_ROOT` is preferred; `HADALIS_ROOT` and a legacy sibling host checkout remain supported test overrides. |
-| System helpers | `inir-*` executables, `org.inir.*` action IDs, `/usr/share/inir`, `99-inir-*` overrides, `INIR_SYSTEM_SHAREDIR` and the `alis-hadalird-*` gateway names are installed security/ownership contracts. |
+| Notes and Tasks | Existing `Alis/Todo.md` choices, `alis:todo` section markers, `alis_import_id`, Obsidian Tasks protocol tokens and backup/lock names retain their exact bytes and meaning. Custom paths are never renamed. |
+| Theme ownership | Recognized `99_Alis_Theme` snippets and their ownership headers remain legacy data contracts; the rebrand never rewrites or deletes a vault. A separately installed theme revision may support `99_Alis_Theme`. |
+| Host selection | `ALIS_ROOT` is preferred; `ALIS_ROOT` and a legacy sibling host checkout remain supported test overrides. |
+| System helpers | `alis-*` executables, `org.alis.*` action IDs, `/usr/share/alis`, `99-alis-*` overrides, `ALIS_SYSTEM_SHAREDIR` and the `alis-alis-intergration-*` gateway names are installed security/ownership contracts. |
 
 The helpers, policies and schema remain byte-identical to the approved pre-patch
 payload. Their fixed-hash native Polkit messages still contain legacy names;

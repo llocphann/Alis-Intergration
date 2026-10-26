@@ -18,7 +18,7 @@ spec = importlib.util.spec_from_file_location("installer", ROOT / "scripts/insta
 installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
 
-with tempfile.TemporaryDirectory(prefix="hadalird-native-") as name:
+with tempfile.TemporaryDirectory(prefix="alis-intergration-native-") as name:
     private = Path(name)
     shell = private / "shell"
     shell.mkdir()
@@ -38,12 +38,12 @@ with tempfile.TemporaryDirectory(prefix="hadalird-native-") as name:
     (vault / ".obsidian").mkdir(parents=True)
     (vault / ".obsidian/appearance.json").write_text(json.dumps({"cssTheme":"Fixture","enabledCssSnippets":[]}))
     managed = vault / "Managed.md"
-    managed.write_text("# Todo\n<!-- hadalis:todo:start -->\n- [ ] first\n<!-- hadalis:todo:end -->\n")
+    managed.write_text("# Todo\n<!-- alis:todo:start -->\n- [ ] first\n<!-- alis:todo:end -->\n")
     (vault / "Daily.md").write_text("## Tasks\n- [ ] first daily\n## Notes\n")
     config = private / "config/alis"
     config.mkdir(parents=True)
     options = json.loads((HOST / "defaults/config.json").read_text())
-    options["integrations"]["hadalird"] = {key:False for key in ("tlp","thinkfan","obsidian")}
+    options["integrations"]["alisIntergration"] = {key:False for key in ("tlp","thinkfan","obsidian")}
     options["battery"]["chargeLimit"]["enable"] = False
     options["powerProfiles"]["fanControl"]["enabled"] = False
     options["integrations"]["obsidian"]["autoTheme"] = False
@@ -86,22 +86,22 @@ ShellRoot {
   }
   function ownedRow(host,name){const item=findChild(host,name);check(item!==null,"missing optional row "+name);return item}
   function runChecks(){try{
-   tryCompare(Config,"ready",true,4000);tryCompare(Hadalird,"available",true,4000)
+   tryCompare(Config,"ready",true,4000);tryCompare(AlisIntergration,"available",true,4000)
    tryCompare(waffleHost,"status",Loader.Ready,2000)
    tryCompare(waffleIntegrationHost,"status",Loader.Ready,2000)
-   check(Hadalird.session===null,"default-off package started workers")
-   check(findChild(integrations,"hadalirdObsidianTodoSettings")===null,"disabled Obsidian rendered owned controls")
-   const installed = Hadalird.installedPlugins
+   check(AlisIntergration.session===null,"default-off package started workers")
+   check(findChild(integrations,"alisIntergrationObsidianTodoSettings")===null,"disabled Obsidian rendered owned controls")
+   const installed = AlisIntergration.installedPlugins
    check(waffleIntegrations.primaryTabs.length===4,"Waffle plugin tabs missing")
    check(installed.length===3 && integrations.primaryTabs.length===4,"N installed plugins must have N+1 tabs")
-   Hadalird.installedPlugins=[]
+   AlisIntergration.installedPlugins=[]
    check(integrations.primaryTabs.length===1 && integrations.activePlugin==="management","empty package did not fall back to Management")
-   Hadalird.installedPlugins=installed.slice(0,1)
+   AlisIntergration.installedPlugins=installed.slice(0,1)
    check(integrations.primaryTabs.length===2,"single plugin must have two primary tabs")
    integrations.activePlugin=installed[0].id
-   Hadalird.installedPlugins=[]
+   AlisIntergration.installedPlugins=[]
    check(integrations.activePlugin==="management","removed selection did not recover")
-   Hadalird.installedPlugins=installed
+   AlisIntergration.installedPlugins=installed
    const tabOptions=findChild(findChild(integrations,"integrationPrimaryTabs"),"settingsTaskOptions")
    for(const width of [320,500,800]){
     integrations.width=width
@@ -120,17 +120,17 @@ ShellRoot {
    tryVerify(()=>restore!==null && restore.visible && restore.enabled,3000)
    restore.clicked()
    tryCompare(Todo,"backend","internal",1000)
-   check(JSON.stringify(Config.options.todo.obsidian)===savedSource && Hadalird.session===null,"disabled-plugin recovery changed source paths or started workers")
-   Config.setNestedValue("integrations.hadalird.obsidian",true)
-   tryVerify(()=>Hadalird.session!==null,2000)
-   const session=Hadalird.session
+   check(JSON.stringify(Config.options.todo.obsidian)===savedSource && AlisIntergration.session===null,"disabled-plugin recovery changed source paths or started workers")
+   Config.setNestedValue("integrations.alisIntergration.obsidian",true)
+   tryVerify(()=>AlisIntergration.session!==null,2000)
+   const session=AlisIntergration.session
    session.batteryHelperPath=Quickshell.env("FIXTURE_HELPER");session.fanHelperPath=Quickshell.env("FIXTURE_HELPER")
    integrations.activateSettingsSearchSection("Obsidian Todo")
    check(integrations.capabilityTabs.length===3,"Obsidian capability tabs missing")
    const capabilityTabs=findChild(findChild(integrations,"integrationCapabilityTabs"),"settingsTaskOptions")
    tryVerify(()=>capabilityTabs.children.filter(child=>child.hasOwnProperty("modelData")).length===3,1000)
    tryVerify(()=>capabilityTabs.children.filter(child=>child.hasOwnProperty("modelData")).every(button=>button.buttonText.length>0 && button.width>50 && capabilityTabs.width>200),2000)
-   tryVerify(()=>findChild(integrations,"hadalirdObsidianTodoSettings")!==null,3000)
+   tryVerify(()=>findChild(integrations,"alisIntergrationObsidianTodoSettings")!==null,3000)
    const pattern=findChild(integrations,"obsidianTodoNotePattern"),heading=findChild(integrations,"obsidianTodoHeading"),folder=findChild(integrations,"obsidianQuickNoteFolder")
    check(pattern && heading && folder,"owned Todo/capture editors missing")
    check(pattern.visible && !folder.visible,"Todo tab exposed Quicknotes controls")
@@ -146,19 +146,19 @@ ShellRoot {
    check(Config.options.todo.obsidian.dailyNote.format==="My Tasks.md" && Config.options.todo.obsidian.dailyNote.plannerHeading==="New tasks","extracted task fields lost parsing/save behavior")
    check(Config.options.notes.zettelkasten.folder==="Capture/Fleeting","extracted capture field did not save")
    integrations.activateSettingsSearchSection("Calendar Sync")
-   tryVerify(()=>findChild(integrations,"hadalirdObsidianTodoSettings")===null,1000)
+   tryVerify(()=>findChild(integrations,"alisIntergrationObsidianTodoSettings")===null,1000)
    integrations.activateSettingsSearchSection("Obsidian Todo")
    tryVerify(()=>findChild(integrations,"obsidianTodoNotePattern")!==null,2000)
    check(findChild(integrations,"obsidianTodoNotePattern").text==="Capture/My Tasks.md","reopening task fields lost saved state")
-   Config.setNestedValue("integrations.hadalird.tlp",true)
+   Config.setNestedValue("integrations.alisIntergration.tlp",true)
    tryCompare(TlpSettingsService,"schemaLoaded",true,3000)
    tryCompare(TlpSettingsService,"statusReason","fixture",3000)
    tryCompare(TlpSettingsService,"busy",false,2000)
    const previousFamily=Config.options.panelFamily
    Config.setNestedValue("panelFamily","abyss")
    classic.visible=true
-   tryVerify(()=>findChild(classic,"hadalirdTlpPowerSettings")!==null,3000)
-   const classicBody=findChild(classic,"hadalirdTlpPowerSettings")
+   tryVerify(()=>findChild(classic,"alisIntergrationTlpPowerSettings")!==null,3000)
+   const classicBody=findChild(classic,"alisIntergrationTlpPowerSettings")
    const tlpNav=findChild(classicBody,"tlpCategoryNavigator")
    const tlpRail=findChild(classicBody,"tlpCategoryRail")
    const tlpTabs=findChild(classicBody,"tlpCategoryTabs")
@@ -179,48 +179,48 @@ ShellRoot {
    classic.selectedCategoryIndex=0
    classic.visible=false
    Config.setNestedValue("panelFamily",previousFamily)
-   let c=ownedRow(classicRow,"hadalirdTlpSettingRow"),w=ownedRow(waffleRow,"hadalirdWaffleTlpSettingRow")
+   let c=ownedRow(classicRow,"alisIntergrationTlpSettingRow"),w=ownedRow(waffleRow,"alisIntergrationWaffleTlpSettingRow")
    check(c.definition.key==="CPU_BOOST_ON_AC" && w.definition.key===c.definition.key,"required row definition lost at load")
    classicRow.definition=({key:"CPU_BOOST_ON_BAT",type:"select",profile:"BAT",options:["0","1"]})
    tryCompare(c,"settingKey","CPU_BOOST_ON_BAT",1000);tryCompare(w,"settingKey","CPU_BOOST_ON_BAT",1000)
    c.setValue("1");check(TlpSettingsService.pendingValues.CPU_BOOST_ON_BAT?.value==="1","Classic edit did not stage")
    w.unsetValue();check(TlpSettingsService.pendingValues.CPU_BOOST_ON_BAT===undefined,"Waffle unset did not inherit")
    integrations.visible=false;waffle.visible=true
-   tryVerify(()=>findChild(waffle,"hadalirdWaffleTlpSettings")!==null,3000)
-   const contents=findChild(waffle,"hadalirdWaffleTlpSettings")
+   tryVerify(()=>findChild(waffle,"alisIntergrationWaffleTlpSettings")!==null,3000)
+   const contents=findChild(waffle,"alisIntergrationWaffleTlpSettings")
    waffle.selectedCategoryIndex=2;tryCompare(contents,"selectedCategoryIndex",2,1000)
    contents.filterText="CPU";tryCompare(waffle,"filterText","CPU",1000)
    waffle.visible=false
-   tryVerify(()=>findChild(waffle,"hadalirdWaffleTlpSettings")===null,1000)
+   tryVerify(()=>findChild(waffle,"alisIntergrationWaffleTlpSettings")===null,1000)
    waffle.visible=true
-   tryVerify(()=>findChild(waffle,"hadalirdWaffleTlpSettings")!==null,3000)
-   check(findChild(waffle,"hadalirdWaffleTlpSettings").selectedCategoryIndex===2 && findChild(waffle,"hadalirdWaffleTlpSettings").filterText==="CPU","Waffle reopen lost category/filter")
+   tryVerify(()=>findChild(waffle,"alisIntergrationWaffleTlpSettings")!==null,3000)
+   check(findChild(waffle,"alisIntergrationWaffleTlpSettings").selectedCategoryIndex===2 && findChild(waffle,"alisIntergrationWaffleTlpSettings").filterText==="CPU","Waffle reopen lost category/filter")
    waffle.visible=false
    Config.setNestedValue("panelFamily","waffle")
    waffleIntegrationHost.visible=true;waffleIntegrations.activePlugin="tlp"
-   tryVerify(()=>findChild(waffleIntegrations,"hadalirdWaffleTlpSettings")!==null,2000)
+   tryVerify(()=>findChild(waffleIntegrations,"alisIntergrationWaffleTlpSettings")!==null,2000)
    waffleIntegrationHost.visible=false
-   tryVerify(()=>findChild(waffleIntegrations,"hadalirdWaffleTlpSettings")===null,1000)
-   Config.setNestedValue("integrations.hadalird.thinkfan",true)
+   tryVerify(()=>findChild(waffleIntegrations,"alisIntergrationWaffleTlpSettings")===null,1000)
+   Config.setNestedValue("integrations.alisIntergration.thinkfan",true)
    fanUi.visible=true
-   tryVerify(()=>findChild(fanUi,"hadalirdThinkfanSettings")!==null,2000)
+   tryVerify(()=>findChild(fanUi,"alisIntergrationThinkfanSettings")!==null,2000)
    const fanLevel=findChild(fanUi,"balancedFanLevel")
    check(fanLevel && fanLevel.from===0 && fanLevel.to===7,"owned fan editor lost safe bounds")
    fanLevel.value=2
    tryCompare(Config.options.powerProfiles.fanControl,"balanced",2,1000)
    check(Config.options.powerProfiles.fanControl.enabled===false,"editing a saved level enabled hardware policy")
    fanUi.visible=false
-   tryVerify(()=>findChild(fanUi,"hadalirdThinkfanSettings")===null,1000)
-   check(Hadalird.session===session,"UI routes rebuilt shared workers")
+   tryVerify(()=>findChild(fanUi,"alisIntergrationThinkfanSettings")===null,1000)
+   check(AlisIntergration.session===session,"UI routes rebuilt shared workers")
    // Pending/editor notifications immediately followed by unload must be safe.
    TlpSettingsService.discard()
-   Config.setNestedValues({"integrations.hadalird.tlp":false,"integrations.hadalird.obsidian":false,"integrations.hadalird.thinkfan":false})
-   tryVerify(()=>Hadalird.session===null,2000);wait(150)
-   check(findChild(classicRow,"hadalirdTlpSettingRow")===null && findChild(waffleRow,"hadalirdWaffleTlpSettingRow")===null,"disabled rows survived")
-   check(findChild(waffle,"hadalirdWaffleTlpSettings")===null,"disabled Waffle page survived")
+   Config.setNestedValues({"integrations.alisIntergration.tlp":false,"integrations.alisIntergration.obsidian":false,"integrations.alisIntergration.thinkfan":false})
+   tryVerify(()=>AlisIntergration.session===null,2000);wait(150)
+   check(findChild(classicRow,"alisIntergrationTlpSettingRow")===null && findChild(waffleRow,"alisIntergrationWaffleTlpSettingRow")===null,"disabled rows survived")
+   check(findChild(waffle,"alisIntergrationWaffleTlpSettings")===null,"disabled Waffle page survived")
    check(Config.options.todo.obsidian.dailyNote.folder==="Capture" && Config.options.notes.zettelkasten.folder==="Capture/Fleeting","unload lost saved settings")
-   console.info("HADALIRD_SETTINGS_HOST_PASS")
-  }catch(e){console.error("HADALIRD_SETTINGS_HOST_FAIL",e.message,e.stack)}Qt.quit()}
+   console.info("ALIS_INTERGRATION_SETTINGS_HOST_PASS")
+  }catch(e){console.error("ALIS_INTERGRATION_SETTINGS_HOST_FAIL",e.message,e.stack)}Qt.quit()}
  }
  Timer {interval:100;running:true;onTriggered:test.runChecks()}
 }
@@ -237,9 +237,9 @@ ShellRoot {
         env.update({key:value for key,value in wayland_env.items() if key in ("WAYLAND_DISPLAY","NIRI_SOCKET","DISPLAY","XDG_RUNTIME_DIR")})
         env["QT_QPA_PLATFORM"]="wayland"
         result = run_qs(shell,env,timeout=50)
-    if result.returncode or "HADALIRD_SETTINGS_HOST_PASS" not in result.stdout or any(token in result.stdout for token in ("HADALIRD_SETTINGS_HOST_FAIL","TypeError:","ReferenceError:","Binding loop","Unable to assign","Failed to load configuration","Invalid property assignment","invalid context")):
+    if result.returncode or "ALIS_INTERGRATION_SETTINGS_HOST_PASS" not in result.stdout or any(token in result.stdout for token in ("ALIS_INTERGRATION_SETTINGS_HOST_FAIL","TypeError:","ReferenceError:","Binding loop","Unable to assign","Failed to load configuration","Invalid property assignment","invalid context")):
         print(result.stdout)
         raise SystemExit(1)
     invocations = [json.loads(line) for line in calls.read_text().splitlines()]
     assert invocations and all(argv in (["--status"],["--config-status"]) for argv in invocations),invocations
-print("HADALIRD_SETTINGS_HOST_PASS Classic/Waffle rows, owned Todo/capture fields, routes, reopen and disable; injected status-only helpers")
+print("ALIS_INTERGRATION_SETTINGS_HOST_PASS Classic/Waffle rows, owned Todo/capture fields, routes, reopen and disable; injected status-only helpers")

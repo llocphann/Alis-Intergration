@@ -40,7 +40,7 @@ zettel=todo[todo.index('title: Translation.tr("Quick Notes")'):]
 assert 'color: Appearance.colors.colSubtext' not in zettel
 assert 'placeholderText: "00_Capture/03_Zettelkasten"' not in zettel
 assert 'Translation.tr("Canonical task store")' not in todo
-print('HADALIRD_OBSIDIAN_TODO_SETTINGS_PASS')
+print('ALIS_INTERGRATION_OBSIDIAN_TODO_SETTINGS_PASS')
 
 INTEGRATIONS=todo
 for removed_copy in (
@@ -59,7 +59,7 @@ for removed_copy in (
 
 for stale in (
     "Use one Markdown note source. The path may be fixed or contain date tokens",
-    "Physical Obsidian vault folder. Hadalis resolves the configured note strictly inside this directory.",
+    "Physical Obsidian vault folder. Alis resolves the configured note strictly inside this directory.",
     "Physical Obsidian vault folder. Alis resolves the configured note strictly inside this directory.",
     "Dashboard Quick Notes are drafts until capture. A successful capture creates one filesystem-canonical Zettelkasten note, then clears the unchanged draft.",
     "The generated Markdown follows the vault's Zettelkasten schema:",

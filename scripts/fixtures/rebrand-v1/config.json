@@ -126,7 +126,7 @@
             "material": 0,
             "cards": 3,
             "aurora": 0,
-            "inir": 1,
+            "alis": 1,
             "angel": 1,
             "regalia": 1,
             "zzz": 0,
@@ -236,7 +236,7 @@
             "enableVSCode": true,
             "enableChrome": true,
             "enableSpicetify": false,
-            "spicetifyTheme": "Inir",
+            "spicetifyTheme": "Alis",
             "enableSteam": false,
             "enablePearDesktop": true,
             "enableOnlyOffice": false,
@@ -1882,8 +1882,8 @@
         "niriWindowListUpdateIntervalMsGameMode": 500
     },
     "hotspot": {
-        "ssid": "iNiR Hotspot",
-        "password": "inirhotspot",
+        "ssid": "Alis Hotspot",
+        "password": "alishotspot",
         "band": "bg"
     },
     "keyboardIndicators": {
@@ -2383,7 +2383,7 @@
         }
     },
     "integrations": {
-        "hadalird": {
+        "alisIntergration": {
             "tlp": false,
             "thinkfan": false,
             "obsidian": false
@@ -2400,7 +2400,7 @@
         "obsidian": {
             "vaultPath": "",
             "sourceMode": "managed-note",
-            "notePath": "Hadalis/Todo.md",
+            "notePath": "Alis/Todo.md",
             "scope": "managed-section",
             "dailyNote": {
                 "folder": "00_Capture/01_Journal",

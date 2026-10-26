@@ -4,7 +4,7 @@
     {
       "argv": [
         "python3",
-        "scripts/test-hadalird-arch-package.py"
+        "scripts/test-alis-intergration-arch-package.py"
       ],
       "exit": 0,
       "startedAt": "2026-10-18T09:17:04.692014+00:00",
@@ -13,7 +13,7 @@
     {
       "argv": [
         "python3",
-        "scripts/test-hadalird-gateway-bootstrap.py"
+        "scripts/test-alis-intergration-gateway-bootstrap.py"
       ],
       "exit": 0,
       "startedAt": "2026-10-18T09:17:06.210098+00:00",
@@ -22,7 +22,7 @@
     {
       "argv": [
         "python3",
-        "scripts/test-hadalird-install-lifecycle.py"
+        "scripts/test-alis-intergration-install-lifecycle.py"
       ],
       "exit": 0,
       "startedAt": "2026-10-18T09:17:06.280697+00:00",
@@ -31,7 +31,7 @@
     {
       "argv": [
         "python3",
-        "scripts/test-hadalird-manager.py"
+        "scripts/test-alis-intergration-manager.py"
       ],
       "exit": 0,
       "startedAt": "2026-10-18T09:17:06.358838+00:00",
@@ -40,7 +40,7 @@
     {
       "argv": [
         "python3",
-        "scripts/test-hadalird-obsidian-wrapper.py"
+        "scripts/test-alis-intergration-obsidian-wrapper.py"
       ],
       "exit": 0,
       "startedAt": "2026-10-18T09:17:06.938524+00:00",
@@ -49,7 +49,7 @@
     {
       "argv": [
         "python3",
-        "scripts/test-hadalird-optional.py"
+        "scripts/test-alis-intergration-optional.py"
       ],
       "exit": 0,
       "startedAt": "2026-10-18T09:17:06.971971+00:00",
@@ -58,7 +58,7 @@
     {
       "argv": [
         "python3",
-        "scripts/test-hadalird-polkit-visibility.py"
+        "scripts/test-alis-intergration-polkit-visibility.py"
       ],
       "exit": 0,
       "startedAt": "2026-10-18T09:17:11.792832+00:00",
@@ -67,7 +67,7 @@
     {
       "argv": [
         "python3",
-        "scripts/test-hadalird-preferences-migration.py"
+        "scripts/test-alis-intergration-preferences-migration.py"
       ],
       "exit": 0,
       "startedAt": "2026-10-18T09:17:13.282292+00:00",
@@ -76,7 +76,7 @@
     {
       "argv": [
         "python3",
-        "scripts/test-hadalird-settings-flow.py"
+        "scripts/test-alis-intergration-settings-flow.py"
       ],
       "exit": 0,
       "startedAt": "2026-10-18T09:17:20.260450+00:00",
@@ -85,7 +85,7 @@
     {
       "argv": [
         "python3",
-        "scripts/test-hadalird-system-provision.py"
+        "scripts/test-alis-intergration-system-provision.py"
       ],
       "exit": 0,
       "startedAt": "2026-10-18T09:17:20.301373+00:00",

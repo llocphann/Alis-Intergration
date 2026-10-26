@@ -4,7 +4,7 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
-helper="$repo_root/assets/helpers/inir-battery-charge-limit"
+helper="$repo_root/assets/helpers/alis-battery-charge-limit"
 runtime="$repo_root/services/TlpRuntimeCapabilities.qml"
 power="$repo_root/modules/settings/TlpPowerSettings.qml"
 
@@ -128,7 +128,7 @@ assert_not_contains 'Values shown below come from TLP' "$power" \
     'Battery/TLP summary must not restore the old verbose effective-configuration description'
 assert_not_contains 'Apply validates every change and authenticates only once' "$power" \
     'Battery/TLP summary must keep apply guidance concise'
-assert_not_contains 'Reset removes only the general iNiR TLP' "$power" \
+assert_not_contains 'Reset removes only the general Alis TLP' "$power" \
     'Battery/TLP summary must keep reset guidance concise'
 
 schema="$repo_root/assets/tlp/tlp-settings-schema.json"
@@ -171,4 +171,4 @@ for page in "$waffle_page"; do
 done
 assert_contains 'model: root.visibleGroups' "$waffle_page" 'Waffle settings must render schema groups'
 assert_contains 'onButtonClicked: TlpSettingsService.apply()' "$waffle_page" 'Waffle settings must expose explicit Apply'
-printf '%s\n' HADALIRD_TLP_UI_GUARDS_PASS
+printf '%s\n' ALIS_INTERGRATION_TLP_UI_GUARDS_PASS

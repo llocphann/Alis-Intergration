@@ -65,8 +65,8 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-persistence-') as name:
     for filename in ('todo.json', 'todo.txt'):
         shutil.copy2(FIXTURE / filename, state / filename)
     vault = private / 'old vault café'
-    (vault / 'Hadalis').mkdir(parents=True)
-    note = vault / 'Hadalis/Todo.md'
+    (vault / 'Alis').mkdir(parents=True)
+    note = vault / 'Alis/Todo.md'
     note.write_bytes(old_bytes)
     (vault / '.obsidian').mkdir()
     (vault / '.obsidian/appearance.json').write_text('{"cssTheme":"Owner theme","enabledCssSnippets":[]}\n')
@@ -118,26 +118,26 @@ ShellRoot {
    tryCompare(Config,"ready",true,4000);tryCompare(Todo,"ready",true,4000)
    const installed=Quickshell.env("REBRAND_INSTALLED")==="1"
    const enabled=Quickshell.env("REBRAND_ENABLED")==="1"
-   tryCompare(Hadalird,"available",installed,4000)
+   tryCompare(AlisIntergration,"available",installed,4000)
    check(page.primaryTabs.length===(installed?4:1),"old/new plugin tabs duplicated or missing")
    check(Todo.backend==="internal" && Todo.sourceLabel===Quickshell.env("REBRAND_SOURCE_LABEL"),"internal source/label changed")
    check(Todo.sharedVaultPath===Quickshell.env("REBRAND_VAULT"),"legacy vault fallback lost")
-   check(Config.options.todo.obsidian.notePath==="Hadalis/Todo.md","stored note path renamed")
+   check(Config.options.todo.obsidian.notePath==="Alis/Todo.md","stored note path renamed")
    check(Config.options.todo.obsidian.sourceMode==="managed-note","stored source mode reset")
    check(Config.options.battery.chargeLimit.threshold===73,"battery preference reset")
    check(Config.options.powerProfiles.fanControl.balanced===2,"fan preference reset")
-   check(!Hadalird.tlpEnabled && !Hadalird.thinkfanEnabled,"hardware workers activated")
-   check(Config.options.integrations.hadalird.obsidian===enabled,"explicit saved plugin flag lost")
+   check(!AlisIntergration.tlpEnabled && !AlisIntergration.thinkfanEnabled,"hardware workers activated")
+   check(Config.options.integrations.alisIntergration.obsidian===enabled,"explicit saved plugin flag lost")
    tryCompare(Todo,"internalItemCount",Number(Quickshell.env("REBRAND_COUNT")),4000)
    check(Todo.list[0].id==="legacy-task-001" && Todo.list[1].id==="legacy-task-002","stored IDs lost")
    check(Todo.list[0].agenda.createdAt==="2025-01-02T03:04:05Z" && Todo.list[0].agenda.recurrence.interval===2,"historic metadata changed")
-   if(enabled)tryVerify(()=>Hadalird.session!==null,3000)
-   else check(Hadalird.session===null,"default-disabled worker loaded")
-   const legacyStatus=JSON.parse(invoke("hadalird","status"))
+   if(enabled)tryVerify(()=>AlisIntergration.session!==null,3000)
+   else check(AlisIntergration.session===null,"default-disabled worker loaded")
+   const legacyStatus=JSON.parse(invoke("alis-intergration","status"))
    if(Quickshell.env("REBRAND_BASELINE")!=="1"){
     const canonicalStatus=JSON.parse(invoke("integrations","status"))
     check(JSON.stringify(canonicalStatus)===JSON.stringify(legacyStatus),"IPC alias status drift")
-    invoke("integrations","refresh");tryCompare(Hadalird,"available",installed,3000)
+    invoke("integrations","refresh");tryCompare(AlisIntergration,"available",installed,3000)
    }
    const source=JSON.stringify(Config.options.todo.obsidian)
    check(Todo.beginObsidianSetup(),"setup preview unavailable")
@@ -146,7 +146,7 @@ ShellRoot {
    if(Quickshell.env("REBRAND_WRITE")==="1"){
     check(Todo.addItem({id:"post-patch-003",content:"New record alongside old",done:false}),"post-patch save failed")
     Config.setNestedValue("todo.obsidian.preferTasksPlugin",false)
-    Hadalird.setPluginEnabled("obsidian",true)
+    AlisIntergration.setPluginEnabled("obsidian",true)
     tryVerify(()=>!Todo.internalPersistenceBusy,4000)
    }
    Config.flushWrites();wait(500)
@@ -171,7 +171,7 @@ ShellRoot {
                 REBRAND_INSTALLED='0' if package=='absent' else '1',
                 REBRAND_ENABLED='1' if enabled else '0', REBRAND_WRITE='1' if write else '0',
                 REBRAND_COUNT=str(len(before_records)), REBRAND_VAULT=str(vault),
-                REBRAND_SOURCE_LABEL='Hadalis' if args.baseline else 'Alis', REBRAND_PHASE=str(index),
+                REBRAND_SOURCE_LABEL='Alis' if args.baseline else 'Alis', REBRAND_PHASE=str(index),
                 REBRAND_BASELINE='1' if args.baseline else '0')
             result = run_qs(shell, run_env, timeout=25)
             if result.returncode or 'REBRAND_PERSISTENCE_RUNTIME_PASS' not in result.stdout or any(token in result.stdout for token in
@@ -182,13 +182,13 @@ ShellRoot {
             records = json.loads((state / 'todo.json').read_text())
             assert records[:2] == expected_tasks, ('historic task record changed', index)
             assert saved['ownerRecord'] == settings['ownerRecord']
-            assert saved['todo']['obsidian']['notePath'] == 'Hadalis/Todo.md'
+            assert saved['todo']['obsidian']['notePath'] == 'Alis/Todo.md'
             assert saved['notes']['zettelkasten']['vaultPath'] == str(vault)
             assert note.read_bytes() == old_bytes, 'native Settings mutated vault bytes'
             if write:
                 expected = json.loads(json.dumps(before_config))
                 expected['todo']['obsidian']['preferTasksPlugin'] = False
-                expected['integrations']['hadalird']['obsidian'] = True
+                expected['integrations']['alisIntergration']['obsidian'] = True
                 for key in old_config_keys:
                     assert saved[key] == expected[key], ('unrelated setting changed during save', key)
                 assert records[2]['id'] == 'post-patch-003' and len(records) == 3

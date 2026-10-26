@@ -1,9 +1,9 @@
 {
-  "id": "hadalird",
+  "id": "alis-intergration",
   "version": "0.3.1",
   "host": "Alis",
   "hostApi": 1,
-  "session": "HadalisSession.qml",
+  "session": "AlisSession.qml",
   "integrations": [
     "tlp",
     "thinkfan",
@@ -74,11 +74,11 @@
     "dailyTodo": "services/DailyNoteTodoBackend.qml"
   },
   "derivedFrom": {
-    "repository": "llocphann/Hadalis",
+    "repository": "llocphann/Alis",
     "sourceSha": "6abf56328350b5871f1c626b2752d5e25d658539"
   },
   "uiDerivedFrom": {
-    "repository": "llocphann/Hadalis",
+    "repository": "llocphann/Alis",
     "sourceSha": "53af215df39bce6cf7fda5c226bbb37bb14f6b9e"
   },
   "name": "Alis-Intergration"

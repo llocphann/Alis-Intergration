@@ -10,7 +10,7 @@ import "." as Integration
 
 ColumnLayout {
     id: root
-    objectName: "hadalirdWaffleTlpSettings"
+    objectName: "alisIntergrationWaffleTlpSettings"
 
     property bool _tlpDemandRefreshed: false
 

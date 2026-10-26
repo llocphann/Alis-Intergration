@@ -1483,92 +1483,92 @@
     },
     {
       "number": 209,
-      "name": "Python regression: scripts/test-hadalird-arch-package.py",
-      "command": "python3 scripts/test-hadalird-arch-package.py",
+      "name": "Python regression: scripts/test-alis-intergration-arch-package.py",
+      "command": "python3 scripts/test-alis-intergration-arch-package.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 210,
-      "name": "Python regression: scripts/test-hadalird-gateway-bootstrap.py",
-      "command": "python3 scripts/test-hadalird-gateway-bootstrap.py",
+      "name": "Python regression: scripts/test-alis-intergration-gateway-bootstrap.py",
+      "command": "python3 scripts/test-alis-intergration-gateway-bootstrap.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 211,
-      "name": "Python regression: scripts/test-hadalird-install-lifecycle.py",
-      "command": "python3 scripts/test-hadalird-install-lifecycle.py",
+      "name": "Python regression: scripts/test-alis-intergration-install-lifecycle.py",
+      "command": "python3 scripts/test-alis-intergration-install-lifecycle.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 212,
-      "name": "Python regression: scripts/test-hadalird-manager.py",
-      "command": "python3 scripts/test-hadalird-manager.py",
+      "name": "Python regression: scripts/test-alis-intergration-manager.py",
+      "command": "python3 scripts/test-alis-intergration-manager.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 213,
-      "name": "Python regression: scripts/test-hadalird-obsidian-wrapper.py",
-      "command": "python3 scripts/test-hadalird-obsidian-wrapper.py",
+      "name": "Python regression: scripts/test-alis-intergration-obsidian-wrapper.py",
+      "command": "python3 scripts/test-alis-intergration-obsidian-wrapper.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 214,
-      "name": "Python regression: scripts/test-hadalird-optional.py",
-      "command": "python3 scripts/test-hadalird-optional.py",
+      "name": "Python regression: scripts/test-alis-intergration-optional.py",
+      "command": "python3 scripts/test-alis-intergration-optional.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 215,
-      "name": "Python regression: scripts/test-hadalird-polkit-visibility.py",
-      "command": "python3 scripts/test-hadalird-polkit-visibility.py",
+      "name": "Python regression: scripts/test-alis-intergration-polkit-visibility.py",
+      "command": "python3 scripts/test-alis-intergration-polkit-visibility.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 216,
-      "name": "Python regression: scripts/test-hadalird-preferences-migration.py",
-      "command": "python3 scripts/test-hadalird-preferences-migration.py",
+      "name": "Python regression: scripts/test-alis-intergration-preferences-migration.py",
+      "command": "python3 scripts/test-alis-intergration-preferences-migration.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 217,
-      "name": "Python regression: scripts/test-hadalird-settings-flow.py",
-      "command": "python3 scripts/test-hadalird-settings-flow.py",
+      "name": "Python regression: scripts/test-alis-intergration-settings-flow.py",
+      "command": "python3 scripts/test-alis-intergration-settings-flow.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 218,
-      "name": "Python regression: scripts/test-hadalird-system-provision.py",
-      "command": "python3 scripts/test-hadalird-system-provision.py",
+      "name": "Python regression: scripts/test-alis-intergration-system-provision.py",
+      "command": "python3 scripts/test-alis-intergration-system-provision.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 219,
-      "name": "Python regression: scripts/test-hadanion-layer-shell.py",
-      "command": "python3 scripts/test-hadanion-layer-shell.py",
+      "name": "Python regression: scripts/test-alis-companion-layer-shell.py",
+      "command": "python3 scripts/test-alis-companion-layer-shell.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 220,
-      "name": "Python regression: scripts/test-hadanion-optional.py",
-      "command": "python3 scripts/test-hadanion-optional.py",
+      "name": "Python regression: scripts/test-alis-companion-optional.py",
+      "command": "python3 scripts/test-alis-companion-optional.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 221,
-      "name": "Python regression: scripts/test-inir-process-cleanup.py",
-      "command": "python3 scripts/test-inir-process-cleanup.py",
+      "name": "Python regression: scripts/test-alis-process-cleanup.py",
+      "command": "python3 scripts/test-alis-process-cleanup.py",
       "result": "PASS",
       "exit": 0
     },
@@ -1602,22 +1602,22 @@
     },
     {
       "number": 226,
-      "name": "Python regression: scripts/test-iris-corner-poc-contract.py",
-      "command": "python3 scripts/test-iris-corner-poc-contract.py",
+      "name": "Python regression: scripts/test-abyss-corner-poc-contract.py",
+      "command": "python3 scripts/test-abyss-corner-poc-contract.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 227,
-      "name": "Python regression: scripts/test-iris-g2-contract.py",
-      "command": "python3 scripts/test-iris-g2-contract.py",
+      "name": "Python regression: scripts/test-abyss-g2-contract.py",
+      "command": "python3 scripts/test-abyss-g2-contract.py",
       "result": "PASS",
       "exit": 0
     },
     {
       "number": 228,
-      "name": "Python regression: scripts/test-iris-production-surface-contract.py",
-      "command": "python3 scripts/test-iris-production-surface-contract.py",
+      "name": "Python regression: scripts/test-abyss-production-surface-contract.py",
+      "command": "python3 scripts/test-abyss-production-surface-contract.py",
       "result": "PASS",
       "exit": 0
     },
@@ -2099,8 +2099,8 @@
     },
     {
       "number": 297,
-      "name": "Python regression: scripts/test-settings-inir-task-tabs-contract.py",
-      "command": "python3 scripts/test-settings-inir-task-tabs-contract.py",
+      "name": "Python regression: scripts/test-settings-alis-task-tabs-contract.py",
+      "command": "python3 scripts/test-settings-alis-task-tabs-contract.py",
       "result": "PASS",
       "exit": 0
     },

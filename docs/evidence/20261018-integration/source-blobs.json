@@ -24,7 +24,7 @@
       "mode": "100644",
       "type": "blob",
       "sha": "df2360f71a3e15d7c303c56f43c46aafc8ea4d6b",
-      "path": "HadalisSession.qml"
+      "path": "AlisSession.qml"
     },
     {
       "mode": "100644",
@@ -48,25 +48,25 @@
       "mode": "100755",
       "type": "blob",
       "sha": "72f2e6fd570b4109018ac2a7087bffbbc4a74246",
-      "path": "assets/helpers/inir-battery-charge-limit"
+      "path": "assets/helpers/alis-battery-charge-limit"
     },
     {
       "mode": "100755",
       "type": "blob",
       "sha": "a8482778d392396b5f092095da71f4753d2a1dfa",
-      "path": "assets/helpers/inir-thinkfan"
+      "path": "assets/helpers/alis-thinkfan"
     },
     {
       "mode": "100644",
       "type": "blob",
       "sha": "e0324f65fe314c67a29bed96e0d70d8362af123f",
-      "path": "assets/polkit/org.inir.battery-charge-limit.policy"
+      "path": "assets/polkit/org.alis.battery-charge-limit.policy"
     },
     {
       "mode": "100644",
       "type": "blob",
       "sha": "2fe76a045f9448022e970291fd6f3f9ce5c2c0c5",
-      "path": "assets/polkit/org.inir.thinkfan.policy"
+      "path": "assets/polkit/org.alis.thinkfan.policy"
     },
     {
       "mode": "100644",

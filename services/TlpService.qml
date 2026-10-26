@@ -10,7 +10,7 @@ Item {
     id: root
     property bool _live: true
     Component.onDestruction: root._live = false
-    property string helperPath: "/usr/libexec/inir-battery-charge-limit"
+    property string helperPath: "/usr/libexec/alis-battery-charge-limit"
 
     property bool available: false
     property bool supported: false

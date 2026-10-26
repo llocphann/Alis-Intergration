@@ -154,4 +154,4 @@ body="Old user task <!-- alis:agenda:v1:"+encoded+" -->"
 clean,parsed=agenda_metadata.split(body)
 assert clean=="Old user task" and parsed==legacy
 assert agenda_metadata.split("Unrelated task <!-- other:marker -->")==("Unrelated task <!-- other:marker -->",None)
-print("HADALIRD_OBSIDIAN_WORKER_CONTRACTS_PASS managed/daily source identity, migration/status/plugin boundaries, quick-note template and shared vault")
+print("ALIS_INTERGRATION_OBSIDIAN_WORKER_CONTRACTS_PASS managed/daily source identity, migration/status/plugin boundaries, quick-note template and shared vault")

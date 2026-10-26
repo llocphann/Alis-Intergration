@@ -12,12 +12,12 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-PAYLOAD = ("HadalisSession.qml", "services", "modules", "assets", "LICENSE")
+PAYLOAD = ("AlisSession.qml", "services", "modules", "assets", "LICENSE")
 HELPERS = ("scripts/integrations", "scripts/todo", "scripts/notes")
 
 # Pinned host API 1 entrypoints from Alis/dev. Coordinate any changes there.
 EXPECTED_ENTRYPOINTS = {
-    "session": "HadalisSession.qml",
+    "session": "AlisSession.qml",
     "thinkfanSettings": "modules/settings/ThinkfanSettings.qml",
     "tlpSettings": "modules/settings/TlpPowerSettings.qml",
     "obsidianSettings": "modules/settings/ObsidianThemeSettings.qml",
@@ -81,7 +81,7 @@ def plugin_metadata(data):
 
 
 def validate_manifest(manifest):
-    if not isinstance(manifest, dict) or manifest.get("id") != "hadalird" or (
+    if not isinstance(manifest, dict) or manifest.get("id") != "alis-intergration" or (
             type(manifest.get("hostApi")) is not int or manifest["hostApi"] != 1):
         raise ValueError("Incompatible package or host API")
     version = manifest.get("version")
@@ -217,7 +217,7 @@ def main():
     parser.add_argument("--data-home", type=Path, default=Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")))
     args = parser.parse_args()
     canonical = args.data_home / "alis-intergration"
-    legacy = args.data_home / "hadalird"
+    legacy = args.data_home / "alis-intergration"
     if legacy.is_dir() and not legacy.is_symlink() and not canonical.exists():
         os.replace(legacy, canonical)
     data_root = canonical.resolve()
@@ -229,7 +229,7 @@ def main():
         else:
             uninstall(data_root)
             print("Disabled the package link; releases and user data are preserved")
-    print("Run alis ipc integrations refresh (legacy host: alis ipc hadalird refresh), or restart Alis, to apply the change")
+    print("Run alis ipc integrations refresh (legacy host: alis ipc alis-intergration refresh), or restart Alis, to apply the change")
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ ColumnLayout {
     id: root
     property bool _live: true
     Component.onDestruction: root._live = false
-    objectName: "hadalirdTlpSettingRow"
+    objectName: "alisIntergrationTlpSettingRow"
 
     required property var definition
     property string groupTitle: ""

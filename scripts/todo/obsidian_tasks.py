@@ -175,7 +175,7 @@ def _lock_path() -> Path:
         base = Path(runtime_dir)
     else:
         base = Path("/tmp")
-    return base / f"hadalis-{os.getuid()}-obsidian-cli.lock"
+    return base / f"alis-{os.getuid()}-obsidian-cli.lock"
 
 
 @contextlib.contextmanager
@@ -396,12 +396,12 @@ def probe_capabilities(vault_path: str) -> dict[str, Any]:
 def _line_range_js() -> str:
     return (
         "function rangeForLine(data,n){"
-        "if(!Number.isInteger(n)||n<1)throw new Error('HADALIS_BAD_LINE');"
+        "if(!Number.isInteger(n)||n<1)throw new Error('ALIS_BAD_LINE');"
         "let start=0;"
         "for(let line=1;line<n;line++){"
         "let i=start;"
         "while(i<data.length&&data[i]!=='\\n'&&data[i]!=='\\r')i++;"
-        "if(i>=data.length)throw new Error('HADALIS_CONFLICT');"
+        "if(i>=data.length)throw new Error('ALIS_CONFLICT');"
         "start=i+(data[i]==='\\r'&&data[i+1]==='\\n'?2:1);"
         "}"
         "let end=start;"
@@ -431,20 +431,20 @@ def _toggle_eval_code(
         f"const expectedRaw={raw_js};"
         "const adapter=app.vault.adapter;"
         "if(!adapter||typeof adapter.getBasePath!=='function')"
-        "throw new Error('HADALIS_NO_FILESYSTEM_ADAPTER');"
+        "throw new Error('ALIS_NO_FILESYSTEM_ADAPTER');"
         "if(adapter.getBasePath()!==expectedVault)"
-        "throw new Error('HADALIS_VAULT_MISMATCH');"
+        "throw new Error('ALIS_VAULT_MISMATCH');"
         "const file=app.vault.getFileByPath(notePath);"
-        "if(!file)throw new Error('HADALIS_FILE_MISSING');"
+        "if(!file)throw new Error('ALIS_FILE_MISSING');"
         f"const plugin=app.plugins?.plugins?.[{plugin_js}]??app.plugins?.getPlugin?.({plugin_js})??null;"
         "const toggle=plugin?.apiV1?.executeToggleTaskDoneCommand;"
-        "if(typeof toggle!=='function')throw new Error('HADALIS_TASKS_API_MISSING');"
+        "if(typeof toggle!=='function')throw new Error('ALIS_TASKS_API_MISSING');"
         "const transformed=toggle.call(plugin.apiV1,expectedRaw,notePath);"
-        "if(typeof transformed!=='string')throw new Error('HADALIS_BAD_TASKS_RESULT');"
+        "if(typeof transformed!=='string')throw new Error('ALIS_BAD_TASKS_RESULT');"
         + _line_range_js()
         + "await app.vault.process(file,(data)=>{"
         "const r=rangeForLine(data,sourceLine);"
-        "if(r.raw!==expectedRaw)throw new Error('HADALIS_CONFLICT');"
+        "if(r.raw!==expectedRaw)throw new Error('ALIS_CONFLICT');"
         "let replacement='';"
         "if(transformed.length>0){"
         "const parts=transformed.split(/\\r?\\n/);"
@@ -453,7 +453,7 @@ def _toggle_eval_code(
         "}"
         "return data.slice(0,r.start)+replacement+data.slice(r.sepEnd);"
         "});"
-        "return 'hadalis-ok';"
+        "return 'alis-ok';"
         "})()"
     )
 
@@ -461,13 +461,13 @@ def _toggle_eval_code(
 def _map_mutation_cli_error(output: str) -> RuntimeErrorInfo:
     text = str(output or "")
     markers = {
-        "HADALIS_VAULT_MISMATCH": ("active_vault_mismatch", "active Obsidian vault does not match configured vault"),
-        "HADALIS_NO_FILESYSTEM_ADAPTER": ("unsupported_adapter", "active Obsidian vault is not a desktop filesystem vault"),
-        "HADALIS_FILE_MISSING": ("note_not_found", "configured note is not loaded in the active Obsidian vault"),
-        "HADALIS_TASKS_API_MISSING": ("tasks_api_unavailable", "Obsidian Tasks API v1 is unavailable"),
-        "HADALIS_BAD_TASKS_RESULT": ("tasks_api_invalid_result", "Obsidian Tasks returned an invalid toggle result"),
-        "HADALIS_CONFLICT": ("conflict", "task changed before Obsidian could apply the mutation"),
-        "HADALIS_BAD_LINE": ("conflict", "task source line is invalid"),
+        "ALIS_VAULT_MISMATCH": ("active_vault_mismatch", "active Obsidian vault does not match configured vault"),
+        "ALIS_NO_FILESYSTEM_ADAPTER": ("unsupported_adapter", "active Obsidian vault is not a desktop filesystem vault"),
+        "ALIS_FILE_MISSING": ("note_not_found", "configured note is not loaded in the active Obsidian vault"),
+        "ALIS_TASKS_API_MISSING": ("tasks_api_unavailable", "Obsidian Tasks API v1 is unavailable"),
+        "ALIS_BAD_TASKS_RESULT": ("tasks_api_invalid_result", "Obsidian Tasks returned an invalid toggle result"),
+        "ALIS_CONFLICT": ("conflict", "task changed before Obsidian could apply the mutation"),
+        "ALIS_BAD_LINE": ("conflict", "task source line is invalid"),
     }
     for marker, (code, message) in markers.items():
         if marker in text:

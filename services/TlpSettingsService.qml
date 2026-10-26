@@ -13,7 +13,7 @@ Item {
 
     signal mutationFinished(string kind, bool success)
 
-    property string helperPath: "/usr/libexec/inir-battery-charge-limit"
+    property string helperPath: "/usr/libexec/alis-battery-charge-limit"
     readonly property string schemaPath: decodeURIComponent(String(Qt.resolvedUrl("../assets/tlp/tlp-settings-schema.json")).replace(/^file:\/\//, ""))
 
     // Keep the parsed schema as a plain JavaScript array. A QML list<var>
@@ -50,7 +50,7 @@ Item {
     property bool busy: false
     property string tlpVersion: ""
     property string statusReason: ""
-    property string configFile: "/etc/tlp.d/99-inir-tlp-settings.conf"
+    property string configFile: "/etc/tlp.d/99-alis-tlp-settings.conf"
     property string lastError: ""
     property bool _refreshPending: false
     property string _mutationKind: ""

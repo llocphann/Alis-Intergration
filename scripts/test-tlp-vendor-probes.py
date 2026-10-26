@@ -31,4 +31,4 @@ for id_, path, drivers in (
 assert 'root.intelPstateStatus = ""' in source
 assert 'root.amdPstateStatus = ""' in source
 assert "root._refreshCpuDriverModes()" in source
-print("HADALIRD_CPU_VENDOR_PROBE_PASS vendor paths are empty unless active, refresh guarded")
+print("ALIS_INTERGRATION_CPU_VENDOR_PROBE_PASS vendor paths are empty unless active, refresh guarded")

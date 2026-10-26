@@ -88,4 +88,4 @@ reject "$tlp_caps" 'id: rdwDispatcherProbe' 'TLP RDW refresh must not spawn a se
 require "$tlp_settings" 'readonly property int safetyRefreshIntervalMs: 30 * 60 * 1000' 'TLP settings background status refresh must use a sparse safety cadence'
 require "$tlp_settings" 'interval: root.safetyRefreshIntervalMs' 'TLP settings timer must use the sparse safety cadence'
 
-printf '%s\n' HADALIRD_WORKER_LIFECYCLE_PASS
+printf '%s\n' ALIS_INTERGRATION_WORKER_LIFECYCLE_PASS

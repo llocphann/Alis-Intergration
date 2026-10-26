@@ -83,7 +83,7 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
     installer.assemble(ROOT, candidate, new_sha)
     new_manifest = json.loads((candidate / 'manifest.json').read_text())
     old_manifest = json.loads(old_files['manifest.json'])
-    assert new_manifest['id'] == old_manifest['id'] == 'hadalird'
+    assert new_manifest['id'] == old_manifest['id'] == 'alis-intergration'
     assert new_manifest['name'] == 'Alis-Intergration' and new_manifest['host'] == 'Alis'
     for field in ('hostApi', 'session', 'settings', 'backends', 'integrations', 'plugins', 'derivedFrom', 'uiDerivedFrom'):
         assert new_manifest[field] == old_manifest[field], field
@@ -92,11 +92,11 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
     for path in old_files:
         if path.startswith(('assets/helpers/', 'assets/polkit/', 'assets/tlp/')):
             assert (candidate / path).read_bytes() == old_files[path], path
-    for path in ('assets/polkit/org.inir.battery-charge-limit.policy', 'assets/polkit/org.inir.thinkfan.policy'):
+    for path in ('assets/polkit/org.alis.battery-charge-limit.policy', 'assets/polkit/org.alis.thinkfan.policy'):
         policy = ET.fromstring((candidate / path).read_bytes())
         assert policy.find('.//allow_any').text == policy.find('.//allow_inactive').text == 'no'
         assert policy.find('.//allow_active').text == 'yes'
-        assert policy.find('.//action').attrib['id'].startswith('org.inir.')
+        assert policy.find('.//action').attrib['id'].startswith('org.alis.')
 
     bundle = archive(candidate)
     calls = []
@@ -164,18 +164,18 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
 
     # Mixed historic/new note records preserve source IDs and surrounding bytes.
     vault = private / 'vault'
-    note = vault / 'Hadalis/Todo.md'
+    note = vault / 'Alis/Todo.md'
     note.parent.mkdir(parents=True)
     note.write_bytes((FIXTURE / 'managed-note.md').read_bytes())
-    before = todo.scan_note(str(vault), 'Hadalis/Todo.md')
+    before = todo.scan_note(str(vault), 'Alis/Todo.md')
     old_id = before['tasks'][0]['id']
-    todo.add_basic_task(str(vault), 'Hadalis/Todo.md', 'new task after rebrand',
+    todo.add_basic_task(str(vault), 'Alis/Todo.md', 'new task after rebrand',
                         before['document']['sha256'], before['managed']['sha256'])
-    after = todo.scan_note(str(vault), 'Hadalis/Todo.md')
+    after = todo.scan_note(str(vault), 'Alis/Todo.md')
     assert after['tasks'][0]['id'] == old_id and len(after['tasks']) == 2
     assert note.read_bytes().startswith(b'# Existing owner note\r\n')
     assert note.read_bytes().endswith(b'Unrelated owner bytes.\r\n')
-    assert note.read_bytes().count(b'<!-- hadalis:todo:start -->') == 1
+    assert note.read_bytes().count(b'<!-- alis:todo:start -->') == 1
 
     fresh_home = private / 'fresh-data/alis-intergration'
     assert manager.operate('install', fresh_home, HOST, revision_fetch=lambda:new_sha, archive_fetch=fetch)['available']

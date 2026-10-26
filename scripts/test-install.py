@@ -13,7 +13,7 @@ spec = importlib.util.spec_from_file_location("installer", ROOT / "scripts/insta
 installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
 
-with tempfile.TemporaryDirectory(prefix="hadalird-install-") as name:
+with tempfile.TemporaryDirectory(prefix="alis-intergration-install-") as name:
     private = Path(name)
     source = private / "source"
     shutil.copytree(ROOT, source, ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"))
@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix="hadalird-install-") as name:
     original_manifest = (release / "manifest.json").read_text()
     omitted = dict(manifest)
     omitted["files"] = {name: value for name, value in manifest["files"].items()
-                        if name != "HadalisSession.qml"}
+                        if name != "AlisSession.qml"}
     (release / "manifest.json").write_text(json.dumps(omitted))
     expect_reinstall_rejected("missing mandatory digest entry accepted")
     (release / "manifest.json").write_text(original_manifest)
@@ -86,7 +86,7 @@ with tempfile.TemporaryDirectory(prefix="hadalird-install-") as name:
             pass
     assert foreign.exists()
     (data / "current").unlink()
-    (release / "HadalisSession.qml").write_text("modified")
+    (release / "AlisSession.qml").write_text("modified")
     try:
         installer.install(data, source)
         raise AssertionError("modified release accepted")
@@ -100,22 +100,22 @@ with tempfile.TemporaryDirectory(prefix="hadalird-install-") as name:
         pass
     stage = private / "system"
     subprocess.run(["make", "install-helpers", "DESTDIR=" + str(stage), "LIBEXECDIR=/custom/libexec",
-                    "POLKIT_ACTIONS_DIR=/custom/share/polkit-1/actions", "INIR_SYSTEM_SHAREDIR=/custom/share/inir",
+                    "POLKIT_ACTIONS_DIR=/custom/share/polkit-1/actions", "ALIS_SYSTEM_SHAREDIR=/custom/share/alis",
                     "TLP_CONFDIR=/custom/etc/tlp.d"], cwd=source, check=True, stdout=subprocess.DEVNULL)
-    assert (stage / "custom/libexec/inir-thinkfan").is_file()
-    battery = stage / "custom/libexec/inir-battery-charge-limit"
+    assert (stage / "custom/libexec/alis-thinkfan").is_file()
+    battery = stage / "custom/libexec/alis-battery-charge-limit"
     # Source only pure helper definitions under the fixture basename, so neither
     # root checks nor hardware actions run. Read the installed path assignments.
     result = subprocess.run(["sh", "-ec", '. "$1"; printf "%s\\n" "$config_dir" "$config_file" "$tlp_settings_config_file" "$tlp_settings_schema"',
                              "fixture", str(battery)], check=True, text=True, capture_output=True)
-    assert result.stdout.splitlines() == ["/custom/etc/tlp.d", "/custom/etc/tlp.d/99-inir-battery-charge-limit.conf",
-                                          "/custom/etc/tlp.d/99-inir-tlp-settings.conf", "/custom/share/inir/tlp-settings-schema.json"]
-    for feature, helper in (("battery-charge-limit", "inir-battery-charge-limit"), ("thinkfan", "inir-thinkfan")):
-        policy = ET.parse(stage / "custom/share/polkit-1/actions" / ("org.inir." + feature + ".policy"))
+    assert result.stdout.splitlines() == ["/custom/etc/tlp.d", "/custom/etc/tlp.d/99-alis-battery-charge-limit.conf",
+                                          "/custom/etc/tlp.d/99-alis-tlp-settings.conf", "/custom/share/alis/tlp-settings-schema.json"]
+    for feature, helper in (("battery-charge-limit", "alis-battery-charge-limit"), ("thinkfan", "alis-thinkfan")):
+        policy = ET.parse(stage / "custom/share/polkit-1/actions" / ("org.alis." + feature + ".policy"))
         assert policy.find('.//annotate[@key="org.freedesktop.policykit.exec.path"]').text == "/custom/libexec/" + helper
         assert policy.find('.//allow_any').text == "no"
         assert policy.find('.//allow_inactive').text == "no"
         assert policy.find('.//allow_active').text == "yes"
-    assert (stage / "custom/share/inir/tlp-settings-schema.json").is_file()
+    assert (stage / "custom/share/alis/tlp-settings-schema.json").is_file()
     assert not (stage / "etc").exists() and not (stage / "custom/etc").exists()
-print("HADALIRD_INSTALL_PASS exact source, immutable release, owned link, idempotence, prefix/DESTDIR, no profiles")
+print("ALIS_INTERGRATION_INSTALL_PASS exact source, immutable release, owned link, idempotence, prefix/DESTDIR, no profiles")

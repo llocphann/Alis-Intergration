@@ -8,7 +8,7 @@ import re
 import sys
 
 ENTRYPOINTS = {
-    "session": "HadalisSession.qml",
+    "session": "AlisSession.qml",
     "thinkfanSettings": "modules/settings/ThinkfanSettings.qml",
     "tlpSettings": "modules/settings/TlpPowerSettings.qml",
     "obsidianSettings": "modules/settings/ObsidianThemeSettings.qml",
@@ -82,7 +82,7 @@ def inspect_package(package):
         data = json.loads(manifest.read_text())
         if not isinstance(data, dict):
             raise ValueError("manifest must be an object")
-        if data.get("id") != "hadalird" or type(data.get("hostApi")) is not int or data["hostApi"] != 1:
+        if data.get("id") != "alis-intergration" or type(data.get("hostApi")) is not int or data["hostApi"] != 1:
             return {**result, "diagnostic": "incompatible-package"}
         settings, backends = data.get("settings", {}), data.get("backends", {})
         if not isinstance(settings, dict) or not isinstance(backends, dict):
@@ -134,8 +134,8 @@ def inspect_package(package):
 
 
 def inspect(shell_root, data_home=None):
-    user_data = Path(data_home or os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "hadalird"
-    package = Path(shell_root) / "optional/hadalird"
+    user_data = Path(data_home or os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "alis-intergration"
+    package = Path(shell_root) / "optional/alis-intergration"
     if not package.exists():
         package = user_data / "current"
     result = inspect_package(package)

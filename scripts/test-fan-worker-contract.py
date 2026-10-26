@@ -8,7 +8,7 @@ def check(condition,message):
     if not condition: failures.append(message)
 def main():
     thinkfan_service=read("services/ThinkFanService.qml")
-    thinkfan_helper=read("assets/helpers/inir-thinkfan")
+    thinkfan_helper=read("assets/helpers/alis-thinkfan")
     for token in (
         "import Quickshell.Services.UPower",
         "property bool directControlAvailable: false",
@@ -55,5 +55,5 @@ def main():
     for token in ("find_thinkfan()", "service_name=thinkfan.service", 'systemctl cat "$service_name"', "[ -r /etc/thinkfan.yaml ]", "[ -r /etc/thinkfan.conf ]"):
         check(token in thinkfan_helper,"missing optional ThinkFan dependency guard: "+token)
     if failures: raise AssertionError("\n".join(failures))
-    print("HADALIRD_FAN_WORKER_CONTRACT_PASS")
+    print("ALIS_INTERGRATION_FAN_WORKER_CONTRACT_PASS")
 if __name__=="__main__": main()

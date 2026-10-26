@@ -9,11 +9,11 @@ with tempfile.TemporaryDirectory(prefix="alis-integration-host-path-") as name:
     root = Path(name)
     integration = root / "Alis-Intergration"
     integration.mkdir()
-    legacy = root / "Hadalis"
+    legacy = root / "Alis"
     canonical = root / "Alis"
 
     def make_host(path):
-        (path / "scripts").mkdir(parents=True)
+        (path / "scripts").mkdir(parents=True, exist_ok=True)
         (path / "scripts/native_test_session.py").write_text("# fixture\n")
         return path.resolve()
 
@@ -27,10 +27,10 @@ with tempfile.TemporaryDirectory(prefix="alis-integration-host-path-") as name:
     assert resolve_host_root(integration, {}) == legacy.resolve()
     make_host(canonical)
     assert resolve_host_root(integration, {}) == canonical.resolve()
-    assert resolve_host_root(integration, {"HADALIS_ROOT": str(legacy)}) == legacy.resolve()
+    assert resolve_host_root(integration, {"ALIS_ROOT": str(legacy)}) == legacy.resolve()
     assert resolve_host_root(integration, {"ALIS_ROOT": str(canonical)}) == canonical.resolve()
     assert resolve_host_root(integration, {"ALIS_ROOT": str(canonical),
-                                          "HADALIS_ROOT": str(legacy)}) == canonical.resolve()
+                                          "ALIS_ROOT": str(legacy)}) == canonical.resolve()
     try:
         resolve_host_root(integration, {"ALIS_ROOT": str(root / "nonexistent")})
         raise AssertionError("missing explicit host accepted")

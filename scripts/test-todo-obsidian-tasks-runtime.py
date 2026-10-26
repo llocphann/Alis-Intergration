@@ -28,13 +28,13 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         vault = Path(tmp.name) / "Vault"
-        note = vault / "Hadalis" / "Todo.md"
+        note = vault / "Alis" / "Todo.md"
         note.parent.mkdir(parents=True)
         note.write_text(
             text
-            or "<!-- hadalis:todo:start -->\n"
+            or "<!-- alis:todo:start -->\n"
                "- [ ] task\n"
-               "<!-- hadalis:todo:end -->\n",
+               "<!-- alis:todo:end -->\n",
             encoding="utf-8",
         )
         return vault, note
@@ -283,7 +283,7 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
 
     def test_toggle_eval_uses_tasks_api_vault_process_and_exact_line_guard(self):
         code = obsidian_tasks._toggle_eval_code(
-            "/vault", "Hadalis/Todo.md", 7, "- [ ] café"
+            "/vault", "Alis/Todo.md", 7, "- [ ] café"
         )
         self.assertIn("adapter.getBasePath()!==expectedVault", code)
         self.assertIn("app.vault.getFileByPath(notePath)", code)
@@ -297,7 +297,7 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
 
     def test_toggle_when_stopped_never_invokes_cli(self):
         vault, _ = self.make_vault()
-        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Hadalis/Todo.md")
+        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Alis/Todo.md")
         self.patch("_obsidian_running", lambda: False)
         self.patch("_find_cli", lambda: "/fake/obsidian")
 
@@ -308,7 +308,7 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
         with self.assertRaises(obsidian_tasks.RuntimeErrorInfo) as error:
             obsidian_tasks.toggle_tasks_task(
                 str(vault),
-                "Hadalis/Todo.md",
+                "Alis/Todo.md",
                 scan["tasks"][0]["id"],
                 scan["document"]["sha256"],
             )
@@ -316,9 +316,9 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
 
     def test_toggle_requires_fresh_document_hash_before_cli(self):
         vault, note = self.make_vault()
-        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Hadalis/Todo.md")
+        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Alis/Todo.md")
         note.write_text(
-            "<!-- hadalis:todo:start -->\n- [ ] changed\n<!-- hadalis:todo:end -->\n",
+            "<!-- alis:todo:start -->\n- [ ] changed\n<!-- alis:todo:end -->\n",
             encoding="utf-8",
         )
         self.patch("_obsidian_running", lambda: True)
@@ -331,7 +331,7 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
         with self.assertRaises(obsidian_tasks.obsidian_todo.TodoError) as error:
             obsidian_tasks.toggle_tasks_task(
                 str(vault),
-                "Hadalis/Todo.md",
+                "Alis/Todo.md",
                 scan["tasks"][0]["id"],
                 scan["document"]["sha256"],
             )
@@ -339,7 +339,7 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
 
     def test_success_is_verified_by_fresh_filesystem_scan(self):
         vault, note = self.make_vault()
-        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Hadalis/Todo.md")
+        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Alis/Todo.md")
         self.patch("_obsidian_running", lambda: True)
         self.patch("_find_cli", lambda: "/fake/obsidian")
         calls = []
@@ -369,7 +369,7 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
         self.patch("_run_cli", fake_cli)
         result = obsidian_tasks.toggle_tasks_task(
             str(vault),
-            "Hadalis/Todo.md",
+            "Alis/Todo.md",
             scan["tasks"][0]["id"],
             scan["document"]["sha256"],
         )
@@ -382,7 +382,7 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
         vault, note = self.make_vault()
         alias = vault.parent / "VaultAlias"
         alias.symlink_to(vault, target_is_directory=True)
-        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Hadalis/Todo.md")
+        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Alis/Todo.md")
         self.patch("_obsidian_running", lambda: True)
         self.patch("_find_cli", lambda: "/fake/obsidian")
         calls = []
@@ -413,7 +413,7 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
         self.patch("_run_cli", fake_cli)
         result = obsidian_tasks.toggle_tasks_task(
             str(vault),
-            "Hadalis/Todo.md",
+            "Alis/Todo.md",
             scan["tasks"][0]["id"],
             scan["document"]["sha256"],
         )
@@ -423,11 +423,11 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
 
     def test_recurring_tasks_transform_can_expand_one_line_to_two(self):
         vault, note = self.make_vault(
-            "<!-- hadalis:todo:start -->\n"
+            "<!-- alis:todo:start -->\n"
             "- [ ] repeat 🔁 every day\n"
-            "<!-- hadalis:todo:end -->\n"
+            "<!-- alis:todo:end -->\n"
         )
-        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Hadalis/Todo.md")
+        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Alis/Todo.md")
         self.patch("_obsidian_running", lambda: True)
         self.patch("_find_cli", lambda: "/fake/obsidian")
         capability = {
@@ -458,7 +458,7 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
         self.patch("_run_cli", fake_cli)
         result = obsidian_tasks.toggle_tasks_task(
             str(vault),
-            "Hadalis/Todo.md",
+            "Alis/Todo.md",
             scan["tasks"][0]["id"],
             scan["document"]["sha256"],
         )
@@ -469,11 +469,11 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
 
     def test_on_completion_delete_can_transform_one_line_to_zero(self):
         vault, note = self.make_vault(
-            "<!-- hadalis:todo:start -->\n"
+            "<!-- alis:todo:start -->\n"
             "- [ ] delete me 🏁 delete\n"
-            "<!-- hadalis:todo:end -->\n"
+            "<!-- alis:todo:end -->\n"
         )
-        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Hadalis/Todo.md")
+        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Alis/Todo.md")
         self.patch("_obsidian_running", lambda: True)
         self.patch("_find_cli", lambda: "/fake/obsidian")
         capability = {
@@ -500,7 +500,7 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
         self.patch("_run_cli", fake_cli)
         result = obsidian_tasks.toggle_tasks_task(
             str(vault),
-            "Hadalis/Todo.md",
+            "Alis/Todo.md",
             scan["tasks"][0]["id"],
             scan["document"]["sha256"],
         )
@@ -509,7 +509,7 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
 
     def test_unchanged_file_is_not_accepted_as_mutation_success(self):
         vault, _ = self.make_vault()
-        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Hadalis/Todo.md")
+        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), "Alis/Todo.md")
         self.patch("_obsidian_running", lambda: True)
         self.patch("_find_cli", lambda: "/fake/obsidian")
         capability = {
@@ -532,7 +532,7 @@ class ObsidianTasksRuntimeTests(unittest.TestCase):
         with self.assertRaises(obsidian_tasks.RuntimeErrorInfo) as error:
             obsidian_tasks.toggle_tasks_task(
                 str(vault),
-                "Hadalis/Todo.md",
+                "Alis/Todo.md",
                 scan["tasks"][0]["id"],
                 scan["document"]["sha256"],
             )

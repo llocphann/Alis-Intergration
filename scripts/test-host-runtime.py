@@ -18,7 +18,7 @@ spec = importlib.util.spec_from_file_location("installer", ROOT / "scripts/insta
 installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
 
-with tempfile.TemporaryDirectory(prefix="hadalird-native-") as name:
+with tempfile.TemporaryDirectory(prefix="alis-intergration-native-") as name:
     private = Path(name)
     shell = private / "shell"
     shell.mkdir()
@@ -38,12 +38,12 @@ with tempfile.TemporaryDirectory(prefix="hadalird-native-") as name:
     (vault / ".obsidian").mkdir(parents=True)
     (vault / ".obsidian/appearance.json").write_text(json.dumps({"cssTheme":"Fixture","enabledCssSnippets":[]}))
     managed = vault / "Managed.md"
-    managed.write_text("# Todo\n<!-- hadalis:todo:start -->\n- [ ] first\n<!-- hadalis:todo:end -->\n")
+    managed.write_text("# Todo\n<!-- alis:todo:start -->\n- [ ] first\n<!-- alis:todo:end -->\n")
     (vault / "Daily.md").write_text("## Tasks\n- [ ] first daily\n## Notes\n")
     config = private / "config/alis"
     config.mkdir(parents=True)
     options = json.loads((HOST / "defaults/config.json").read_text())
-    options["integrations"]["hadalird"] = {key:False for key in ("tlp","thinkfan","obsidian")}
+    options["integrations"]["alisIntergration"] = {key:False for key in ("tlp","thinkfan","obsidian")}
     options["battery"]["chargeLimit"]["enable"] = False
     options["powerProfiles"]["fanControl"]["enabled"] = False
     options["integrations"]["obsidian"]["autoTheme"] = False
@@ -68,14 +68,14 @@ ShellRoot {
   function check(value,message){if(!value)throw new Error(message)}
   function runChecks(){try{
    tryCompare(Config,"ready",true,4000)
-   tryCompare(Hadalird,"available",true,4000)
-   check(Hadalird.session===null,"package enabled itself")
-   Config.setNestedValue("integrations.hadalird.obsidian",true)
-   tryVerify(()=>Hadalird.session!==null,2000)
-   const session=Hadalird.session
+   tryCompare(AlisIntergration,"available",true,4000)
+   check(AlisIntergration.session===null,"package enabled itself")
+   Config.setNestedValue("integrations.alisIntergration.obsidian",true)
+   tryVerify(()=>AlisIntergration.session!==null,2000)
+   const session=AlisIntergration.session
    session.batteryHelperPath=Quickshell.env("FIXTURE_HELPER")
    session.fanHelperPath=Quickshell.env("FIXTURE_HELPER")
-   Config.setNestedValues({"integrations.hadalird.tlp":true,"integrations.hadalird.thinkfan":true})
+   Config.setNestedValues({"integrations.alisIntergration.tlp":true,"integrations.alisIntergration.thinkfan":true})
    tryCompare(TlpSettingsService,"schemaLoaded",true,3000)
    check(TlpSettingsService.categories.length>0,"external schema URI did not resolve")
    check(TlpSettingsService._array(TlpSettingsService.categories).length>0,"shared value adapter failed")
@@ -99,12 +99,12 @@ ShellRoot {
    check(Zettelkasten.capture("Fixture note","Only synthetic content"),"capture was not queued")
    tryVerify(()=>Zettelkasten.lastCreatedFullPath.length>0 && !Zettelkasten.busy,4000)
    check(Zettelkasten.lastCreatedFullPath.startsWith(Quickshell.env("FIXTURE_VAULT")+"/"),"capture escaped its synthetic vault")
-   check(Hadalird.session===session,"actions rebuilt the shared session")
-   Config.setNestedValues({"integrations.hadalird.tlp":false,"integrations.hadalird.thinkfan":false,"integrations.hadalird.obsidian":false})
-   tryVerify(()=>Hadalird.session===null && managed.implementation===null && daily.implementation===null,2000)
+   check(AlisIntergration.session===session,"actions rebuilt the shared session")
+   Config.setNestedValues({"integrations.alisIntergration.tlp":false,"integrations.alisIntergration.thinkfan":false,"integrations.alisIntergration.obsidian":false})
+   tryVerify(()=>AlisIntergration.session===null && managed.implementation===null && daily.implementation===null,2000)
    check(!managed.ready && !daily.ready && !TlpService.available && !ThinkFanService.available,"unload retained a worker")
-   console.info("HADALIRD_REAL_HOST_PASS")
-  }catch(error){console.error("HADALIRD_REAL_HOST_FAIL",error.message,error.stack,JSON.stringify({obsidian:Hadalird.obsidianEnabled,managed:{active:managed.active,configured:managed.configured,ready:managed.ready,error:managed.errorMessage,implementation:String(managed.implementation),source:Hadalird.backendSource("managed"),vault:managed.implementation?.vaultPath,note:managed.implementation?.notePath,helper:managed.implementation?.helperPath,busy:managed.implementation?.busy,list:managed.implementation?.list,capabilityBusy:managed.implementation?.capabilityBusy,queued:managed.implementation?._refreshQueued},daily:{ready:daily.ready,error:daily.errorMessage,implementation:String(daily.implementation)}}))}Qt.quit()}
+   console.info("ALIS_INTERGRATION_REAL_HOST_PASS")
+  }catch(error){console.error("ALIS_INTERGRATION_REAL_HOST_FAIL",error.message,error.stack,JSON.stringify({obsidian:AlisIntergration.obsidianEnabled,managed:{active:managed.active,configured:managed.configured,ready:managed.ready,error:managed.errorMessage,implementation:String(managed.implementation),source:AlisIntergration.backendSource("managed"),vault:managed.implementation?.vaultPath,note:managed.implementation?.notePath,helper:managed.implementation?.helperPath,busy:managed.implementation?.busy,list:managed.implementation?.list,capabilityBusy:managed.implementation?.capabilityBusy,queued:managed.implementation?._refreshQueued},daily:{ready:daily.ready,error:daily.errorMessage,implementation:String(daily.implementation)}}))}Qt.quit()}
  }
  Timer {interval:100;running:true;onTriggered:test.runChecks()}
 }
@@ -121,7 +121,7 @@ ShellRoot {
         env.update({key:value for key,value in wayland_env.items() if key in ("WAYLAND_DISPLAY","NIRI_SOCKET","DISPLAY","XDG_RUNTIME_DIR")})
         env["QT_QPA_PLATFORM"]="wayland"
         result = run_qs(shell,env,timeout=35)
-    if result.returncode or "HADALIRD_REAL_HOST_PASS" not in result.stdout or any(token in result.stdout for token in ("HADALIRD_REAL_HOST_FAIL","TypeError:","ReferenceError:","Binding loop","Unable to assign","Failed to load configuration")):
+    if result.returncode or "ALIS_INTERGRATION_REAL_HOST_PASS" not in result.stdout or any(token in result.stdout for token in ("ALIS_INTERGRATION_REAL_HOST_FAIL","TypeError:","ReferenceError:","Binding loop","Unable to assign","Failed to load configuration")):
         print(result.stdout)
         raise SystemExit(1)
     assert "added through optional host" in managed.read_text()
@@ -129,4 +129,4 @@ ShellRoot {
     assert json.loads((vault/".obsidian/appearance.json").read_text())["cssTheme"]=="Fixture"
     invocations = [json.loads(line) for line in calls.read_text().splitlines()]
     assert invocations and all(argv in (["--status"],["--config-status"]) for argv in invocations),invocations
-print("HADALIRD_REAL_HOST_PASS real external workers/settings/URI, synthetic vault receipts, only injected status helpers, disable/unload")
+print("ALIS_INTERGRATION_REAL_HOST_PASS real external workers/settings/URI, synthetic vault receipts, only injected status helpers, disable/unload")

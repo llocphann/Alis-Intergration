@@ -4,8 +4,8 @@ set -u
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
-helper="$repo_root/assets/helpers/inir-battery-charge-limit"
-installed_helper=${INIR_TLP_HELPER:-/usr/libexec/inir-battery-charge-limit}
+helper="$repo_root/assets/helpers/alis-battery-charge-limit"
+installed_helper=${ALIS_TLP_HELPER:-/usr/libexec/alis-battery-charge-limit}
 live_tmp=""
 
 live_fail() {
@@ -47,9 +47,9 @@ live_capture() {
     "$installed_helper" --config-status > "$destination/settings.json" || return 1
     jq -e '.schema == 1' "$destination/charge.json" >/dev/null || return 1
     jq -e '.schema == 1' "$destination/settings.json" >/dev/null || return 1
-    live_file_fingerprint /etc/tlp.d/99-inir-battery-charge-limit.conf \
+    live_file_fingerprint /etc/tlp.d/99-alis-battery-charge-limit.conf \
         > "$destination/battery-dropin.fingerprint" || return 1
-    live_file_fingerprint /etc/tlp.d/99-inir-tlp-settings.conf \
+    live_file_fingerprint /etc/tlp.d/99-alis-tlp-settings.conf \
         > "$destination/settings-dropin.fingerprint" || return 1
     systemctl is-active tlp.service > "$destination/tlp-service" 2>/dev/null || true
 }
@@ -93,14 +93,14 @@ live_compare() {
     before_charge=$(jq -Sc '{managed, managedBattery, managedStart, managedLimit}' "$before/charge.json") || return 1
     after_charge=$(jq -Sc '{managed, managedBattery, managedStart, managedLimit}' "$after/charge.json") || return 1
     [ "$before_charge" = "$after_charge" ] || {
-        live_fail 'iNiR battery-care ownership changed during the lifecycle event'
+        live_fail 'Alis battery-care ownership changed during the lifecycle event'
         return 1
     }
 
     before_settings=$(jq -Sc '.managed' "$before/settings.json") || return 1
     after_settings=$(jq -Sc '.managed' "$after/settings.json") || return 1
     [ "$before_settings" = "$after_settings" ] || {
-        live_fail 'iNiR general TLP overrides changed during the lifecycle event'
+        live_fail 'Alis general TLP overrides changed during the lifecycle event'
         return 1
     }
 
@@ -147,20 +147,20 @@ run_live_lifecycle() {
         else true
         end
     ' "$live_tmp/before/charge.json" >/dev/null || {
-        live_fail 'the battery policy is already out of sync; wait for iNiR reconciliation before testing a lifecycle event'
+        live_fail 'the battery policy is already out of sync; wait for Alis reconciliation before testing a lifecycle event'
         return 1
     }
 
     case "$event" in
         restart)
-            if command -v inir >/dev/null 2>&1; then
-                launcher=$(command -v inir)
+            if command -v alis >/dev/null 2>&1; then
+                launcher=$(command -v alis)
             else
-                launcher="$repo_root/scripts/inir"
+                launcher="$repo_root/scripts/alis"
             fi
-            [ -x "$launcher" ] || live_fail 'could not resolve the iNiR launcher' || return 1
-            printf '%s\n' 'Restarting Quickshell through iNiR...'
-            "$launcher" restart || live_fail 'iNiR restart failed' || return 1
+            [ -x "$launcher" ] || live_fail 'could not resolve the Alis launcher' || return 1
+            printf '%s\n' 'Restarting Quickshell through Alis...'
+            "$launcher" restart || live_fail 'Alis restart failed' || return 1
             sleep 5
             ;;
         display)
@@ -229,10 +229,10 @@ assert_not_contains() {
 reset_case() {
     case_dir=$(mktemp -d "$suite_tmp/case.XXXXXX")
     config_dir="$case_dir/etc/tlp.d"
-    config_file="$config_dir/99-inir-battery-charge-limit.conf"
-    tlp_settings_config_file="$config_dir/99-inir-tlp-settings.conf"
+    config_file="$config_dir/99-alis-battery-charge-limit.conf"
+    tlp_settings_config_file="$config_dir/99-alis-tlp-settings.conf"
     tlp_settings_schema="$repo_root/assets/tlp/tlp-settings-schema.json"
-    tlp_settings_lock="$case_dir/inir-tlp-settings.lock"
+    tlp_settings_lock="$case_dir/alis-tlp-settings.lock"
     platform_profile_choices_file="$case_dir/platform_profile_choices"
     mkdir -p "$config_dir"
     printf '%s\n' 'performance balanced low-power balanced-performance quiet cool' > "$platform_profile_choices_file"
@@ -391,7 +391,7 @@ simulate_tlp_resume() {
 
     # TLP owns suspend/resume. Its system-sleep hook re-reads the persistent
     # configuration and applies the relevant profile. Hardware which needs
-    # threshold restoration sees the same iNiR-owned drop-in at resume time.
+    # threshold restoration sees the same Alis-owned drop-in at resume time.
     [ ! -f "$config_file" ] || apply_staged_state
 }
 
@@ -453,7 +453,7 @@ test_disabled_tlp_fails_closed() {
         .supported == false and
         .managed == true and
         .reason == "tlp-disabled"
-    ' >/dev/null || fail 'a disabled TLP must fail closed without hiding iNiR ownership'
+    ' >/dev/null || fail 'a disabled TLP must fail closed without hiding Alis ownership'
 }
 
 test_unreadable_tlp_config_fails_closed() {
@@ -492,7 +492,7 @@ test_missing_battery_preserves_managed_ownership() {
         .supported == false and
         .managed == true and
         .reason == "battery-unavailable"
-    ' >/dev/null || fail 'a removed battery must not hide iNiR drop-in ownership'
+    ' >/dev/null || fail 'a removed battery must not hide Alis drop-in ownership'
 }
 
 test_plugin_capability_classes() {
@@ -541,7 +541,7 @@ test_dell_derives_valid_start_and_bat1_key() {
     set_policy 80 >/dev/null 2>&1 || fail 'Dell policy should apply'
     assert_contains 'START_CHARGE_THRESH_BAT1=50' "$config_file" 'Dell must use its minimum valid start threshold'
     assert_contains 'STOP_CHARGE_THRESH_BAT1=80' "$config_file" 'Dell must target the TLP-selected BAT1 key'
-    assert_not_contains 'RESTORE_THRESHOLDS_ON_BAT' "$config_file" 'iNiR must not override the user restore setting'
+    assert_not_contains 'RESTORE_THRESHOLDS_ON_BAT' "$config_file" 'Alis must not override the user restore setting'
     assert_eq 644 "$(stat -c '%a' "$config_file")" 'managed policy mode must be 0644'
 }
 
@@ -579,7 +579,7 @@ test_fixed_mode_normalizes_hidden_threshold() {
 
     set_policy 73 >/dev/null 2>&1 || fail 'fixed MacBook mode should ignore a stale hidden percentage'
     assert_contains 'STOP_CHARGE_THRESH_BAT1=80' "$config_file" 'MacBook conservation mode must use 80'
-    assert_not_contains 'START_CHARGE_THRESH' "$config_file" 'derived start thresholds must not be owned by iNiR'
+    assert_not_contains 'START_CHARGE_THRESH' "$config_file" 'derived start thresholds must not be owned by Alis'
 }
 
 test_silent_tlp_error_rolls_back() {
@@ -615,8 +615,8 @@ test_disable_treats_fullcharge_as_best_effort() {
     printf '%s\n' 'STOP_CHARGE_THRESH_BAT1=80' > "$config_file"
     test_fullcharge_rc=1
 
-    disable_policy >/dev/null 2>&1 || fail 'fullcharge failure alone must not retain iNiR ownership'
-    [ ! -e "$config_file" ] || fail 'disable must remove the iNiR drop-in'
+    disable_policy >/dev/null 2>&1 || fail 'fullcharge failure alone must not retain Alis ownership'
+    [ ! -e "$config_file" ] || fail 'disable must remove the Alis drop-in'
 }
 
 test_legacy_read_signatures_use_api_mode() {
@@ -644,7 +644,7 @@ test_legacy_read_signatures_use_api_mode() {
 test_tlp_settings_status_reads_effective_and_managed_values() {
     reset_case
     printf '%s\n' \
-        '# Managed by iNiR TLP Settings. Do not edit manually.' \
+        '# Managed by Alis TLP Settings. Do not edit manually.' \
         'CPU_BOOST_ON_BAT="1"' > "$tlp_settings_config_file"
 
     output=$(tlp_settings_status)
@@ -701,7 +701,7 @@ test_tlp_settings_accepts_documented_keep_and_userspace() {
 test_tlp_profile_apply_migrates_legacy_config_syntax() {
     reset_case
     printf '%s\n' \
-        '# Managed by iNiR TLP Settings. Do not edit manually.' \
+        '# Managed by Alis TLP Settings. Do not edit manually.' \
         "CPU_BOOST_ON_BAT='1'" > "$tlp_settings_config_file"
 
     tlp_settings_apply \
@@ -711,7 +711,7 @@ test_tlp_profile_apply_migrates_legacy_config_syntax() {
         || fail 'TLP profile mappings should apply'
 
     assert_contains 'CPU_BOOST_ON_BAT="1"' "$tlp_settings_config_file" \
-        'Apply must migrate a legacy iNiR override to TLP-compatible quoting'
+        'Apply must migrate a legacy Alis override to TLP-compatible quoting'
     assert_contains 'TLP_PROFILE_AC="PRF"' "$tlp_settings_config_file" \
         'AC profile mapping must be written'
     assert_contains 'TLP_PROFILE_BAT="SAV"' "$tlp_settings_config_file" \
@@ -764,7 +764,7 @@ test_tlp_settings_unset_preserves_other_overrides() {
 test_tlp_settings_silent_error_rolls_back() {
     reset_case
     printf '%s\n' \
-        '# Managed by iNiR TLP Settings. Do not edit manually.' \
+        '# Managed by Alis TLP Settings. Do not edit manually.' \
         'CPU_BOOST_ON_BAT="0"' > "$tlp_settings_config_file"
     cp "$tlp_settings_config_file" "$case_dir/expected-settings"
     test_behavior=silent-error-once
@@ -814,10 +814,10 @@ test_tlp_platform_profiles_follow_runtime_choices() {
         fail 'TLP 1.11 must reject a fallback list with no runtime match'
     fi
 
-    # A stale iNiR-owned value must stay readable after firmware capabilities
+    # A stale Alis-owned value must stay readable after firmware capabilities
     # change; otherwise the user could be locked out of the UI needed to unset it.
     printf '%s\n' \
-        '# Managed by iNiR TLP Settings. Do not edit manually.' \
+        '# Managed by Alis TLP Settings. Do not edit manually.' \
         'PLATFORM_PROFILE_ON_AC="old-vendor"' > "$tlp_settings_config_file"
     output=$(tlp_settings_status)
     printf '%s\n' "$output" | jq -e '
@@ -831,11 +831,11 @@ test_tlp_settings_reset_preserves_battery_policy() {
     reset_case
     printf '%s\n' 'STOP_CHARGE_THRESH_BAT1=80' > "$config_file"
     printf '%s\n' \
-        '# Managed by iNiR TLP Settings. Do not edit manually.' \
+        '# Managed by Alis TLP Settings. Do not edit manually.' \
         'CPU_BOOST_ON_BAT="1"' > "$tlp_settings_config_file"
 
     tlp_settings_reset >/dev/null 2>&1 || fail 'general TLP overrides should reset'
-    [ ! -e "$tlp_settings_config_file" ] || fail 'reset must remove the general iNiR drop-in'
+    [ ! -e "$tlp_settings_config_file" ] || fail 'reset must remove the general Alis drop-in'
     [ -f "$config_file" ] || fail 'reset must preserve the separate battery-care policy'
 }
 
@@ -915,12 +915,12 @@ test_tlp_settings_batch_rolls_back_both_dropins() {
     test_battery=BAT0
     test_config_battery=BAT0
     printf '%s\n' \
-        '# Managed by iNiR. Do not edit manually.' \
+        '# Managed by Alis. Do not edit manually.' \
         '# Battery/backend detected by TLP: BAT0 (thinkpad)' \
         'START_CHARGE_THRESH_BAT0=0' \
         'STOP_CHARGE_THRESH_BAT0=90' > "$config_file"
     printf '%s\n' \
-        '# Managed by iNiR TLP Settings. Do not edit manually.' \
+        '# Managed by Alis TLP Settings. Do not edit manually.' \
         'CPU_BOOST_ON_BAT="0"' > "$tlp_settings_config_file"
     cp "$config_file" "$case_dir/expected-charge"
     cp "$tlp_settings_config_file" "$case_dir/expected-settings"
@@ -1005,7 +1005,7 @@ test_startup_timer_and_display_polling_are_read_only() {
         'startup/timer/display polling must not invoke tlp start'
 }
 
-test_tlp_resume_preserves_persistent_inir_policies() {
+test_tlp_resume_preserves_persistent_alis_policies() {
     local before_calls charge_output settings_output
 
     reset_case
@@ -1028,7 +1028,7 @@ test_tlp_resume_preserves_persistent_inir_policies() {
     cmp -s "$case_dir/pre-sleep-settings-policy" "$tlp_settings_config_file" \
         || fail 'TLP resume must not rewrite the persistent settings drop-in'
     assert_eq "$before_calls" "$(cat "$calls_file")" \
-        'TLP resume must not be represented as an iNiR tlp start mutation'
+        'TLP resume must not be represented as an Alis tlp start mutation'
     assert_eq 1 "$(cat "$resume_calls_file")" 'the simulated TLP resume hook must run once'
 
     charge_output=$(status)
@@ -1154,6 +1154,6 @@ run_test 'TLP settings batch disable keeps fullcharge best-effort' test_tlp_sett
 run_test 'TLP settings batch rolls back both drop-ins' test_tlp_settings_batch_rolls_back_both_dropins
 run_test 'Quickshell lifecycle contract is status-driven' test_quickshell_lifecycle_contract_is_status_driven
 run_test 'startup timer and display polling are read-only' test_startup_timer_and_display_polling_are_read_only
-run_test 'TLP resume preserves persistent iNiR policies' test_tlp_resume_preserves_persistent_inir_policies
+run_test 'TLP resume preserves persistent Alis policies' test_tlp_resume_preserves_persistent_alis_policies
 run_test 'post-resume hardware drift is repaired transactionally' test_post_resume_hardware_drift_is_repaired_transactionally
 run_test 'disabled policy stays absent across runtime events' test_disabled_policy_stays_absent_across_runtime_events

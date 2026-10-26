@@ -4,7 +4,7 @@ set -euo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
-source_helper="$repo_root/assets/helpers/inir-thinkfan"
+source_helper="$repo_root/assets/helpers/alis-thinkfan"
 
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
@@ -12,7 +12,7 @@ state_dir="$tmp/state"
 bin_dir="$tmp/bin"
 fan_path="$tmp/fan"
 fan_control_path="$tmp/fan_control"
-helper="$tmp/inir-thinkfan"
+helper="$tmp/alis-thinkfan"
 mkdir -p "$state_dir" "$bin_dir"
 
 cp "$source_helper" "$helper"

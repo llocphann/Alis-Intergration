@@ -11,7 +11,7 @@ Item {
     id: root
     property bool _live: true
     Component.onDestruction: root._live = false
-    property string helperPath: "/usr/libexec/inir-thinkfan"
+    property string helperPath: "/usr/libexec/alis-thinkfan"
 
     property bool available: false
     property bool serviceInstalled: false

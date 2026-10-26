@@ -26,21 +26,21 @@ or uncertain transactions require inspection and an explicit
 For distribution packaging, `make install-helpers DESTDIR=/staging/root`
 installs helper/polkit/schema files without enabling services or creating
 TLP configuration overrides. Prefixes and `DESTDIR` are supported for packaging.
-`LIBEXECDIR`, `POLKIT_ACTIONS_DIR`, `INIR_SYSTEM_SHAREDIR` and `TLP_CONFDIR`
+`LIBEXECDIR`, `POLKIT_ACTIONS_DIR`, `ALIS_SYSTEM_SHAREDIR` and `TLP_CONFDIR`
 control helper, policy, schema and profile locations; helper installation does
 not create profile directories or overrides. TLP (including its optional
 Radio Device Wizard), Thinkfan and Obsidian remain separately installed apps.
 
 ## Obsidian automatic colors
 
-Alis Settings → Integrations → Obsidian → Auto theming is the only controller. “Follow Alis colors” updates `99_Alis_Theme.css` after the vault's existing snippets; Apply performs a one-time update and Disable removes only this owned selection. The generator owns the dark-to-light ramp, dark/light surface roles, theme-tinted sidebar, startup masks and numeric accent/status channels. It preserves the selected theme, fonts, notes and original snippets. A recognized old `99_Hadalis_Theme` selection is retired without deleting its bytes; an unrecognized user file is preserved. The new destination also refuses to overwrite unowned CSS.
+Alis Settings → Integrations → Obsidian → Auto theming is the only controller. “Follow Alis colors” updates `99_Alis_Theme.css` after the vault's existing snippets; Apply performs a one-time update and Disable removes only this owned selection. The generator owns the dark-to-light ramp, dark/light surface roles, theme-tinted sidebar, startup masks and numeric accent/status channels. It preserves the selected theme, fonts, notes and original snippets. A recognized old `99_Alis_Theme` selection is retired without deleting its bytes; an unrecognized user file is preserved. The new destination also refuses to overwrite unowned CSS.
 
 No auto-theme setting or synchronization plugin is needed inside Obsidian. This integration runs on Linux with Alis and the optional Integration package; Windows/macOS are unsupported. The startup templates preserve the vault's original animations. Saved Graph/Local Graph color groups are explicit numeric Obsidian overrides, so they keep their saved colors: CSS cannot rewrite their in-memory values. Graph files are not modified and Obsidian CLI evaluation is never used.
 
 Run `make test` for scoped filesystem/helper and installation contracts.
-Native tests prefer a sibling `Alis` host checkout, with a sibling `Hadalis`
+Native tests prefer a sibling `Alis` host checkout, with a sibling `Alis`
 checkout accepted for legacy fixtures. Set `ALIS_ROOT=/path/to/Alis` to pin the
-native-test host explicitly (`HADALIS_ROOT` is a supported legacy override).
+native-test host explicitly (`ALIS_ROOT` is a supported legacy override).
 They require Quickshell, Qt 6 and private Niri, and use synthetic vaults and
 injected status helpers.
 Initial provenance is recorded in `manifest.json`. All active Integration feature, rework and bug tasks are tracked **in
@@ -68,11 +68,11 @@ enable switches remain off by default.
 
 ## Compatibility and preserved data
 
-The public package name is Alis-Intergration. API 1 retains its `hadalird`
-machine identity, `HadalisSession.qml`, installed release/config locations,
+The public package name is Alis-Intergration. API 1 retains its `alis-intergration`
+machine identity, `AlisSession.qml`, installed release/config locations,
 saved preferences and existing note markers. New hosts expose
 `alis ipc integrations refresh`; older clients/hosts can keep using
-`alis ipc hadalird refresh`. Both targets use one package owner.
+`alis ipc alis-intergration refresh`. Both targets use one package owner.
 
 The fixed-hash helper/Polkit payload, including its legacy native policy
 wording, remains an explicit security compatibility exception. This rebrand

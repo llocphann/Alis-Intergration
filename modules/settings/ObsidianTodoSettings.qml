@@ -12,7 +12,7 @@ SettingsCardSection {
     id: root
     // Additive API: legacy hosts retain the combined editor.
     property string settingsView: "all"
-    objectName: "hadalirdObsidianTodoSettings"
+    objectName: "alisIntergrationObsidianTodoSettings"
     settingsTaskSection: "obsidian"
     expanded: true
     icon: "checklist"

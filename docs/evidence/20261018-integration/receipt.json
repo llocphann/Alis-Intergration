@@ -77,71 +77,71 @@
       },
       {
         "number": 209,
-        "name": "Python regression: scripts/test-hadalird-arch-package.py",
-        "command": "python3 scripts/test-hadalird-arch-package.py",
+        "name": "Python regression: scripts/test-alis-intergration-arch-package.py",
+        "command": "python3 scripts/test-alis-intergration-arch-package.py",
         "result": "PASS",
         "exit": 0
       },
       {
         "number": 210,
-        "name": "Python regression: scripts/test-hadalird-gateway-bootstrap.py",
-        "command": "python3 scripts/test-hadalird-gateway-bootstrap.py",
+        "name": "Python regression: scripts/test-alis-intergration-gateway-bootstrap.py",
+        "command": "python3 scripts/test-alis-intergration-gateway-bootstrap.py",
         "result": "PASS",
         "exit": 0
       },
       {
         "number": 211,
-        "name": "Python regression: scripts/test-hadalird-install-lifecycle.py",
-        "command": "python3 scripts/test-hadalird-install-lifecycle.py",
+        "name": "Python regression: scripts/test-alis-intergration-install-lifecycle.py",
+        "command": "python3 scripts/test-alis-intergration-install-lifecycle.py",
         "result": "PASS",
         "exit": 0
       },
       {
         "number": 212,
-        "name": "Python regression: scripts/test-hadalird-manager.py",
-        "command": "python3 scripts/test-hadalird-manager.py",
+        "name": "Python regression: scripts/test-alis-intergration-manager.py",
+        "command": "python3 scripts/test-alis-intergration-manager.py",
         "result": "PASS",
         "exit": 0
       },
       {
         "number": 213,
-        "name": "Python regression: scripts/test-hadalird-obsidian-wrapper.py",
-        "command": "python3 scripts/test-hadalird-obsidian-wrapper.py",
+        "name": "Python regression: scripts/test-alis-intergration-obsidian-wrapper.py",
+        "command": "python3 scripts/test-alis-intergration-obsidian-wrapper.py",
         "result": "PASS",
         "exit": 0
       },
       {
         "number": 214,
-        "name": "Python regression: scripts/test-hadalird-optional.py",
-        "command": "python3 scripts/test-hadalird-optional.py",
+        "name": "Python regression: scripts/test-alis-intergration-optional.py",
+        "command": "python3 scripts/test-alis-intergration-optional.py",
         "result": "PASS",
         "exit": 0
       },
       {
         "number": 215,
-        "name": "Python regression: scripts/test-hadalird-polkit-visibility.py",
-        "command": "python3 scripts/test-hadalird-polkit-visibility.py",
+        "name": "Python regression: scripts/test-alis-intergration-polkit-visibility.py",
+        "command": "python3 scripts/test-alis-intergration-polkit-visibility.py",
         "result": "PASS",
         "exit": 0
       },
       {
         "number": 216,
-        "name": "Python regression: scripts/test-hadalird-preferences-migration.py",
-        "command": "python3 scripts/test-hadalird-preferences-migration.py",
+        "name": "Python regression: scripts/test-alis-intergration-preferences-migration.py",
+        "command": "python3 scripts/test-alis-intergration-preferences-migration.py",
         "result": "PASS",
         "exit": 0
       },
       {
         "number": 217,
-        "name": "Python regression: scripts/test-hadalird-settings-flow.py",
-        "command": "python3 scripts/test-hadalird-settings-flow.py",
+        "name": "Python regression: scripts/test-alis-intergration-settings-flow.py",
+        "command": "python3 scripts/test-alis-intergration-settings-flow.py",
         "result": "PASS",
         "exit": 0
       },
       {
         "number": 218,
-        "name": "Python regression: scripts/test-hadalird-system-provision.py",
-        "command": "python3 scripts/test-hadalird-system-provision.py",
+        "name": "Python regression: scripts/test-alis-intergration-system-provision.py",
+        "command": "python3 scripts/test-alis-intergration-system-provision.py",
         "result": "PASS",
         "exit": 0
       },
@@ -246,7 +246,7 @@
     "Four stale host route contracts now follow metadata-driven plugin tabs, generic System Battery and legacy deep links.",
     "Management offers explicit Use Alis tasks recovery when the package is absent/disabled; private Niri tests preserve synthetic task bytes.",
     "Malformed/nonzero Quicknote receipts cannot report a save or overwrite prior saved paths; successful recovery is tested.",
-    "Native fixture uses canonical config/alis; package and host agree on original inir helper/policy/schema identities and five payload hashes."
+    "Native fixture uses canonical config/alis; package and host agree on original alis helper/policy/schema identities and five payload hashes."
   ],
   "installedReadOnlySnapshot": {
     "package": {
@@ -261,7 +261,7 @@
       "scope": "file presence/hash only; no helper or privileged operation executed",
       "files": [
         {
-          "target": "/usr/libexec/inir-battery-charge-limit",
+          "target": "/usr/libexec/alis-battery-charge-limit",
           "expectedSha256": "8244445450870f78507dee75ef62005acb1338e0f3fee635d9dc92fac3e93562",
           "exists": true,
           "linked": false,
@@ -270,7 +270,7 @@
           "matches": true
         },
         {
-          "target": "/usr/libexec/inir-thinkfan",
+          "target": "/usr/libexec/alis-thinkfan",
           "expectedSha256": "d0d66270170999a86a791fd0da9a6e8a8c431dcd5f39b59a53fb7ab3d48d6f16",
           "exists": true,
           "linked": false,
@@ -279,7 +279,7 @@
           "matches": true
         },
         {
-          "target": "/usr/share/polkit-1/actions/org.inir.battery-charge-limit.policy",
+          "target": "/usr/share/polkit-1/actions/org.alis.battery-charge-limit.policy",
           "expectedSha256": "f201c62a44715372c9d463f1c5cc492d48fcc54834ed6137b5103d22257921c5",
           "exists": true,
           "linked": false,
@@ -288,7 +288,7 @@
           "matches": true
         },
         {
-          "target": "/usr/share/polkit-1/actions/org.inir.thinkfan.policy",
+          "target": "/usr/share/polkit-1/actions/org.alis.thinkfan.policy",
           "expectedSha256": "13bfd4dc99baa4aa5b2b09db6d7e3cd45765967487ebe0b82597e6cfd13ca2ef",
           "exists": true,
           "linked": false,
@@ -297,7 +297,7 @@
           "matches": true
         },
         {
-          "target": "/usr/share/inir/tlp-settings-schema.json",
+          "target": "/usr/share/alis/tlp-settings-schema.json",
           "expectedSha256": "b23cdaa8b3bb4fd3f8bd36e1bb1c8b61fcce0018eaa5175656353af42d309adb",
           "exists": true,
           "linked": false,
@@ -312,12 +312,12 @@
       "scope": "read-only file hashes; no installed helper executed",
       "files": [
         {
-          "target": "/usr/libexec/alis-hadalird-system-provision",
+          "target": "/usr/libexec/alis-intergration-system-provision",
           "exists": false,
           "linked": false
         },
         {
-          "target": "/usr/share/polkit-1/actions/org.alis.hadalird-system-provision.policy",
+          "target": "/usr/share/polkit-1/actions/org.alis.intergration-system-provision.policy",
           "exists": false,
           "linked": false
         }

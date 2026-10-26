@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
 <policyconfig>
-  <action id="org.inir.battery-charge-limit">
-    <description>Change iNiR-managed TLP settings</description>
-    <message>Allow Hadalis to apply its managed power settings.</message>
+  <action id="org.alis.battery-charge-limit">
+    <description>Change Alis-managed TLP settings</description>
+    <message>Allow Alis to apply its managed power settings.</message>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>
       <allow_active>yes</allow_active>
     </defaults>
-    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/inir-battery-charge-limit</annotate>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/alis-battery-charge-limit</annotate>
   </action>
 </policyconfig>

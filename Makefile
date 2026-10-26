@@ -1,6 +1,6 @@
 LIBEXECDIR ?= /usr/libexec
 POLKIT_ACTIONS_DIR ?= /usr/share/polkit-1/actions
-INIR_SYSTEM_SHAREDIR ?= /usr/share/inir
+ALIS_SYSTEM_SHAREDIR ?= /usr/share/alis
 TLP_CONFDIR ?= /etc/tlp.d
 
 .PHONY: test install uninstall install-helpers
@@ -43,12 +43,12 @@ uninstall:
 install-helpers:
 	@set -eu; stage=$$(mktemp -d); trap 'rm -rf "$$stage"' EXIT HUP INT TERM; \
 	 sed -e 's|^config_dir=.*|config_dir=$(TLP_CONFDIR)|' \
-	     -e 's|^tlp_settings_schema=.*|tlp_settings_schema=$(INIR_SYSTEM_SHAREDIR)/tlp-settings-schema.json|' \
-	     assets/helpers/inir-battery-charge-limit > "$$stage/battery"; \
-	 install -Dm755 "$$stage/battery" "$(DESTDIR)$(LIBEXECDIR)/inir-battery-charge-limit"; \
-	 install -Dm755 assets/helpers/inir-thinkfan "$(DESTDIR)$(LIBEXECDIR)/inir-thinkfan"; \
-	 sed 's|/usr/libexec/inir-battery-charge-limit|$(LIBEXECDIR)/inir-battery-charge-limit|g' assets/polkit/org.inir.battery-charge-limit.policy > "$$stage/tlp.policy"; \
-	 install -Dm644 "$$stage/tlp.policy" "$(DESTDIR)$(POLKIT_ACTIONS_DIR)/org.inir.battery-charge-limit.policy"; \
-	 sed 's|/usr/libexec/inir-thinkfan|$(LIBEXECDIR)/inir-thinkfan|g' assets/polkit/org.inir.thinkfan.policy > "$$stage/fan.policy"; \
-	 install -Dm644 "$$stage/fan.policy" "$(DESTDIR)$(POLKIT_ACTIONS_DIR)/org.inir.thinkfan.policy"; \
-	 install -Dm644 assets/tlp/tlp-settings-schema.json "$(DESTDIR)$(INIR_SYSTEM_SHAREDIR)/tlp-settings-schema.json"
+	     -e 's|^tlp_settings_schema=.*|tlp_settings_schema=$(ALIS_SYSTEM_SHAREDIR)/tlp-settings-schema.json|' \
+	     assets/helpers/alis-battery-charge-limit > "$$stage/battery"; \
+	 install -Dm755 "$$stage/battery" "$(DESTDIR)$(LIBEXECDIR)/alis-battery-charge-limit"; \
+	 install -Dm755 assets/helpers/alis-thinkfan "$(DESTDIR)$(LIBEXECDIR)/alis-thinkfan"; \
+	 sed 's|/usr/libexec/alis-battery-charge-limit|$(LIBEXECDIR)/alis-battery-charge-limit|g' assets/polkit/org.alis.battery-charge-limit.policy > "$$stage/tlp.policy"; \
+	 install -Dm644 "$$stage/tlp.policy" "$(DESTDIR)$(POLKIT_ACTIONS_DIR)/org.alis.battery-charge-limit.policy"; \
+	 sed 's|/usr/libexec/alis-thinkfan|$(LIBEXECDIR)/alis-thinkfan|g' assets/polkit/org.alis.thinkfan.policy > "$$stage/fan.policy"; \
+	 install -Dm644 "$$stage/fan.policy" "$(DESTDIR)$(POLKIT_ACTIONS_DIR)/org.alis.thinkfan.policy"; \
+	 install -Dm644 assets/tlp/tlp-settings-schema.json "$(DESTDIR)$(ALIS_SYSTEM_SHAREDIR)/tlp-settings-schema.json"

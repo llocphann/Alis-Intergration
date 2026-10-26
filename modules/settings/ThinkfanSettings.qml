@@ -7,7 +7,7 @@ import qs.modules.common.widgets
 
 SettingsCardSection {
     id: root
-    objectName: "hadalirdThinkfanSettings"
+    objectName: "alisIntergrationThinkfanSettings"
     readonly property bool thinkFanManaged:
         ThinkFanService.stateKnown && ThinkFanService.profile === "managed"
     readonly property bool thinkFanCanApply:
