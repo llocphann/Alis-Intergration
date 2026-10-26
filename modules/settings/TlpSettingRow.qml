@@ -20,7 +20,10 @@ ColumnLayout {
     property bool singleSettingGroup: false
 
     readonly property string settingKey: String(root.definition?.key ?? "")
-    readonly property string settingType: String(root.definition?.type ?? "text")
+    readonly property bool isSataLinkPower: root.settingKey.startsWith("SATA_LINKPWR_ON_")
+    readonly property string settingType: root.isSataLinkPower
+        ? "select"
+        : String(root.definition?.type ?? "text")
     readonly property string profile: String(root.definition?.profile ?? "")
     readonly property bool isProfileMapping: root.settingKey.startsWith("TLP_PROFILE_")
     readonly property bool compactProfileRow: root.isProfileMapping
@@ -50,7 +53,9 @@ ColumnLayout {
         Translation.tr(TlpSettingsService.displayValue(root.definition, value)))
     readonly property var editorNumberRange: root.computeNumberRange()
     readonly property real editorHeight: 30 * Appearance.fontSizeScale
-    readonly property real editorWidth: root.settingType === "list" ? 196 : 148
+    readonly property real editorWidth: root.isSataLinkPower
+        ? 188
+        : (root.settingType === "list" ? 216 : 148)
 
     Layout.fillWidth: true
     spacing: 0
@@ -173,19 +178,32 @@ ColumnLayout {
     }
 
     function defaultValue(): string {
+        let candidate = ""
         if (root.currentValue.length > 0)
-            return root.currentValue
-        if (root.inheritedValue.length > 0)
-            return root.inheritedValue
-        const runtimeDefault = root.runtimeDefaultFor(root.settingKey)
-        if (runtimeDefault.length > 0)
-            return runtimeDefault
-        const example = TlpSettingsService.exampleValue(root.definition)
-        if (example.length > 0)
-            return example
-        if (root.settingType === "number")
-            return String(root.editorNumberRange.min)
-        return root.optionValues.length > 0 ? String(root.optionValues[0]) : ""
+            candidate = root.currentValue
+        else if (root.inheritedValue.length > 0)
+            candidate = root.inheritedValue
+        else {
+            const runtimeDefault = root.runtimeDefaultFor(root.settingKey)
+            if (runtimeDefault.length > 0)
+                candidate = runtimeDefault
+            else {
+                const example = TlpSettingsService.exampleValue(root.definition)
+                if (example.length > 0)
+                    candidate = example
+                else if (root.settingType === "number")
+                    candidate = String(root.editorNumberRange.min)
+                else
+                    candidate = root.optionValues.length > 0 ? String(root.optionValues[0]) : ""
+            }
+        }
+        if (root.isSataLinkPower && candidate.length > 0) {
+            const firstToken = candidate.trim().split(/\s+/)[0] ?? ""
+            if (root.optionValues.indexOf(firstToken) >= 0)
+                return firstToken
+            return root.optionValues.length > 0 ? String(root.optionValues[0]) : firstToken
+        }
+        return candidate
     }
 
     function setValue(value): void {
@@ -452,7 +470,13 @@ ColumnLayout {
             width: root.editorWidth
             baseHeight: root.editorHeight
             model: root.optionLabels
-            currentIndex: root.optionValues.indexOf(root.currentValue)
+            currentIndex: {
+                const exact = root.optionValues.indexOf(root.currentValue)
+                if (exact >= 0)
+                    return exact
+                const firstToken = root.selectedTokens.length > 0 ? String(root.selectedTokens[0]) : ""
+                return root.optionValues.indexOf(firstToken)
+            }
             enabled: root.editable
             onActivated: index => {
                 if (index >= 0 && index < root.optionValues.length)
@@ -470,18 +494,20 @@ ColumnLayout {
 
             Flow {
                 id: optionFlow
+                width: Math.min(parent.width, implicitWidth)
                 anchors {
-                    left: parent.left
                     right: parent.right
                     verticalCenter: parent.verticalCenter
                 }
-                spacing: SettingsMaterialPreset.groupSpacing
+                spacing: 4
 
                 Repeater {
                     model: root.optionValues
 
                     delegate: FilterChip {
                         required property var modelData
+                        implicitHeight: Math.round(24 * Appearance.fontSizeScale)
+                        horizontalPaddingAmount: 12
                         text: Translation.tr(TlpSettingsService.displayValue(root.definition, modelData))
                         monospace: false
                         selected: root.selectedTokens.indexOf(String(modelData)) >= 0
