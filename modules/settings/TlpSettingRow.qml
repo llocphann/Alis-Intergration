@@ -14,6 +14,7 @@ ColumnLayout {
     objectName: "hadalirdTlpSettingRow"
 
     required property var definition
+    property string groupTitle: ""
     property string groupDescription: ""
     property bool compactProfileRows: false
     property bool singleSettingGroup: false
@@ -28,7 +29,7 @@ ColumnLayout {
     readonly property string displayLabel: root.compactProfileRow
         ? Translation.tr(TlpSettingsService.profileLabel(root.profile))
         : root.singleSettingGroup
-            ? Translation.tr("Use custom value")
+            ? Translation.tr(root.groupTitle.length > 0 ? root.groupTitle : root.label)
             : Translation.tr(root.label)
     readonly property bool managed: TlpSettingsService.isManaged(root.settingKey)
     readonly property bool pending: Object.prototype.hasOwnProperty.call(
@@ -48,8 +49,8 @@ ColumnLayout {
     readonly property var optionLabels: root.optionValues.map(value =>
         Translation.tr(TlpSettingsService.displayValue(root.definition, value)))
     readonly property var editorNumberRange: root.computeNumberRange()
-    readonly property real editorHeight: 38 * Appearance.fontSizeScale
-    readonly property real editorWidth: root.settingType === "list" ? 310 : 240
+    readonly property real editorHeight: 30 * Appearance.fontSizeScale
+    readonly property real editorWidth: root.settingType === "list" ? 196 : 148
 
     Layout.fillWidth: true
     spacing: 0
@@ -291,11 +292,11 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        Layout.leftMargin: SettingsMaterialPreset.groupSpacing
-        Layout.rightMargin: SettingsMaterialPreset.groupSpacing
-        Layout.topMargin: SettingsMaterialPreset.groupSpacing
-        Layout.bottomMargin: root.notice.length > 0 ? 0 : SettingsMaterialPreset.groupSpacing
-        spacing: SettingsMaterialPreset.groupPadding
+        Layout.leftMargin: 4
+        Layout.rightMargin: 4
+        Layout.topMargin: 3
+        Layout.bottomMargin: root.notice.length > 0 ? 0 : 3
+        spacing: 6
 
         StyledSwitch {
             Layout.alignment: Qt.AlignVCenter
@@ -316,7 +317,7 @@ ColumnLayout {
 
         ColumnLayout {
             Layout.fillWidth: true
-            Layout.minimumWidth: 150
+            Layout.minimumWidth: 64
             Layout.alignment: Qt.AlignVCenter
             spacing: 0
 
@@ -334,15 +335,15 @@ ColumnLayout {
             id: profileBadge
             visible: root.profile.length > 0 && !root.isProfileMapping && !root.compactProfileRows
             Layout.alignment: Qt.AlignVCenter
-            implicitWidth: profileRow.implicitWidth + SettingsMaterialPreset.groupPadding
-            implicitHeight: Math.round(24 * Appearance.fontSizeScale)
+            implicitWidth: profileRow.implicitWidth + 10
+            implicitHeight: Math.round(20 * Appearance.fontSizeScale)
             radius: Appearance.rounding.full
             color: Appearance.colors.colSecondaryContainer
 
             RowLayout {
                 id: profileRow
                 anchors.centerIn: parent
-                spacing: SettingsMaterialPreset.groupSpacing
+                spacing: 4
 
                 MaterialSymbol {
                     Layout.alignment: Qt.AlignVCenter
@@ -418,6 +419,7 @@ ColumnLayout {
         id: numberEditor
 
         RowLayout {
+            width: root.editorWidth
             spacing: SettingsMaterialPreset.groupSpacing
 
             StyledSpinBox {

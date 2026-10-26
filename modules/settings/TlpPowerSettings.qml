@@ -338,6 +338,43 @@ ColumnLayout {
         }
     }
 
+    readonly property var categoryColumnsModel: {
+        const categories = root.navigationCategories
+        const byId = ({})
+        for (const cat of categories) {
+            const id = String(cat?.id ?? "")
+            if (id.length > 0)
+                byId[id] = cat
+        }
+        const rawStacks = [
+            ["general", "graphics", "pcie"],
+            ["processor"],
+            ["disks", "network", "audio"],
+            ["usb", "radio", "radio-device-wizard"]
+        ]
+        const used = ({})
+        const result = []
+        for (const ids of rawStacks) {
+            const stack = []
+            for (const id of ids) {
+                if (Object.prototype.hasOwnProperty.call(byId, id)) {
+                    stack.push(byId[id])
+                    used[id] = true
+                }
+            }
+            if (stack.length > 0)
+                result.push(stack)
+        }
+        const extras = categories.filter(cat => !used[String(cat?.id ?? "")])
+        if (extras.length > 0) {
+            if (result.length > 0)
+                result[result.length - 1] = result[result.length - 1].concat(extras)
+            else
+                result.push(extras)
+        }
+        return result
+    }
+
     GridLayout {
         id: tlpCategoriesGrid
         Layout.fillWidth: true
@@ -347,58 +384,79 @@ ColumnLayout {
         rowSpacing: 14
 
         Repeater {
-            model: root.navigationCategories
+            model: root.categoryColumnsModel
 
-            delegate: SettingsCardSection {
-                id: categoryCard
+            delegate: ColumnLayout {
+                id: columnStack
                 required property var modelData
                 required property int index
+                readonly property var stackCategories: TlpSettingsService._array(columnStack.modelData).filter(
+                    cat => TlpSettingsService.groupsForCategory(cat, root.filterText).length > 0)
                 Layout.preferredWidth: 1
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                expanded: true
-                collapsible: true
-                icon: String(categoryCard.modelData?.icon ?? "tune")
-                title: Translation.tr(TlpSettingsService.categoryLabel(categoryCard.modelData))
-                readonly property var categoryGroups: TlpSettingsService.groupsForCategory(categoryCard.modelData, root.filterText)
-                visible: categoryGroups.length > 0
+                spacing: 14
+                visible: stackCategories.length > 0
 
-                SettingsGroup {
-                    Repeater {
-                        model: categoryCard.categoryGroups
+                Repeater {
+                    model: columnStack.stackCategories
 
-                        delegate: ColumnLayout {
-                            id: groupBlock
-                            required property var modelData
-                            required property int index
-                            Layout.fillWidth: true
-                            spacing: 6
-                            readonly property var groupSettings: TlpSettingsService._array(groupBlock.modelData?.settings)
-                            readonly property bool compactProfileRows: TlpSettingsService._settingsUseCompactProfileRows(groupBlock.groupSettings)
-                            readonly property bool singleSettingGroup: groupBlock.groupSettings.length === 1
+                    delegate: SettingsCardSection {
+                        id: categoryCard
+                        required property var modelData
+                        required property int index
+                        Layout.fillWidth: true
+                        Layout.fillHeight: categoryCard.index === columnStack.stackCategories.length - 1
+                        expanded: true
+                        collapsible: false
+                        icon: String(categoryCard.modelData?.icon ?? "tune")
+                        title: Translation.tr(TlpSettingsService.categoryLabel(categoryCard.modelData))
+                        readonly property var categoryGroups: TlpSettingsService.groupsForCategory(categoryCard.modelData, root.filterText)
+                        visible: categoryGroups.length > 0
 
-                            SettingsDivider {
-                                visible: groupBlock.index > 0
-                            }
-
-                            StyledText {
-                                visible: categoryCard.categoryGroups.length > 1 && String(groupBlock.modelData?.title ?? "").length > 0
-                                Layout.fillWidth: true
-                                text: Translation.tr(String(groupBlock.modelData?.title ?? ""))
-                                font.pixelSize: Appearance.font.pixelSize.small
-                                font.weight: Font.DemiBold
-                                color: Appearance.colors.colOnLayer1
-                            }
-
+                        SettingsGroup {
                             Repeater {
-                                model: groupBlock.groupSettings
+                                model: categoryCard.categoryGroups
 
-                                delegate: Integration.TlpSettingRow {
+                                delegate: ColumnLayout {
+                                    id: groupBlock
                                     required property var modelData
-                                    definition: modelData
-                                    groupDescription: ""
-                                    compactProfileRows: groupBlock.compactProfileRows
-                                    singleSettingGroup: groupBlock.singleSettingGroup
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    spacing: 4
+                                    readonly property var groupSettings: TlpSettingsService._array(groupBlock.modelData?.settings)
+                                    readonly property bool compactProfileRows: TlpSettingsService._settingsUseCompactProfileRows(groupBlock.groupSettings)
+                                    readonly property bool singleSettingGroup: groupBlock.groupSettings.length === 1
+                                    readonly property string groupTitleText: String(groupBlock.modelData?.title ?? "")
+
+                                    SettingsDivider {
+                                        visible: groupBlock.index > 0
+                                    }
+
+                                    StyledText {
+                                        visible: !groupBlock.singleSettingGroup
+                                            && groupBlock.groupTitleText.length > 0
+                                            && (categoryCard.categoryGroups.length > 1
+                                                || groupBlock.groupTitleText !== TlpSettingsService.categoryLabel(categoryCard.modelData))
+                                        Layout.fillWidth: true
+                                        text: Translation.tr(groupBlock.groupTitleText)
+                                        font.pixelSize: Appearance.font.pixelSize.small
+                                        font.weight: Font.DemiBold
+                                        color: Appearance.colors.colOnLayer1
+                                    }
+
+                                    Repeater {
+                                        model: groupBlock.groupSettings
+
+                                        delegate: Integration.TlpSettingRow {
+                                            required property var modelData
+                                            definition: modelData
+                                            groupTitle: groupBlock.groupTitleText
+                                            groupDescription: ""
+                                            compactProfileRows: groupBlock.compactProfileRows
+                                            singleSettingGroup: groupBlock.singleSettingGroup
+                                        }
+                                    }
                                 }
                             }
                         }

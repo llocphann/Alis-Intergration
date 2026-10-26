@@ -254,13 +254,61 @@ Item {
     }
 
     function settingLabel(definition): string {
+        const rawKey = String(definition?.key ?? "")
+        const conciseLabels = ({
+            CPU_SCALING_MIN_FREQ_ON_AC: "Min frequency",
+            CPU_SCALING_MAX_FREQ_ON_AC: "Max frequency",
+            CPU_SCALING_MIN_FREQ_ON_BAT: "Min frequency",
+            CPU_SCALING_MAX_FREQ_ON_BAT: "Max frequency",
+            CPU_SCALING_MIN_FREQ_ON_SAV: "Min frequency",
+            CPU_SCALING_MAX_FREQ_ON_SAV: "Max frequency",
+            CPU_MIN_PERF_ON_AC: "Min performance",
+            CPU_MAX_PERF_ON_AC: "Max performance",
+            CPU_MIN_PERF_ON_BAT: "Min performance",
+            CPU_MAX_PERF_ON_BAT: "Max performance",
+            CPU_MIN_PERF_ON_SAV: "Min performance",
+            CPU_MAX_PERF_ON_SAV: "Max performance",
+            INTEL_GPU_MIN_FREQ_ON_AC: "Min frequency",
+            INTEL_GPU_MIN_FREQ_ON_BAT: "Min frequency",
+            INTEL_GPU_MIN_FREQ_ON_SAV: "Min frequency",
+            INTEL_GPU_MAX_FREQ_ON_AC: "Max frequency",
+            INTEL_GPU_MAX_FREQ_ON_BAT: "Max frequency",
+            INTEL_GPU_MAX_FREQ_ON_SAV: "Max frequency",
+            INTEL_GPU_BOOST_FREQ_ON_AC: "Boost frequency",
+            INTEL_GPU_BOOST_FREQ_ON_BAT: "Boost frequency",
+            INTEL_GPU_BOOST_FREQ_ON_SAV: "Boost frequency",
+            RUNTIME_PM_ENABLE: "Force enable",
+            RUNTIME_PM_DISABLE: "Force disable",
+            DEVICES_TO_ENABLE_ON_AC: "Enable",
+            DEVICES_TO_DISABLE_ON_AC: "Disable",
+            DEVICES_TO_DISABLE_ON_BAT: "Disable",
+            DEVICES_TO_ENABLE_ON_BAT: "Enable",
+            DEVICES_TO_DISABLE_ON_SAV: "Disable",
+            DEVICES_TO_ENABLE_ON_SAV: "Enable",
+            DEVICES_TO_DISABLE_ON_AC_NOT_IN_USE: "Disable idle",
+            DEVICES_TO_DISABLE_ON_BAT_NOT_IN_USE: "Disable idle",
+            DEVICES_TO_DISABLE_ON_SAV_NOT_IN_USE: "Disable idle",
+            DEVICES_TO_DISABLE_ON_LAN_CONNECT: "LAN connect",
+            DEVICES_TO_DISABLE_ON_WIFI_CONNECT: "Wi-Fi connect",
+            DEVICES_TO_DISABLE_ON_WWAN_CONNECT: "WWAN connect",
+            DEVICES_TO_ENABLE_ON_LAN_DISCONNECT: "LAN disconnect",
+            DEVICES_TO_ENABLE_ON_WIFI_DISCONNECT: "Wi-Fi disconnect",
+            DEVICES_TO_ENABLE_ON_WWAN_DISCONNECT: "WWAN disconnect",
+            DEVICES_TO_ENABLE_ON_DOCK: "Enable",
+            DEVICES_TO_DISABLE_ON_DOCK: "Disable",
+            DEVICES_TO_ENABLE_ON_UNDOCK: "Enable",
+            DEVICES_TO_DISABLE_ON_UNDOCK: "Disable"
+        })
+        if (Object.prototype.hasOwnProperty.call(conciseLabels, rawKey))
+            return conciseLabels[rawKey]
+
         const acronyms = ({
             TLP: "TLP", CPU: "CPU", GPU: "GPU", AMDGPU: "AMD GPU",
             USB: "USB", PCIE: "PCIe", WIFI: "Wi-Fi", WOL: "Wake-on-LAN",
             SATA: "SATA", AHCI: "AHCI", APM: "APM", PM: "PM",
             NMI: "NMI", HWP: "HWP", DPM: "DPM", IOSCHED: "I/O scheduler"
         })
-        let key = String(definition?.key ?? "")
+        let key = rawKey
         if (key.startsWith("TLP_PROFILE_") && String(definition?.profile ?? "").length > 0)
             key = "TLP_PROFILE"
         key = key.replace(/_ON_(AC|BAT|SAV)/, "")
