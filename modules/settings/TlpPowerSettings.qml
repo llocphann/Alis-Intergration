@@ -300,7 +300,11 @@ ColumnLayout {
         objectName: "tlpCategoryNavigator"
         visible: root.navigationCategories.length > 0
         Layout.fillWidth: true
-        implicitHeight: categoryTabs.implicitHeight + padding * 2
+        Layout.preferredHeight: 0
+        Layout.maximumHeight: 0
+        implicitHeight: 0
+        opacity: 0
+        clip: true
         readonly property bool abyssTaskStyle: Config.options?.panelFamily === "abyss"
         readonly property real padding: abyssTaskStyle ? SettingsMaterialPreset.taskTabPadding : 0
 
@@ -334,43 +338,70 @@ ColumnLayout {
         }
     }
 
-    Repeater {
-        model: root.visibleGroups
+    GridLayout {
+        id: tlpCategoriesGrid
+        Layout.fillWidth: true
+        columns: width >= 620 ? 2 : 1
+        uniformCellWidths: columns === 2
+        columnSpacing: 14
+        rowSpacing: 14
 
-        delegate: SettingsCardSection {
-            id: groupCard
-            required property var modelData
-            expanded: true
-            collapsible: true
-            icon: String(root.selectedCategory?.icon ?? "tune")
-            title: Translation.tr(String(modelData?.title ?? ""))
-            readonly property var groupSettings: TlpSettingsService._array(groupCard.modelData?.settings)
-            readonly property bool compactProfileRows: TlpSettingsService._settingsUseCompactProfileRows(groupCard.groupSettings)
-            readonly property bool singleSettingGroup: groupCard.groupSettings.length === 1
+        Repeater {
+            model: root.navigationCategories
 
-            SettingsGroup {
-                StyledText {
-                    visible: root.conciseGroupDescription(groupCard.modelData).length > 0
-                    Layout.fillWidth: true
-                    text: Translation.tr(root.conciseGroupDescription(groupCard.modelData))
-                    color: Appearance.colors.colSubtext
-                    wrapMode: Text.WordWrap
-                    font.pixelSize: Appearance.font.pixelSize.smallest
-                }
+            delegate: SettingsCardSection {
+                id: categoryCard
+                required property var modelData
+                required property int index
+                Layout.preferredWidth: 1
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                expanded: true
+                collapsible: true
+                icon: String(categoryCard.modelData?.icon ?? "tune")
+                title: Translation.tr(TlpSettingsService.categoryLabel(categoryCard.modelData))
+                readonly property var categoryGroups: TlpSettingsService.groupsForCategory(categoryCard.modelData, root.filterText)
+                visible: categoryGroups.length > 0
 
-                SettingsDivider {
-                    visible: root.conciseGroupDescription(groupCard.modelData).length > 0
-                }
+                SettingsGroup {
+                    Repeater {
+                        model: categoryCard.categoryGroups
 
-                Repeater {
-                    model: groupCard.groupSettings
+                        delegate: ColumnLayout {
+                            id: groupBlock
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            spacing: 6
+                            readonly property var groupSettings: TlpSettingsService._array(groupBlock.modelData?.settings)
+                            readonly property bool compactProfileRows: TlpSettingsService._settingsUseCompactProfileRows(groupBlock.groupSettings)
+                            readonly property bool singleSettingGroup: groupBlock.groupSettings.length === 1
 
-                    delegate: Integration.TlpSettingRow {
-                        required property var modelData
-                        definition: modelData
-                        groupDescription: root.conciseGroupDescription(groupCard.modelData)
-                        compactProfileRows: groupCard.compactProfileRows
-                        singleSettingGroup: groupCard.singleSettingGroup
+                            SettingsDivider {
+                                visible: groupBlock.index > 0
+                            }
+
+                            StyledText {
+                                visible: categoryCard.categoryGroups.length > 1 && String(groupBlock.modelData?.title ?? "").length > 0
+                                Layout.fillWidth: true
+                                text: Translation.tr(String(groupBlock.modelData?.title ?? ""))
+                                font.pixelSize: Appearance.font.pixelSize.small
+                                font.weight: Font.DemiBold
+                                color: Appearance.colors.colOnLayer1
+                            }
+
+                            Repeater {
+                                model: groupBlock.groupSettings
+
+                                delegate: Integration.TlpSettingRow {
+                                    required property var modelData
+                                    definition: modelData
+                                    groupDescription: ""
+                                    compactProfileRows: groupBlock.compactProfileRows
+                                    singleSettingGroup: groupBlock.singleSettingGroup
+                                }
+                            }
+                        }
                     }
                 }
             }
