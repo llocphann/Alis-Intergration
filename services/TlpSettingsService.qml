@@ -14,6 +14,7 @@ Item {
     signal mutationFinished(string kind, bool success)
 
     property string helperPath: "/usr/libexec/alis-battery-charge-limit"
+    readonly property string packagedHelperPath: decodeURIComponent(String(Qt.resolvedUrl("../assets/helpers/alis-battery-charge-limit")).replace(/^file:\/\//, ""))
     readonly property string schemaPath: decodeURIComponent(String(Qt.resolvedUrl("../assets/tlp/tlp-settings-schema.json")).replace(/^file:\/\//, ""))
 
     // Keep the parsed schema as a plain JavaScript array. A QML list<var>
@@ -50,55 +51,10 @@ Item {
     property bool busy: false
     property string tlpVersion: ""
     property string statusReason: ""
-    property string configFile: "/etc/tlp.d/99-alis-tlp-settings.conf"
+    property string configFile: "/etc/tlp.conf"
     property string lastError: ""
     property bool _refreshPending: false
     property string _mutationKind: ""
-    property var _tlpConfValues: ({})
-    property var _shadowedOverrides: ({})
-    property var _pendingShadowedOverrides: ({})
-    property string _rawStatusPayload: ""
-
-    readonly property var _savProfileMirrorKeys: ({
-        CPU_DRIVER_OPMODE_ON_SAV: true,
-        CPU_SCALING_GOVERNOR_ON_SAV: true,
-        CPU_SCALING_MIN_FREQ_ON_SAV: true,
-        CPU_SCALING_MAX_FREQ_ON_SAV: true,
-        CPU_ENERGY_PERF_POLICY_ON_SAV: true,
-        CPU_MIN_PERF_ON_SAV: true,
-        CPU_MAX_PERF_ON_SAV: true,
-        CPU_BOOST_ON_SAV: true,
-        CPU_HWP_DYN_BOOST_ON_SAV: true,
-        PLATFORM_PROFILE_ON_SAV: true,
-        MEM_SLEEP_ON_SAV: true,
-        RADEON_DPM_PERF_LEVEL_ON_SAV: true,
-        AMDGPU_ABM_LEVEL_ON_SAV: true,
-        WIFI_PWR_ON_SAV: true,
-        PCIE_ASPM_ON_SAV: true,
-        RUNTIME_PM_ON_SAV: true,
-        SOUND_POWER_SAVE_ON_SAV: true
-    })
-
-    function _parseTlpConf(text: string): void {
-        const parsed = ({})
-        const lines = String(text ?? "").split(/\r?\n/)
-        for (const rawLine of lines) {
-            const line = rawLine.trim()
-            if (!line || line.startsWith("#"))
-                continue
-            const match = line.match(/^([A-Z0-9_]+)=(.*)$/)
-            if (!match)
-                continue
-            const key = match[1]
-            let val = match[2].trim()
-            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'")))
-                val = val.slice(1, -1)
-            parsed[key] = val
-        }
-        root._tlpConfValues = parsed
-        if (root._rawStatusPayload.length > 0)
-            root._parseStatus(root._rawStatusPayload)
-    }
 
     readonly property bool hasPendingChanges: Object.keys(root.pendingValues).length > 0
         || root.pendingChargePolicy !== null
@@ -740,51 +696,12 @@ Item {
                 command.push("--charge-disable")
         }
         const ops = root._clone(root.pendingValues)
-        const nextShadowed = root._clone(root._shadowedOverrides)
-        if (Object.prototype.hasOwnProperty.call(ops, "TLP_PROFILE_AC")
-                && Object.prototype.hasOwnProperty.call(root._tlpConfValues, "TLP_PROFILE_AC")) {
-            const acOp = ops["TLP_PROFILE_AC"]
-            ops["TLP_PROFILE_AC"] = { managed: false, value: "" }
-            if (acOp.managed === true) {
-                if (!Object.prototype.hasOwnProperty.call(ops, "TLP_AUTO_SWITCH"))
-                    ops["TLP_AUTO_SWITCH"] = { managed: true, value: "0" }
-                if (!Object.prototype.hasOwnProperty.call(ops, "TLP_PROFILE_DEFAULT"))
-                    ops["TLP_PROFILE_DEFAULT"] = { managed: true, value: String(acOp.value ?? "SAV") }
-            } else {
-                if (!Object.prototype.hasOwnProperty.call(ops, "TLP_AUTO_SWITCH"))
-                    ops["TLP_AUTO_SWITCH"] = { managed: false, value: "" }
-                if (!Object.prototype.hasOwnProperty.call(ops, "TLP_PROFILE_DEFAULT"))
-                    ops["TLP_PROFILE_DEFAULT"] = { managed: false, value: "" }
-            }
+        if ((Object.prototype.hasOwnProperty.call(ops, "TLP_PROFILE_AC")
+                || Object.prototype.hasOwnProperty.call(ops, "TLP_PROFILE_BAT"))
+                && !Object.prototype.hasOwnProperty.call(ops, "TLP_AUTO_SWITCH")
+                && String(root.managedValues.TLP_AUTO_SWITCH ?? "") === "0") {
+            ops["TLP_AUTO_SWITCH"] = { managed: false, value: "" }
         }
-        for (const key of Object.keys(ops)) {
-            if (key === "TLP_PROFILE_AC" || !Object.prototype.hasOwnProperty.call(root._tlpConfValues, key))
-                continue
-            const op = ops[key]
-            if (op.managed === true && String(op.value ?? "") !== String(root._tlpConfValues[key] ?? "")) {
-                const stagedVal = String(op.value ?? "")
-                ops[key] = { managed: false, value: "" }
-                nextShadowed[key] = stagedVal
-                const savKey = key.replace(/_ON_(AC|BAT)$/, "_ON_SAV")
-                if (savKey !== key
-                        && root._savProfileMirrorKeys[savKey] === true
-                        && !Object.prototype.hasOwnProperty.call(root._tlpConfValues, savKey)
-                        && !Object.prototype.hasOwnProperty.call(ops, savKey)) {
-                    ops[savKey] = { managed: true, value: stagedVal }
-                }
-            } else if (op.managed !== true) {
-                delete nextShadowed[key]
-            }
-        }
-        for (const existingKey of Object.keys(root.managedValues)) {
-            if (existingKey === "TLP_PROFILE_AC" || Object.prototype.hasOwnProperty.call(ops, existingKey))
-                continue
-            if (Object.prototype.hasOwnProperty.call(root._tlpConfValues, existingKey)
-                    && String(root.managedValues[existingKey] ?? "") !== String(root._tlpConfValues[existingKey] ?? "")) {
-                ops[existingKey] = { managed: false, value: "" }
-            }
-        }
-        root._pendingShadowedOverrides = nextShadowed
         const keys = Object.keys(ops).sort()
         for (const key of keys) {
             const operation = ops[key]
@@ -812,13 +729,11 @@ Item {
         root.busy = true
         root.lastError = ""
         root._mutationKind = "reset"
-        root._pendingShadowedOverrides = ({})
         mutationProcess.command = ["/usr/bin/pkexec", root.helperPath, "--config-reset"]
         mutationProcess.running = true
     }
 
     function _parseStatus(payload: string): void {
-        root._rawStatusPayload = String(payload ?? "")
         let data
         try {
             data = JSON.parse(String(payload ?? "").trim())
@@ -842,19 +757,6 @@ Item {
         const nextEffective = data.effective && typeof data.effective === "object" ? root._clone(data.effective) : ({})
         const nextManaged = data.managed && typeof data.managed === "object" ? root._clone(data.managed) : ({})
         const nextRuntime = data.runtimeValues && typeof data.runtimeValues === "object" ? data.runtimeValues : ({})
-        if (Object.prototype.hasOwnProperty.call(root._tlpConfValues, "TLP_PROFILE_AC")
-                && String(nextManaged.TLP_AUTO_SWITCH ?? "") === "0"
-                && String(nextManaged.TLP_PROFILE_DEFAULT ?? "").length > 0) {
-            nextManaged.TLP_PROFILE_AC = String(nextManaged.TLP_PROFILE_DEFAULT)
-            nextEffective.TLP_PROFILE_AC = String(nextManaged.TLP_PROFILE_DEFAULT)
-        }
-        for (const shadowedKey of Object.keys(root._shadowedOverrides)) {
-            const shadowedVal = String(root._shadowedOverrides[shadowedKey] ?? "")
-            if (shadowedVal.length > 0) {
-                nextManaged[shadowedKey] = shadowedVal
-                nextEffective[shadowedKey] = shadowedVal
-            }
-        }
         if (!root._sameStringMap(root.effectiveValues, nextEffective))
             root.effectiveValues = nextEffective
         if (!root._sameStringMap(root.managedValues, nextManaged))
@@ -862,13 +764,6 @@ Item {
         if (!root._sameStringMap(root.runtimeValues, nextRuntime))
             root.runtimeValues = nextRuntime
         root.statusLoaded = true
-    }
-
-    FileView {
-        id: tlpConfFile
-        path: "/etc/tlp.conf"
-        onLoaded: root._parseTlpConf(tlpConfFile.text())
-        onLoadFailed: root._tlpConfValues = ({})
     }
 
     FileView {
@@ -921,9 +816,8 @@ Item {
             if (statusProcess.startObserved)
                 return
 
-            const legacyHelper = "/usr/libexec/" + "i" + "nir-battery-charge-limit"
-            if (root.helperPath === "/usr/libexec/alis-battery-charge-limit") {
-                root.helperPath = legacyHelper
+            if (root.helperPath === "/usr/libexec/alis-battery-charge-limit" && root.packagedHelperPath.length > 0) {
+                root.helperPath = root.packagedHelperPath
                 Qt.callLater(() => { if (root._live) root.refresh() })
                 return
             }
@@ -1017,7 +911,8 @@ Item {
                 ? null : root._clone(root.pendingChargePolicy)
             root.busy = false
             if (success) {
-                root._shadowedOverrides = root._clone(root._pendingShadowedOverrides)
+                if (root.helperPath === root.packagedHelperPath)
+                    root.helperPath = "/usr/libexec/alis-battery-charge-limit"
                 root.pendingValues = ({})
                 if (kind === "apply") {
                     root.pendingChargePolicy = null

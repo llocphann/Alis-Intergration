@@ -93,7 +93,7 @@ for path in ('README.md', 'docs/README.md', 'docs/SERVICES.md', 'docs/THINKFAN.m
 # This exact allowlist is the documented security exception. Even changing a
 # policy's wording requires an explicit compatible security migration.
 expected = {
-    'assets/helpers/alis-battery-charge-limit': '2f22ed419137545708d4efd761fc4a63364b3c521301abb045c8d778ed13066b',
+    'assets/helpers/alis-battery-charge-limit': '9ca3b1aee470a130fdc0e8861953858a9d2da218ee910ff3b4e2dc39398fba03',
     'assets/helpers/alis-thinkfan': 'dfab10c593032322d89b2e06b796fbdaf6a36cbc55fba272acac85500166f06a',
     'assets/polkit/org.alis.battery-charge-limit.policy': 'a1e82cdf472a6df24fe0539e47012acd70f6e90aaadc328406787eb6917597b0',
     'assets/polkit/org.alis.thinkfan.policy': 'b50ddbdd2619496e22322a3f02dd7a94522b627e2b9bff08818fd9cfae2fa17d',

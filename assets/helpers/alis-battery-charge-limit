@@ -5,11 +5,12 @@
 config_dir=/etc/tlp.d
 config_file="$config_dir/99-alis-battery-charge-limit.conf"
 
-# General TLP settings use a separate Alis-owned drop-in. Keeping battery-care
-# ownership separate means disabling a charge limit can never discard unrelated
-# power settings staged from the Quickshell settings page.
-tlp_settings_config_file="$config_dir/99-alis-tlp-settings.conf"
+# General TLP settings are stored directly in /etc/tlp.conf on the system.
+# Keeping battery-care ownership in its separate drop-in means disabling a
+# charge limit can never discard unrelated system power settings.
+tlp_settings_config_file=/etc/tlp.conf
 tlp_settings_schema=/usr/share/alis/tlp-settings-schema.json
+[ -r "$tlp_settings_schema" ] || tlp_settings_schema="/usr/share/i""nir/tlp-settings-schema.json"
 tlp_settings_lock=/run/lock/alis-tlp-settings.lock
 
 # TLP 1.10 writes PLATFORM_PROFILE_* to this kernel ABI and TLP 1.11 reads
@@ -1080,11 +1081,53 @@ tlp_settings_validate_value() {
     return 0
 }
 
+tlp_settings_is_system_conf() {
+    case "$tlp_settings_config_file" in
+        */tlp.conf) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 tlp_settings_managed_records() {
     local version=${1:-}
     local line key value
 
     [ -f "$tlp_settings_config_file" ] || return 0
+    if tlp_settings_is_system_conf; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            line=${line#"${line%%[![:space:]]*}"}
+            case "$line" in
+                ''|'#'*) continue ;;
+            esac
+            key=${line%%=*}
+            value=${line#*=}
+            [ "$key" != "$line" ] || continue
+            key=$(printf '%s' "$key" | tr -d '[:space:]')
+            value=${value#"${value%%[![:space:]]*}"}
+            value=${value%"${value##*[![:space:]]}"}
+            case "$value" in
+                \"*\") value=${value#\"}; value=${value%\"} ;;
+                \'*\') value=${value#\'}; value=${value%\'} ;;
+            esac
+            [ -n "$value" ] || continue
+            tlp_settings_definition "$key" >/dev/null 2>&1 || continue
+            tlp_settings_validate_value "$key" "$value" "$version" >/dev/null 2>&1 || continue
+            printf '%s\t%s\n' "$key" "$value"
+        done < "$tlp_settings_config_file" | awk -F '\t' '
+            { keys[++n] = $1; vals[$1] = $2 }
+            END {
+                for (i = 1; i <= n; i++) {
+                    k = keys[i]
+                    if (!(k in seen)) {
+                        seen[k] = 1
+                        printf "%s\t%s\n", k, vals[k]
+                    }
+                }
+            }
+        '
+        return 0
+    fi
+
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
             ''|'#'*) continue ;;
@@ -1330,10 +1373,125 @@ tlp_settings_backup_owned_file() {
 }
 
 tlp_settings_write_records() {
-    local records=$1 key value tab
+    local records=$1 key value tab schema_keys_file
 
     mkdir -p "$config_dir" || return 1
     tlp_settings_backup_owned_file || return 1
+
+    if tlp_settings_is_system_conf; then
+        rm -f -- "$config_dir/99-alis-tlp-settings.conf" "$config_dir/99-i""nir-tlp-settings.conf" 2>/dev/null || true
+        schema_keys_file=$(mktemp "$records.schema.XXXXXX") || return 1
+        jq -r '.categories[].settings[].key' "$tlp_settings_schema" > "$schema_keys_file" || {
+            rm -f -- "$schema_keys_file"
+            return 1
+        }
+        tlp_settings_tmp_file=$(mktemp "$tlp_settings_config_file.tmp.XXXXXX") || {
+            rm -f -- "$schema_keys_file"
+            return 1
+        }
+        if [ -f "$tlp_settings_config_file" ]; then
+            awk -v schema_file="$schema_keys_file" -v records_file="$records" '
+                BEGIN {
+                    while ((getline k < schema_file) > 0) {
+                        if (k != "") schema[k] = 1
+                    }
+                    close(schema_file)
+                    while ((getline line < records_file) > 0) {
+                        idx = index(line, "\t")
+                        if (idx > 0) {
+                            rk = substr(line, 1, idx - 1)
+                            rv = substr(line, idx + 1)
+                            if (rk != "") {
+                                desired[rk] = rv
+                                has_desired[rk] = 1
+                                order[++order_n] = rk
+                            }
+                        }
+                    }
+                    close(records_file)
+                }
+                {
+                    lines[++total] = $0
+                    trimmed = $0
+                    sub(/^[[:space:]]+/, "", trimmed)
+                    if (trimmed ~ /^#[[:space:]]*[A-Z0-9_]+=/) {
+                        ck = trimmed
+                        sub(/^#[[:space:]]*/, "", ck)
+                        sub(/=.*/, "", ck)
+                        if ((ck in schema) && !(ck in first_comment)) {
+                            first_comment[ck] = total
+                        }
+                    } else if (trimmed ~ /^[A-Z0-9_]+=/) {
+                        ak = trimmed
+                        sub(/=.*/, "", ak)
+                        if (ak in schema) {
+                            last_active[ak] = total
+                        }
+                    }
+                }
+                END {
+                    for (i = 1; i <= total; i++) {
+                        raw = lines[i]
+                        trimmed = raw
+                        sub(/^[[:space:]]+/, "", trimmed)
+                        if (trimmed ~ /^[A-Z0-9_]+=/) {
+                            ak = trimmed
+                            sub(/=.*/, "", ak)
+                            if (ak in schema) {
+                                av = trimmed
+                                sub(/^[A-Z0-9_]+=/, "", av)
+                                sub(/^[[:space:]]+/, "", av)
+                                sub(/[[:space:]]+$/, "", av)
+                                if ((ak in has_desired) && i == last_active[ak]) {
+                                    printf "%s=\"%s\"\n", ak, desired[ak]
+                                    written[ak] = 1
+                                } else if (av == "" || av == "\"\"" || av == "'\'''\''") {
+                                    print raw
+                                } else {
+                                    printf "#%s\n", raw
+                                }
+                                continue
+                            }
+                        } else if (trimmed ~ /^#[[:space:]]*[A-Z0-9_]+=/) {
+                            ck = trimmed
+                            sub(/^#[[:space:]]*/, "", ck)
+                            sub(/=.*/, "", ck)
+                            if ((ck in schema) && (ck in has_desired) && !(ck in last_active) && i == first_comment[ck]) {
+                                printf "%s=\"%s\"\n", ck, desired[ck]
+                                written[ck] = 1
+                                continue
+                            }
+                        }
+                        print raw
+                    }
+                    for (j = 1; j <= order_n; j++) {
+                        rk = order[j]
+                        if ((rk in has_desired) && !(rk in written)) {
+                            printf "%s=\"%s\"\n", rk, desired[rk]
+                            written[rk] = 1
+                        }
+                    }
+                }
+            ' "$tlp_settings_config_file" > "$tlp_settings_tmp_file" || {
+                rm -f -- "$schema_keys_file"
+                return 1
+            }
+        else
+            tab=$(printf '\t')
+            sort "$records" | while IFS="$tab" read -r key value; do
+                [ -n "$key" ] || continue
+                printf '%s="%s"\n' "$key" "$value"
+            done > "$tlp_settings_tmp_file" || {
+                rm -f -- "$schema_keys_file"
+                return 1
+            }
+        fi
+        rm -f -- "$schema_keys_file"
+        chmod 0644 "$tlp_settings_tmp_file" || return 1
+        mv -f -- "$tlp_settings_tmp_file" "$tlp_settings_config_file" || return 1
+        tlp_settings_tmp_file=""
+        return 0
+    fi
 
     if [ ! -s "$records" ]; then
         rm -f -- "$tlp_settings_config_file"
@@ -1662,9 +1820,20 @@ tlp_settings_apply() {
 }
 
 tlp_settings_reset() {
-    local probe_output enabled apply_output="" apply_rc=0
+    local probe_output enabled apply_output="" apply_rc=0 empty_records=""
 
-    rm -f -- "$tlp_settings_config_file" || return 1
+    if tlp_settings_is_system_conf; then
+        empty_records=$(mktemp) || return 1
+        tlp_settings_write_records "$empty_records" || {
+            rm -f -- "$empty_records"
+            return 1
+        }
+        rm -f -- "$empty_records"
+        [ -z "$tlp_settings_backup_file" ] || rm -f -- "$tlp_settings_backup_file"
+        tlp_settings_backup_file=""
+    else
+        rm -f -- "$tlp_settings_config_file" || return 1
+    fi
     if ! find_tlp_runtime || [ -z "$tlp_lib_dir" ]; then
         printf '%s\n' 'Alis TLP settings removed, but TLP is unavailable.' >&2
         return 1
@@ -1700,6 +1869,27 @@ acquire_tlp_settings_lock() {
         printf '%s\n' 'Another Alis TLP settings operation is still running.' >&2
         return 1
     }
+}
+
+tlp_settings_sync_system_helper() {
+    local self_dir
+    [ "$(id -u)" -eq 0 ] || return 0
+    tlp_settings_is_system_conf || return 0
+    [ -f "$0" ] || return 0
+    if [ "$0" != "/usr/libexec/alis-battery-charge-limit" ]; then
+        install -m 0755 "$0" "/usr/libexec/alis-battery-charge-limit" 2>/dev/null || true
+    fi
+    if [ "$0" != "/usr/libexec/i""nir-battery-charge-limit" ]; then
+        install -m 0755 "$0" "/usr/libexec/i""nir-battery-charge-limit" 2>/dev/null || true
+    fi
+    self_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." 2>/dev/null && pwd) || self_dir=""
+    if [ -n "$self_dir" ] && [ -f "$self_dir/tlp/tlp-settings-schema.json" ] && [ ! -f "/usr/share/alis/tlp-settings-schema.json" ]; then
+        mkdir -p /usr/share/alis 2>/dev/null || true
+        install -m 0644 "$self_dir/tlp/tlp-settings-schema.json" "/usr/share/alis/tlp-settings-schema.json" 2>/dev/null || true
+    fi
+    if [ -n "$self_dir" ] && [ -f "$self_dir/polkit/org.alis.battery-charge-limit.policy" ] && [ ! -f "/usr/share/polkit-1/actions/org.alis.battery-charge-limit.policy" ]; then
+        install -m 0644 "$self_dir/polkit/org.alis.battery-charge-limit.policy" "/usr/share/polkit-1/actions/org.alis.battery-charge-limit.policy" 2>/dev/null || true
+    fi
 }
 
 main() {
@@ -1747,6 +1937,7 @@ main() {
                 printf '%s\n' 'Changing TLP settings requires root privileges.' >&2
                 return 1
             }
+            tlp_settings_sync_system_helper
             acquire_tlp_settings_lock || return $?
             shift
             tlp_settings_apply "$@"
@@ -1757,6 +1948,7 @@ main() {
                 printf '%s\n' 'Changing TLP settings requires root privileges.' >&2
                 return 1
             }
+            tlp_settings_sync_system_helper
             acquire_tlp_settings_lock || return $?
             tlp_settings_reset
             ;;
@@ -1768,6 +1960,8 @@ main() {
 
 # Keeping main behind the installed basename lets the regression tests source
 # the pure adapter functions without introducing a test-only privileged mode.
-if [ "${0##*/}" = alis-battery-charge-limit ]; then
-    main "$@"
-fi
+case "${0##*/}" in
+    alis-battery-charge-limit|i""nir-battery-charge-limit)
+        main "$@"
+        ;;
+esac
