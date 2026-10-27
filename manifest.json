@@ -1,6 +1,6 @@
 {
   "id": "alis-intergration",
-  "version": "0.3.1",
+  "version": "1.0.0",
   "host": "Alis",
   "hostApi": 1,
   "session": "AlisSession.qml",
