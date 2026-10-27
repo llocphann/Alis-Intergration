@@ -216,7 +216,11 @@ Item {
         applyProcess.running = true
     }
 
+    property string _lastChargeConfigSignature: ""
+    readonly property string _chargeConfigSignature: String(root.enabled) + "|" + String(root.requestedLimit)
+
     Component.onCompleted: {
+        root._lastChargeConfigSignature = root._chargeConfigSignature
         root._reconcileAfterDetect = Config.ready
         root._detect()
     }
@@ -226,7 +230,14 @@ Item {
 
         function onConfigChanged(): void {
             // Let revision-dependent bindings settle before comparing state.
-            Qt.callLater(() => { if (root._live) root.apply() })
+            Qt.callLater(() => {
+                if (!root._live)
+                    return
+                if (root._chargeConfigSignature === root._lastChargeConfigSignature)
+                    return
+                root._lastChargeConfigSignature = root._chargeConfigSignature
+                root.apply()
+            })
         }
 
         function onReadyChanged(): void {

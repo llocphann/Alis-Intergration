@@ -40,7 +40,7 @@ Item {
  Component.onCompleted:if(enabled)debounce.restart()
  Timer {id:debounce;interval:350;repeat:false;onTriggered:if(root.enabled)root.apply()}
  Timer {id:deadline;interval:10000;repeat:false;onTriggered:{root.error="Obsidian did not respond in time";worker.running=false}}
- FileView {path:root.info.configPath ? root.info.configPath+"/appearance.json" : "";watchChanges:true;onFileChanged:if(root.enabled)debounce.restart()}
+ FileView {path:root.enabled && root.info.configPath ? root.info.configPath+"/appearance.json" : "";preload:false;watchChanges:root.enabled && Boolean(root.info.configPath);onFileChanged:if(root.enabled)debounce.restart()}
  Process {
   id:worker
   property string response:""

@@ -70,6 +70,200 @@ Item {
         return JSON.parse(JSON.stringify(value ?? {}))
     }
 
+    function _sameStringMap(left, right): bool {
+        if (left === right)
+            return true
+        if (!left || !right || typeof left !== "object" || typeof right !== "object")
+            return false
+        const leftKeys = Object.keys(left)
+        const rightKeys = Object.keys(right)
+        if (leftKeys.length !== rightKeys.length)
+            return false
+        for (const key of leftKeys) {
+            if (!Object.prototype.hasOwnProperty.call(right, key))
+                return false
+            const lv = left[key]
+            const rv = right[key]
+            if (Array.isArray(lv) || Array.isArray(rv)) {
+                if (!Array.isArray(lv) || !Array.isArray(rv) || lv.length !== rv.length)
+                    return false
+                for (let idx = 0; idx < lv.length; idx++) {
+                    if (lv[idx] !== rv[idx])
+                        return false
+                }
+            } else if (lv !== rv) {
+                return false
+            }
+        }
+        return true
+    }
+
+    readonly property var _categoryLabels: ({
+        "battery-care": "Battery care",
+        "disks": "Storage",
+        "pcie": "PCIe devices",
+        "radio": "Radios",
+        "radio-device-wizard": "Radio events"
+    })
+
+    readonly property var _conciseSettingLabels: ({
+        CPU_SCALING_MIN_FREQ_ON_AC: "Min frequency",
+        CPU_SCALING_MAX_FREQ_ON_AC: "Max frequency",
+        CPU_SCALING_MIN_FREQ_ON_BAT: "Min frequency",
+        CPU_SCALING_MAX_FREQ_ON_BAT: "Max frequency",
+        CPU_SCALING_MIN_FREQ_ON_SAV: "Min frequency",
+        CPU_SCALING_MAX_FREQ_ON_SAV: "Max frequency",
+        CPU_MIN_PERF_ON_AC: "Min performance",
+        CPU_MAX_PERF_ON_AC: "Max performance",
+        CPU_MIN_PERF_ON_BAT: "Min performance",
+        CPU_MAX_PERF_ON_BAT: "Max performance",
+        CPU_MIN_PERF_ON_SAV: "Min performance",
+        CPU_MAX_PERF_ON_SAV: "Max performance",
+        INTEL_GPU_MIN_FREQ_ON_AC: "Min frequency",
+        INTEL_GPU_MIN_FREQ_ON_BAT: "Min frequency",
+        INTEL_GPU_MIN_FREQ_ON_SAV: "Min frequency",
+        INTEL_GPU_MAX_FREQ_ON_AC: "Max frequency",
+        INTEL_GPU_MAX_FREQ_ON_BAT: "Max frequency",
+        INTEL_GPU_MAX_FREQ_ON_SAV: "Max frequency",
+        INTEL_GPU_BOOST_FREQ_ON_AC: "Boost frequency",
+        INTEL_GPU_BOOST_FREQ_ON_BAT: "Boost frequency",
+        INTEL_GPU_BOOST_FREQ_ON_SAV: "Boost frequency",
+        RUNTIME_PM_ENABLE: "Force enable",
+        RUNTIME_PM_DISABLE: "Force disable",
+        DEVICES_TO_ENABLE_ON_AC: "Enable",
+        DEVICES_TO_DISABLE_ON_AC: "Disable",
+        DEVICES_TO_DISABLE_ON_BAT: "Disable",
+        DEVICES_TO_ENABLE_ON_BAT: "Enable",
+        DEVICES_TO_DISABLE_ON_SAV: "Disable",
+        DEVICES_TO_ENABLE_ON_SAV: "Enable",
+        DEVICES_TO_DISABLE_ON_AC_NOT_IN_USE: "Disable idle",
+        DEVICES_TO_DISABLE_ON_BAT_NOT_IN_USE: "Disable idle",
+        DEVICES_TO_DISABLE_ON_SAV_NOT_IN_USE: "Disable idle",
+        DEVICES_TO_DISABLE_ON_LAN_CONNECT: "LAN connect",
+        DEVICES_TO_DISABLE_ON_WIFI_CONNECT: "Wi-Fi connect",
+        DEVICES_TO_DISABLE_ON_WWAN_CONNECT: "WWAN connect",
+        DEVICES_TO_ENABLE_ON_LAN_DISCONNECT: "LAN disconnect",
+        DEVICES_TO_ENABLE_ON_WIFI_DISCONNECT: "Wi-Fi disconnect",
+        DEVICES_TO_ENABLE_ON_WWAN_DISCONNECT: "WWAN disconnect",
+        DEVICES_TO_ENABLE_ON_DOCK: "Enable",
+        DEVICES_TO_DISABLE_ON_DOCK: "Disable",
+        DEVICES_TO_ENABLE_ON_UNDOCK: "Enable",
+        DEVICES_TO_DISABLE_ON_UNDOCK: "Disable"
+    })
+
+    readonly property var _settingAcronyms: ({
+        TLP: "TLP", CPU: "CPU", GPU: "GPU", AMDGPU: "AMD GPU",
+        USB: "USB", PCIE: "PCIe", WIFI: "Wi-Fi", WOL: "Wake-on-LAN",
+        SATA: "SATA", AHCI: "AHCI", APM: "APM", PM: "PM",
+        NMI: "NMI", HWP: "HWP", DPM: "DPM", IOSCHED: "I/O scheduler"
+    })
+
+    readonly property var _groupLabels: ({
+        TLP_ENABLE: "TLP power management",
+        TLP_DISABLE_DEFAULTS: "Intrinsic defaults",
+        TLP_WARN_LEVEL: "Warnings",
+        TLP_MSG_COLORS: "Message colors",
+        TLP_AUTO_SWITCH: "Automatic profile switching",
+        TLP_PROFILE: "Power profiles",
+        TLP_PS_IGNORE: "Power-source detection",
+        SOUND_POWER_SAVE: "Audio power saving",
+        SOUND_POWER_SAVE_CONTROLLER: "Audio controller",
+        DISK_IDLE_SECS: "Disk idle sync",
+        MAX_LOST_WORK_SECS: "Writeback interval",
+        DISK_DEVICES: "Target disks",
+        DISK_APM_LEVEL: "Disk APM level",
+        DISK_APM_CLASS_DENYLIST: "APM exclusions",
+        DISK_SPINDOWN_TIMEOUT: "Disk spin-down",
+        DISK_IOSCHED: "I/O scheduler",
+        SATA_LINKPWR: "SATA link power",
+        SATA_LINKPWR_DENYLIST: "SATA link exclusions",
+        AHCI_RUNTIME_PM: "Disk runtime power",
+        AHCI_RUNTIME_PM_TIMEOUT: "Runtime suspend delay",
+        BAY_POWEROFF: "Optical-drive power",
+        BAY_DEVICE: "Optical-drive device",
+        INTEL_GPU_POWER_PROFILE: "Intel GPU power profile",
+        INTEL_GPU_FREQ: "Intel GPU frequencies",
+        RADEON_DPM_PERF_LEVEL: "AMD GPU performance level",
+        AMDGPU_ABM_LEVEL: "AMD panel power saving",
+        WIFI_PWR: "Wi-Fi power saving",
+        WOL_DISABLE: "Wake-on-LAN",
+        PCIE_ASPM: "PCIe link power",
+        RUNTIME_PM: "PCIe runtime power",
+        RUNTIME_PM_DENYLIST: "PCIe device exclusions",
+        RUNTIME_PM_DRIVER_DENYLIST: "PCIe driver exclusions",
+        RUNTIME_PM_DEVICE: "Forced PCIe runtime state",
+        CPU_DRIVER_OPMODE: "CPU driver mode",
+        CPU_SCALING_GOVERNOR: "CPU scaling governor",
+        CPU_SCALING_FREQ: "CPU frequency limits",
+        CPU_ENERGY_PERF_POLICY: "CPU energy policy",
+        CPU_PERF: "CPU performance limits",
+        CPU_BOOST: "CPU boost",
+        CPU_HWP_DYN_BOOST: "Intel HWP dynamic boost",
+        NMI_WATCHDOG: "NMI watchdog",
+        PLATFORM_PROFILE: "Platform profile",
+        MEM_SLEEP: "Suspend mode",
+        DEVICES_TO_DISABLE_ON_STARTUP: "Disable radios at startup",
+        DEVICES_TO_ENABLE_ON_STARTUP: "Enable radios at startup",
+        DEVICES_TO_ENABLE_ON_AC: "Radios on AC",
+        DEVICES_TO_DISABLE_ON_BAT: "Radios on battery",
+        DEVICES_TO_DISABLE_ON_BAT_NOT_IN_USE: "Idle radios on battery",
+        PROFILE_RADIO: "Profile-based radio rules",
+        DEVICES_TO_DISABLE_ON_CONNECT: "On network connect",
+        DEVICES_TO_ENABLE_ON_DISCONNECT: "On network disconnect",
+        DEVICES_ON_DOCK: "On dock",
+        DEVICES_ON_UNDOCK: "On undock",
+        USB_AUTOSUSPEND: "USB autosuspend",
+        USB_DENYLIST: "USB autosuspend exclusions",
+        USB_EXCLUDE_AUDIO: "USB audio",
+        USB_EXCLUDE_BTUSB: "USB Bluetooth",
+        USB_EXCLUDE_PHONE: "USB phones",
+        USB_EXCLUDE_PRINTER: "USB printers",
+        USB_EXCLUDE_WWAN: "USB WWAN",
+        USB_ALLOWLIST: "USB autosuspend allowlist",
+        RESTORE_THRESHOLDS_ON_BAT: "Restore charge thresholds"
+    })
+
+    readonly property var _exampleValues: ({
+        TLP_MSG_COLORS: "91 93 1 92",
+        DISK_DEVICES: "nvme0n1 sda",
+        DISK_APM_LEVEL_ON_AC: "254 254",
+        DISK_APM_LEVEL_ON_BAT: "128 128",
+        DISK_SPINDOWN_TIMEOUT_ON_AC: "0 0",
+        DISK_SPINDOWN_TIMEOUT_ON_BAT: "0 0",
+        DISK_IOSCHED: "keep",
+        SATA_LINKPWR_DENYLIST: "host1",
+        BAY_DEVICE: "sr0",
+        RUNTIME_PM_DENYLIST: "11:22.3 44:55.6",
+        RUNTIME_PM_DRIVER_DENYLIST: "amdgpu mei_me nouveau nvidia xhci_hcd",
+        RUNTIME_PM_ENABLE: "11:22.3",
+        RUNTIME_PM_DISABLE: "44:55.6",
+        CPU_SCALING_MIN_FREQ_ON_AC: "0",
+        CPU_SCALING_MAX_FREQ_ON_AC: "0",
+        CPU_SCALING_MIN_FREQ_ON_BAT: "0",
+        CPU_SCALING_MAX_FREQ_ON_BAT: "0",
+        CPU_SCALING_MIN_FREQ_ON_SAV: "0",
+        CPU_SCALING_MAX_FREQ_ON_SAV: "0",
+        USB_DENYLIST: "1111:2222 3333:4444",
+        USB_ALLOWLIST: "1111:2222 3333:4444"
+    })
+
+    readonly property var _commonDisplayLabels: ({
+        "0": "Disabled", "1": "Enabled", N: "No", Y: "Yes",
+        off: "Off", on: "On", auto: "Automatic", default: "System default",
+        power_saving: "Power saving", powersave: "Power saving",
+        powersupersave: "Maximum power saving", performance: "Performance",
+        balanced: "Balanced", "balanced-performance": "Balanced performance",
+        "low-power": "Low power", quiet: "Quiet", cool: "Cool",
+        balance_performance: "Balanced performance", balance_power: "Balanced power",
+        power: "Maximum power saving", active: "Active", passive: "Passive",
+        guided: "Guided", s2idle: "s2idle (light sleep)",
+        deep: "deep (suspend to RAM)", min_power: "Minimum power",
+        med_power_with_dipm: "Medium power with DIPM",
+        medium_power: "Medium power", max_performance: "Maximum performance",
+        bluetooth: "Bluetooth", nfc: "NFC", wifi: "Wi-Fi", wwan: "WWAN",
+        userspace: "Userspace", keep: "Keep current/default", _: "Keep current/default"
+    })
+
     function _clearStatus(reason: string): void {
         root.statusLoaded = false
         root.available = false
@@ -161,7 +355,7 @@ Item {
             const requiredMinor = root._versionMinor(multipleFrom)
             if (currentMinor < requiredMinor)
                 return setting
-            const adapted = root._clone(setting)
+            const adapted = Object.assign({}, setting)
             adapted.type = "list"
             return adapted
         })
@@ -169,14 +363,7 @@ Item {
 
     function categoryLabel(category): string {
         const id = String(category?.id ?? "")
-        const labels = ({
-            "battery-care": "Battery care",
-            "disks": "Storage",
-            "pcie": "PCIe devices",
-            "radio": "Radios",
-            "radio-device-wizard": "Radio events"
-        })
-        return labels[id] ?? String(category?.name ?? id)
+        return root._categoryLabels[id] ?? String(category?.name ?? id)
     }
 
     function groupsForCategory(category, filterText): var {
@@ -236,7 +423,7 @@ Item {
             if (groupMatches)
                 return group
 
-            const adapted = root._clone(group)
+            const adapted = Object.assign({}, group)
             adapted.settings = group.settings.filter(setting =>
                 String(setting?.key ?? "").toLowerCase().includes(query)
                 || String(setting?.description ?? "").toLowerCase().includes(query)
@@ -255,67 +442,17 @@ Item {
 
     function settingLabel(definition): string {
         const rawKey = String(definition?.key ?? "")
-        const conciseLabels = ({
-            CPU_SCALING_MIN_FREQ_ON_AC: "Min frequency",
-            CPU_SCALING_MAX_FREQ_ON_AC: "Max frequency",
-            CPU_SCALING_MIN_FREQ_ON_BAT: "Min frequency",
-            CPU_SCALING_MAX_FREQ_ON_BAT: "Max frequency",
-            CPU_SCALING_MIN_FREQ_ON_SAV: "Min frequency",
-            CPU_SCALING_MAX_FREQ_ON_SAV: "Max frequency",
-            CPU_MIN_PERF_ON_AC: "Min performance",
-            CPU_MAX_PERF_ON_AC: "Max performance",
-            CPU_MIN_PERF_ON_BAT: "Min performance",
-            CPU_MAX_PERF_ON_BAT: "Max performance",
-            CPU_MIN_PERF_ON_SAV: "Min performance",
-            CPU_MAX_PERF_ON_SAV: "Max performance",
-            INTEL_GPU_MIN_FREQ_ON_AC: "Min frequency",
-            INTEL_GPU_MIN_FREQ_ON_BAT: "Min frequency",
-            INTEL_GPU_MIN_FREQ_ON_SAV: "Min frequency",
-            INTEL_GPU_MAX_FREQ_ON_AC: "Max frequency",
-            INTEL_GPU_MAX_FREQ_ON_BAT: "Max frequency",
-            INTEL_GPU_MAX_FREQ_ON_SAV: "Max frequency",
-            INTEL_GPU_BOOST_FREQ_ON_AC: "Boost frequency",
-            INTEL_GPU_BOOST_FREQ_ON_BAT: "Boost frequency",
-            INTEL_GPU_BOOST_FREQ_ON_SAV: "Boost frequency",
-            RUNTIME_PM_ENABLE: "Force enable",
-            RUNTIME_PM_DISABLE: "Force disable",
-            DEVICES_TO_ENABLE_ON_AC: "Enable",
-            DEVICES_TO_DISABLE_ON_AC: "Disable",
-            DEVICES_TO_DISABLE_ON_BAT: "Disable",
-            DEVICES_TO_ENABLE_ON_BAT: "Enable",
-            DEVICES_TO_DISABLE_ON_SAV: "Disable",
-            DEVICES_TO_ENABLE_ON_SAV: "Enable",
-            DEVICES_TO_DISABLE_ON_AC_NOT_IN_USE: "Disable idle",
-            DEVICES_TO_DISABLE_ON_BAT_NOT_IN_USE: "Disable idle",
-            DEVICES_TO_DISABLE_ON_SAV_NOT_IN_USE: "Disable idle",
-            DEVICES_TO_DISABLE_ON_LAN_CONNECT: "LAN connect",
-            DEVICES_TO_DISABLE_ON_WIFI_CONNECT: "Wi-Fi connect",
-            DEVICES_TO_DISABLE_ON_WWAN_CONNECT: "WWAN connect",
-            DEVICES_TO_ENABLE_ON_LAN_DISCONNECT: "LAN disconnect",
-            DEVICES_TO_ENABLE_ON_WIFI_DISCONNECT: "Wi-Fi disconnect",
-            DEVICES_TO_ENABLE_ON_WWAN_DISCONNECT: "WWAN disconnect",
-            DEVICES_TO_ENABLE_ON_DOCK: "Enable",
-            DEVICES_TO_DISABLE_ON_DOCK: "Disable",
-            DEVICES_TO_ENABLE_ON_UNDOCK: "Enable",
-            DEVICES_TO_DISABLE_ON_UNDOCK: "Disable"
-        })
-        if (Object.prototype.hasOwnProperty.call(conciseLabels, rawKey))
-            return conciseLabels[rawKey]
+        if (Object.prototype.hasOwnProperty.call(root._conciseSettingLabels, rawKey))
+            return root._conciseSettingLabels[rawKey]
 
-        const acronyms = ({
-            TLP: "TLP", CPU: "CPU", GPU: "GPU", AMDGPU: "AMD GPU",
-            USB: "USB", PCIE: "PCIe", WIFI: "Wi-Fi", WOL: "Wake-on-LAN",
-            SATA: "SATA", AHCI: "AHCI", APM: "APM", PM: "PM",
-            NMI: "NMI", HWP: "HWP", DPM: "DPM", IOSCHED: "I/O scheduler"
-        })
         let key = rawKey
         if (key.startsWith("TLP_PROFILE_") && String(definition?.profile ?? "").length > 0)
             key = "TLP_PROFILE"
         key = key.replace(/_ON_(AC|BAT|SAV)/, "")
             .replace(/_DEFAULT$/, "")
         return key.split("_").filter(Boolean).map(word => {
-            if (Object.prototype.hasOwnProperty.call(acronyms, word))
-                return acronyms[word]
+            if (Object.prototype.hasOwnProperty.call(root._settingAcronyms, word))
+                return root._settingAcronyms[word]
             if (word === "MIN") return "Minimum"
             if (word === "MAX") return "Maximum"
             if (word === "PWR") return "Power"
@@ -329,72 +466,8 @@ Item {
     }
 
     function groupLabel(groupId: string, fallbackTitle: string): string {
-        const labels = ({
-            TLP_ENABLE: "TLP power management",
-            TLP_DISABLE_DEFAULTS: "Intrinsic defaults",
-            TLP_WARN_LEVEL: "Warnings",
-            TLP_MSG_COLORS: "Message colors",
-            TLP_AUTO_SWITCH: "Automatic profile switching",
-            TLP_PROFILE: "Power profiles",
-            TLP_PS_IGNORE: "Power-source detection",
-            SOUND_POWER_SAVE: "Audio power saving",
-            SOUND_POWER_SAVE_CONTROLLER: "Audio controller",
-            DISK_IDLE_SECS: "Disk idle sync",
-            MAX_LOST_WORK_SECS: "Writeback interval",
-            DISK_DEVICES: "Target disks",
-            DISK_APM_LEVEL: "Disk APM level",
-            DISK_APM_CLASS_DENYLIST: "APM exclusions",
-            DISK_SPINDOWN_TIMEOUT: "Disk spin-down",
-            DISK_IOSCHED: "I/O scheduler",
-            SATA_LINKPWR: "SATA link power",
-            SATA_LINKPWR_DENYLIST: "SATA link exclusions",
-            AHCI_RUNTIME_PM: "Disk runtime power",
-            AHCI_RUNTIME_PM_TIMEOUT: "Runtime suspend delay",
-            BAY_POWEROFF: "Optical-drive power",
-            BAY_DEVICE: "Optical-drive device",
-            INTEL_GPU_POWER_PROFILE: "Intel GPU power profile",
-            INTEL_GPU_FREQ: "Intel GPU frequencies",
-            RADEON_DPM_PERF_LEVEL: "AMD GPU performance level",
-            AMDGPU_ABM_LEVEL: "AMD panel power saving",
-            WIFI_PWR: "Wi-Fi power saving",
-            WOL_DISABLE: "Wake-on-LAN",
-            PCIE_ASPM: "PCIe link power",
-            RUNTIME_PM: "PCIe runtime power",
-            RUNTIME_PM_DENYLIST: "PCIe device exclusions",
-            RUNTIME_PM_DRIVER_DENYLIST: "PCIe driver exclusions",
-            RUNTIME_PM_DEVICE: "Forced PCIe runtime state",
-            CPU_DRIVER_OPMODE: "CPU driver mode",
-            CPU_SCALING_GOVERNOR: "CPU scaling governor",
-            CPU_SCALING_FREQ: "CPU frequency limits",
-            CPU_ENERGY_PERF_POLICY: "CPU energy policy",
-            CPU_PERF: "CPU performance limits",
-            CPU_BOOST: "CPU boost",
-            CPU_HWP_DYN_BOOST: "Intel HWP dynamic boost",
-            NMI_WATCHDOG: "NMI watchdog",
-            PLATFORM_PROFILE: "Platform profile",
-            MEM_SLEEP: "Suspend mode",
-            DEVICES_TO_DISABLE_ON_STARTUP: "Disable radios at startup",
-            DEVICES_TO_ENABLE_ON_STARTUP: "Enable radios at startup",
-            DEVICES_TO_ENABLE_ON_AC: "Radios on AC",
-            DEVICES_TO_DISABLE_ON_BAT: "Radios on battery",
-            DEVICES_TO_DISABLE_ON_BAT_NOT_IN_USE: "Idle radios on battery",
-            PROFILE_RADIO: "Profile-based radio rules",
-            DEVICES_TO_DISABLE_ON_CONNECT: "On network connect",
-            DEVICES_TO_ENABLE_ON_DISCONNECT: "On network disconnect",
-            DEVICES_ON_DOCK: "On dock",
-            DEVICES_ON_UNDOCK: "On undock",
-            USB_AUTOSUSPEND: "USB autosuspend",
-            USB_DENYLIST: "USB autosuspend exclusions",
-            USB_EXCLUDE_AUDIO: "USB audio",
-            USB_EXCLUDE_BTUSB: "USB Bluetooth",
-            USB_EXCLUDE_PHONE: "USB phones",
-            USB_EXCLUDE_PRINTER: "USB printers",
-            USB_EXCLUDE_WWAN: "USB WWAN",
-            USB_ALLOWLIST: "USB autosuspend allowlist",
-            RESTORE_THRESHOLDS_ON_BAT: "Restore charge thresholds"
-        })
-        if (Object.prototype.hasOwnProperty.call(labels, groupId))
-            return labels[groupId]
+        if (Object.prototype.hasOwnProperty.call(root._groupLabels, groupId))
+            return root._groupLabels[groupId]
         const generated = root.settingLabel({ key: groupId })
         return generated.length > 0 ? generated : String(fallbackTitle ?? "")
     }
@@ -415,30 +488,7 @@ Item {
     }
 
     function exampleValue(definition): string {
-        const examples = ({
-            TLP_MSG_COLORS: "91 93 1 92",
-            DISK_DEVICES: "nvme0n1 sda",
-            DISK_APM_LEVEL_ON_AC: "254 254",
-            DISK_APM_LEVEL_ON_BAT: "128 128",
-            DISK_SPINDOWN_TIMEOUT_ON_AC: "0 0",
-            DISK_SPINDOWN_TIMEOUT_ON_BAT: "0 0",
-            DISK_IOSCHED: "keep",
-            SATA_LINKPWR_DENYLIST: "host1",
-            BAY_DEVICE: "sr0",
-            RUNTIME_PM_DENYLIST: "11:22.3 44:55.6",
-            RUNTIME_PM_DRIVER_DENYLIST: "amdgpu mei_me nouveau nvidia xhci_hcd",
-            RUNTIME_PM_ENABLE: "11:22.3",
-            RUNTIME_PM_DISABLE: "44:55.6",
-            CPU_SCALING_MIN_FREQ_ON_AC: "0",
-            CPU_SCALING_MAX_FREQ_ON_AC: "0",
-            CPU_SCALING_MIN_FREQ_ON_BAT: "0",
-            CPU_SCALING_MAX_FREQ_ON_BAT: "0",
-            CPU_SCALING_MIN_FREQ_ON_SAV: "0",
-            CPU_SCALING_MAX_FREQ_ON_SAV: "0",
-            USB_DENYLIST: "1111:2222 3333:4444",
-            USB_ALLOWLIST: "1111:2222 3333:4444"
-        })
-        return String(examples[String(definition?.key ?? "")] ?? "")
+        return String(root._exampleValues[String(definition?.key ?? "")] ?? "")
     }
 
     function optionValues(definition): var {
@@ -518,23 +568,7 @@ Item {
             })
             return labels[raw] ?? raw
         }
-        const common = ({
-            "0": "Disabled", "1": "Enabled", N: "No", Y: "Yes",
-            off: "Off", on: "On", auto: "Automatic", default: "System default",
-            power_saving: "Power saving", powersave: "Power saving",
-            powersupersave: "Maximum power saving", performance: "Performance",
-            balanced: "Balanced", "balanced-performance": "Balanced performance",
-            "low-power": "Low power", quiet: "Quiet", cool: "Cool",
-            balance_performance: "Balanced performance", balance_power: "Balanced power",
-            power: "Maximum power saving", active: "Active", passive: "Passive",
-            guided: "Guided", s2idle: "s2idle (light sleep)",
-            deep: "deep (suspend to RAM)", min_power: "Minimum power",
-            med_power_with_dipm: "Medium power with DIPM",
-            medium_power: "Medium power", max_performance: "Maximum performance",
-            bluetooth: "Bluetooth", nfc: "NFC", wifi: "Wi-Fi", wwan: "WWAN",
-            userspace: "Userspace", keep: "Keep current/default", _: "Keep current/default"
-        })
-        return common[raw] ?? raw.replace(/_/g, " ")
+        return root._commonDisplayLabels[raw] ?? raw.replace(/_/g, " ")
     }
 
     function settingNotice(definition): string {
@@ -712,9 +746,15 @@ Item {
         root.tlpVersion = String(data.tlpVersion ?? "")
         root.statusReason = String(data.reason ?? "")
         root.configFile = String(data.configFile ?? root.configFile)
-        root.effectiveValues = root._clone(data.effective)
-        root.managedValues = root._clone(data.managed)
-        root.runtimeValues = root._clone(data.runtimeValues)
+        const nextEffective = data.effective && typeof data.effective === "object" ? data.effective : ({})
+        const nextManaged = data.managed && typeof data.managed === "object" ? data.managed : ({})
+        const nextRuntime = data.runtimeValues && typeof data.runtimeValues === "object" ? data.runtimeValues : ({})
+        if (!root._sameStringMap(root.effectiveValues, nextEffective))
+            root.effectiveValues = nextEffective
+        if (!root._sameStringMap(root.managedValues, nextManaged))
+            root.managedValues = nextManaged
+        if (!root._sameStringMap(root.runtimeValues, nextRuntime))
+            root.runtimeValues = nextRuntime
         root.statusLoaded = true
     }
 

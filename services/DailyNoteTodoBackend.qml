@@ -313,7 +313,7 @@ Scope {
     Timer {
         interval: 60000
         repeat: true
-        running: root.active
+        running: root.configured
         triggeredOnStart: true
         onTriggered: {
             const today = Qt.formatDate(new Date(), "yyyy-MM-dd")

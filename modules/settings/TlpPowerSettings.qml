@@ -384,14 +384,18 @@ ColumnLayout {
         rowSpacing: 14
 
         Repeater {
-            model: root.categoryColumnsModel
+            model: root.visible ? root.categoryColumnsModel : []
 
             delegate: ColumnLayout {
                 id: columnStack
                 required property var modelData
                 required property int index
-                readonly property var stackCategories: TlpSettingsService._array(columnStack.modelData).filter(
-                    cat => TlpSettingsService.groupsForCategory(cat, root.filterText).length > 0)
+                readonly property var stackCategories: TlpSettingsService._array(columnStack.modelData)
+                    .map(cat => ({
+                        category: cat,
+                        groups: TlpSettingsService.groupsForCategory(cat, root.filterText)
+                    }))
+                    .filter(entry => entry.groups.length > 0)
                 Layout.preferredWidth: 1
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -405,13 +409,16 @@ ColumnLayout {
                         id: categoryCard
                         required property var modelData
                         required property int index
+                        readonly property var categoryData: categoryCard.modelData?.category ?? categoryCard.modelData
+                        readonly property string categoryLabelText: TlpSettingsService.categoryLabel(categoryCard.categoryData)
                         Layout.fillWidth: true
                         Layout.fillHeight: categoryCard.index === columnStack.stackCategories.length - 1
                         expanded: true
                         collapsible: false
-                        icon: String(categoryCard.modelData?.icon ?? "tune")
-                        title: Translation.tr(TlpSettingsService.categoryLabel(categoryCard.modelData))
-                        readonly property var categoryGroups: TlpSettingsService.groupsForCategory(categoryCard.modelData, root.filterText)
+                        icon: String(categoryCard.categoryData?.icon ?? "tune")
+                        title: Translation.tr(categoryCard.categoryLabelText)
+                        readonly property var categoryGroups: categoryCard.modelData?.groups
+                            ?? TlpSettingsService.groupsForCategory(categoryCard.categoryData, root.filterText)
                         visible: categoryGroups.length > 0
 
                         SettingsGroup {
@@ -437,7 +444,7 @@ ColumnLayout {
                                         visible: !groupBlock.singleSettingGroup
                                             && groupBlock.groupTitleText.length > 0
                                             && (categoryCard.categoryGroups.length > 1
-                                                || groupBlock.groupTitleText !== TlpSettingsService.categoryLabel(categoryCard.modelData))
+                                                || groupBlock.groupTitleText !== categoryCard.categoryLabelText)
                                         Layout.fillWidth: true
                                         text: Translation.tr(groupBlock.groupTitleText)
                                         font.pixelSize: Appearance.font.pixelSize.small

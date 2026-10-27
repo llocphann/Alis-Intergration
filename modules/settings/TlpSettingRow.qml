@@ -207,6 +207,7 @@ ColumnLayout {
     }
 
     function setValue(value): void {
+        root._editorDirty = true
         const normalized = String(value ?? "")
         const groupKeys = root.gpuFrequencyGroupKeys()
         if (groupKeys.length > 0) {
@@ -225,6 +226,7 @@ ColumnLayout {
     }
 
     function unsetValue(): void {
+        root._editorDirty = true
         const groupKeys = root.gpuFrequencyGroupKeys()
         if (groupKeys.length > 0) {
             for (const key of groupKeys)
@@ -543,11 +545,23 @@ ColumnLayout {
 
     SettingsDivider {}
 
+    property bool _editorDirty: false
+    property string _syncedEditorState: root.settingKey + "|" + (root.managed ? "1" : "0") + "|" + root.currentValue
+
     Connections {
         target: TlpSettingsService
 
+        function _editorStateToken(): string {
+            return root.settingKey + "|" + (root.managed ? "1" : "0") + "|" + root.currentValue
+        }
+
         function reloadEditor(): void {
             if (!root._live) return
+            const nextState = _editorStateToken()
+            if (!root._editorDirty && nextState === root._syncedEditorState)
+                return
+            root._editorDirty = false
+            root._syncedEditorState = nextState
             editorLoader.active = false
             Qt.callLater(() => { if (root._live) editorLoader.active = true })
         }

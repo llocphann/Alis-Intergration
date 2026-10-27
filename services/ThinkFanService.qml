@@ -318,7 +318,18 @@ Item {
         root._scheduleConfiguredFanLevelApply()
     }
 
-    Component.onCompleted: root.refresh()
+    Component.onCompleted: {
+        root._lastFanConfigSignature = root._fanConfigSignature()
+        root.refresh()
+    }
+
+    property string _lastFanConfigSignature: ""
+    function _fanConfigSignature(): string {
+        return String(root.profileFanControlEnabled) + "|"
+            + String(root.configuredFanLevel("powerSaver")) + "|"
+            + String(root.configuredFanLevel("balanced")) + "|"
+            + String(root.configuredFanLevel("performance"))
+    }
 
     Connections {
         target: PowerProfiles
@@ -330,6 +341,10 @@ Item {
     Connections {
         target: Config
         function onConfigChanged(): void {
+            const nextSignature = root._fanConfigSignature()
+            if (nextSignature === root._lastFanConfigSignature)
+                return
+            root._lastFanConfigSignature = nextSignature
             root._handleProfileFollowEvent()
         }
     }

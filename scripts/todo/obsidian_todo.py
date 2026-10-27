@@ -56,32 +56,30 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+_BLOCKQUOTE_PREFIX_RE = re.compile(r"^(?: {0,3}> ?)+")
+
+
 def _strip_blockquote_prefix(line: str) -> str:
-    rest = line
-    while True:
-        match = re.match(r"^ {0,3}> ?", rest)
-        if match is None:
-            return rest
-        rest = rest[match.end() :]
+    if ">" not in line[:4]:
+        return line
+    match = _BLOCKQUOTE_PREFIX_RE.match(line)
+    return line[match.end() :] if match is not None else line
 
 
 def _outside_fence_flags(lines: list[str]) -> list[bool]:
     flags: list[bool] = []
     fence_char = ""
-    fence_len = 0
+    close_re: re.Pattern[str] | None = None
 
     for physical in lines:
         line = physical.rstrip("\r\n")
         candidate = _strip_blockquote_prefix(line)
 
-        if fence_char:
+        if fence_char and close_re is not None:
             flags.append(False)
-            close_re = re.compile(
-                r"^ {0,3}" + re.escape(fence_char) + "{" + str(fence_len) + r",}[ \t]*$"
-            )
             if close_re.match(candidate):
                 fence_char = ""
-                fence_len = 0
+                close_re = None
             continue
 
         match = _FENCE_OPEN_RE.match(candidate)
@@ -92,7 +90,9 @@ def _outside_fence_flags(lines: list[str]) -> list[bool]:
                 flags.append(True)
                 continue
             fence_char = fence[0]
-            fence_len = len(fence)
+            close_re = re.compile(
+                r"^ {0,3}" + re.escape(fence_char) + "{" + str(len(fence)) + r",}[ \t]*$"
+            )
             flags.append(False)
             continue
 

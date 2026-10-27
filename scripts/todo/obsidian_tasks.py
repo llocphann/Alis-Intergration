@@ -89,28 +89,40 @@ def _flatpak_app_id(process_dir: Path) -> str:
 
 
 def _iter_process_identities() -> Iterator[tuple[str, list[str], str]]:
-    proc = Path("/proc")
+    current_pid = os.getpid()
+    current_uid = os.getuid()
     try:
-        entries = list(proc.iterdir())
+        scanner = os.scandir("/proc")
     except OSError:
         return
-    for entry in entries:
-        if not entry.name.isdigit() or int(entry.name) == os.getpid():
-            continue
-        try:
-            exe = Path(os.readlink(entry / "exe")).name
-        except OSError:
-            exe = ""
-        try:
-            raw = (entry / "cmdline").read_bytes()
-            argv = [
-                part.decode("utf-8", errors="replace")
-                for part in raw.split(b"\0")
-                if part
-            ]
-        except OSError:
-            argv = []
-        yield exe, argv, _flatpak_app_id(entry)
+    with scanner:
+        for dirent in scanner:
+            name = dirent.name
+            if not name.isdigit() or int(name) == current_pid:
+                continue
+            try:
+                if dirent.stat(follow_symlinks=False).st_uid != current_uid:
+                    continue
+            except OSError:
+                continue
+            entry = Path(dirent.path)
+            try:
+                exe = Path(os.readlink(entry / "exe")).name
+            except OSError:
+                exe = ""
+            try:
+                raw = (entry / "cmdline").read_bytes()
+                argv = [
+                    part.decode("utf-8", errors="replace")
+                    for part in raw.split(b"\0")
+                    if part
+                ]
+            except OSError:
+                argv = []
+            if _looks_like_obsidian_app(exe, argv):
+                yield exe, argv, ""
+                continue
+            yield exe, argv, _flatpak_app_id(entry)
 
 
 def _looks_like_obsidian_app(

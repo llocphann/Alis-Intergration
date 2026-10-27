@@ -49,13 +49,35 @@ Item {
     }
 
     function _setValues(keys, entries): void {
+        const list = Array.from(entries ?? [])
+        let changed = false
+        for (const key of keys) {
+            const current = root.values[key]
+            if (!Array.isArray(current) || current.length !== list.length
+                    || current.some((item, idx) => item !== list[idx])) {
+                changed = true
+                break
+            }
+        }
+        if (!changed)
+            return
         const next = Object.assign({}, root.values)
         for (const key of keys)
-            next[key] = Array.from(entries ?? [])
+            next[key] = list.slice()
         root.values = next
     }
 
     function _setNumberRange(keys, minimum: int, maximum: int): void {
+        let changed = false
+        for (const key of keys) {
+            const current = root.numberRanges[key]
+            if (!current || current.min !== minimum || current.max !== maximum) {
+                changed = true
+                break
+            }
+        }
+        if (!changed)
+            return
         const next = Object.assign({}, root.numberRanges)
         for (const key of keys)
             next[key] = ({ min: minimum, max: maximum })
@@ -63,6 +85,15 @@ Item {
     }
 
     function _setNumberDefault(keys, value: int): void {
+        let changed = false
+        for (const key of keys) {
+            if (root.numberDefaults[key] !== value) {
+                changed = true
+                break
+            }
+        }
+        if (!changed)
+            return
         const next = Object.assign({}, root.numberDefaults)
         for (const key of keys)
             next[key] = value
@@ -70,14 +101,26 @@ Item {
     }
 
     function _deleteNumberMetadata(keys): void {
+        let rangesChanged = false
+        let defaultsChanged = false
+        for (const key of keys) {
+            if (Object.prototype.hasOwnProperty.call(root.numberRanges, key))
+                rangesChanged = true
+            if (Object.prototype.hasOwnProperty.call(root.numberDefaults, key))
+                defaultsChanged = true
+        }
+        if (!rangesChanged && !defaultsChanged)
+            return
         const ranges = Object.assign({}, root.numberRanges)
         const defaults = Object.assign({}, root.numberDefaults)
         for (const key of keys) {
             delete ranges[key]
             delete defaults[key]
         }
-        root.numberRanges = ranges
-        root.numberDefaults = defaults
+        if (rangesChanged)
+            root.numberRanges = ranges
+        if (defaultsChanged)
+            root.numberDefaults = defaults
     }
 
     function _kernelAtLeast(major: int, minor: int): bool {
