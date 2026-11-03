@@ -43,8 +43,8 @@ ColumnLayout {
     property string filterText: ""
 
     readonly property string profileGuidanceSource: "When overriding this group, set every shown profile together to avoid values spilling between TLP profiles."
-    // Charge care is integrated into the Battery/TLP card above the category
-    // browser. Keep the browser focused on the ten general TLP categories.
+    // Charge care is integrated into the Battery/TLP card on the left.
+    // The right card surfaces only the essential power/CPU/device groups on a single screen.
     readonly property var navigationCategories:
         TlpSettingsService._array(TlpSettingsService.navigationCategories)
             .filter(category => String(category?.id ?? "") !== "battery-care")
@@ -54,10 +54,46 @@ ColumnLayout {
             return null
         return categories[Math.max(0, Math.min(root.selectedCategoryIndex, categories.length - 1))]
     }
-    readonly property var visibleGroups: TlpSettingsService.groupsForCategory(
-        root.selectedCategory, root.filterText)
-    readonly property bool profileGuidanceVisible: root.visibleGroups.some(group =>
-        String(group?.description ?? "").includes(root.profileGuidanceSource))
+    readonly property var cpuProfileGroupIds: [
+        "TLP_ENABLE",
+        "TLP_AUTO_SWITCH",
+        "PLATFORM_PROFILE",
+        "CPU_ENERGY_PERF_POLICY",
+        "CPU_BOOST"
+    ]
+    readonly property var deviceSavingGroupIds: [
+        "WIFI_PWR",
+        "SOUND_POWER_SAVE",
+        "USB_AUTOSUSPEND"
+    ]
+    readonly property var essentialGroupIds: root.cpuProfileGroupIds.concat(root.deviceSavingGroupIds)
+
+    function _groupsByIds(ids): var {
+        const cats = root.navigationCategories
+        const byId = ({})
+        for (let i = 0; i < cats.length; i++) {
+            const groups = TlpSettingsService._array(
+                TlpSettingsService.groupsForCategory(cats[i], ""))
+            for (let j = 0; j < groups.length; j++) {
+                const g = groups[j]
+                const gid = String(g?.id ?? "")
+                if (gid.length > 0 && ids.includes(gid))
+                    byId[gid] = g
+            }
+        }
+        const ordered = []
+        for (let k = 0; k < ids.length; k++) {
+            const id = ids[k]
+            if (byId[id])
+                ordered.push(byId[id])
+        }
+        return ordered
+    }
+
+    readonly property var cpuProfileGroups: root._groupsByIds(root.cpuProfileGroupIds)
+    readonly property var deviceSavingGroups: root._groupsByIds(root.deviceSavingGroupIds)
+    readonly property var visibleGroups: root.cpuProfileGroups.concat(root.deviceSavingGroups)
+    readonly property bool profileGuidanceVisible: false
 
     function conciseGroupDescription(group): string {
         const description = String(group?.description ?? "")
@@ -96,374 +132,223 @@ ColumnLayout {
 
     onSelectedCategoryIndexChanged: root.filterText = ""
 
-    SettingsCardSection {
-        expanded: true
-        collapsible: false
-        icon: "battery_saver"
-        title: Translation.tr("Battery & TLP")
+    RowLayout {
+        Layout.fillWidth: true
+        Layout.alignment: Qt.AlignTop
+        spacing: SettingsMaterialPreset.pageSpacing
 
-        SettingsGroup {
-            ConfigRow {
-                uniform: true
+        // LEFT COLUMN: Battery & Charge Care + Wireless, Audio & USB Power Saving
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: false
+            Layout.preferredWidth: 1
+            Layout.alignment: Qt.AlignTop
+            spacing: SettingsMaterialPreset.pageSpacing
 
-                ConfigSpinBox {
-                    icon: "warning"
-                    text: Translation.tr("Low warning")
-                    value: Config.options?.battery?.low ?? 0
-                    from: 0
-                    to: 100
-                    stepSize: 5
-                    onValueChanged: {
-                        Config.setNestedValue("battery.low", value)
-                    }
+            SettingsCardSection {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
+                _preventBentoReparent: true
+                expanded: true
+                collapsible: false
+                icon: "battery_saver"
+                title: Translation.tr("Battery & Charge Care")
 
-                    StyledToolTip {
-                        text: Translation.tr("Show warning notification when battery drops below this level")
-                    }
-                }
-
-                ConfigSpinBox {
-                    icon: "dangerous"
-                    text: Translation.tr("Critical warning")
-                    value: Config.options?.battery?.critical ?? 0
-                    from: 0
-                    to: 100
-                    stepSize: 5
-                    onValueChanged: {
-                        Config.setNestedValue("battery.critical", value)
-                    }
-
-                    StyledToolTip {
-                        text: Translation.tr("Show critical warning when battery drops below this level")
-                    }
-                }
-
-                ConfigSpinBox {
-                    icon: "charger"
-                    text: Translation.tr("Full warning")
-                    value: Config.options?.battery?.full ?? 0
-                    from: 0
-                    to: 101
-                    stepSize: 5
-                    onValueChanged: {
-                        Config.setNestedValue("battery.full", value)
-                    }
-
-                    StyledToolTip {
-                        text: Translation.tr("Notify when battery reaches this level while charging (101 = disabled)")
-                    }
-                }
-            }
-
-            SettingsDivider {}
-
-            ConfigRow {
-                uniform: true
-
-                ConfigRow {
-                    Layout.fillWidth: true
-                    uniform: false
-
-                    SettingsSwitch {
-                        buttonIcon: "pause"
-                        text: Translation.tr("Automatic suspend")
-                        checked: Config.options?.battery?.automaticSuspend ?? false
-                        onCheckedChanged: {
-                            Config.setNestedValue("battery.automaticSuspend", checked)
-                        }
-
+                SettingsGroup {
+                    ConfigSpinBox {
+                        icon: "warning"
+                        text: Translation.tr("Low battery warning (%)")
+                        value: Config.options?.battery?.low ?? 0
+                        from: 0
+                        to: 100
+                        stepSize: 5
+                        onValueChanged: Config.setNestedValue("battery.low", value)
                         StyledToolTip {
-                            text: Translation.tr("Automatically suspends the system when battery is low")
+                            text: Translation.tr("Show warning notification when battery drops below this level")
                         }
                     }
 
                     ConfigSpinBox {
-                        enabled: Config.options?.battery?.automaticSuspend ?? false
-                        text: Translation.tr("at")
-                        value: Config.options?.battery?.suspend ?? 0
+                        icon: "dangerous"
+                        text: Translation.tr("Critical battery warning (%)")
+                        value: Config.options?.battery?.critical ?? 0
                         from: 0
                         to: 100
                         stepSize: 5
-                        onValueChanged: {
-                            Config.setNestedValue("battery.suspend", value)
-                        }
-
+                        onValueChanged: Config.setNestedValue("battery.critical", value)
                         StyledToolTip {
-                            text: Translation.tr("Percentage of battery to trigger suspend")
+                            text: Translation.tr("Show critical warning when battery drops below this level")
                         }
                     }
-                }
 
-                BatteryChargeLimitSettings {
-                    Layout.fillWidth: true
-                    staged: true
-                    showStatus: false
-                }
-            }
+                    ConfigSpinBox {
+                        icon: "charger"
+                        text: Translation.tr("Full / Plugged alert (%)")
+                        value: Config.options?.battery?.full ?? 0
+                        from: 0
+                        to: 101
+                        stepSize: 5
+                        onValueChanged: Config.setNestedValue("battery.full", value)
+                        StyledToolTip {
+                            text: Translation.tr("Notify when battery reaches this level while charging (101 = disabled)")
+                        }
+                    }
 
-            SettingsDivider {}
+                    ConfigRow {
+                        uniform: false
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: SettingsMaterialPreset.groupPadding
+                        SettingsSwitch {
+                            buttonIcon: "pause"
+                            text: Translation.tr("Automatic suspend")
+                            checked: Config.options?.battery?.automaticSuspend ?? false
+                            onCheckedChanged: Config.setNestedValue("battery.automaticSuspend", checked)
+                            StyledToolTip {
+                                text: Translation.tr("Automatically suspends the system when battery is low")
+                            }
+                        }
 
-                MaterialSymbol {
-                    text: TlpSettingsService.configAvailable
-                        ? (TlpSettingsService.enabled ? "check_circle" : "pause_circle")
-                        : "warning"
-                    iconSize: Appearance.font.pixelSize.huge
-                    color: TlpSettingsService.configAvailable
-                        ? Appearance.colors.colPrimary
-                        : Appearance.colors.colError
-                }
+                        ConfigSpinBox {
+                            enabled: Config.options?.battery?.automaticSuspend ?? false
+                            text: Translation.tr("at (%)")
+                            value: Config.options?.battery?.suspend ?? 0
+                            from: 0
+                            to: 100
+                            stepSize: 5
+                            onValueChanged: Config.setNestedValue("battery.suspend", value)
+                            StyledToolTip {
+                                text: Translation.tr("Percentage of battery to trigger suspend")
+                            }
+                        }
+                    }
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: SettingsMaterialPreset.groupSpacing
+                    BatteryChargeLimitSettings {
+                        Layout.fillWidth: true
+                        staged: true
+                        showStatus: false
+                    }
+
+                    SettingsDivider {}
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        MaterialSymbol {
+                            text: TlpSettingsService.configAvailable
+                                ? (TlpSettingsService.enabled ? "check_circle" : "pause_circle")
+                                : "warning"
+                            iconSize: Appearance.font.pixelSize.large
+                            color: TlpSettingsService.configAvailable
+                                ? Appearance.colors.colPrimary
+                                : Appearance.colors.colError
+                        }
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: root.statusDescription()
+                                + (TlpSettingsService.hasPendingChanges
+                                    ? " · " + Translation.tr("%1 staged change(s)").arg(TlpSettingsService.pendingCount)
+                                    : "")
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            wrapMode: Text.WordWrap
+                        }
+
+                        DialogButton {
+                            buttonText: Translation.tr("Refresh")
+                            enabled: !TlpSettingsService.busy
+                            onClicked: {
+                                TlpSettingsService.refresh()
+                                TlpService.refresh()
+                            }
+                        }
+
+                        DialogButton {
+                            buttonText: Translation.tr("Discard")
+                            visible: TlpSettingsService.hasPendingChanges
+                            enabled: TlpSettingsService.hasPendingChanges && !TlpSettingsService.busy
+                            onClicked: TlpSettingsService.discard()
+                        }
+
+                        DialogButton {
+                            buttonText: TlpSettingsService.busy
+                                ? Translation.tr("Applying…")
+                                : Translation.tr("Apply")
+                            enabled: TlpSettingsService.hasPendingChanges
+                                && TlpSettingsService.supported
+                                && TlpSettingsService.configAvailable
+                                && !TlpSettingsService.busy
+                            colBackground: Appearance.colors.colPrimary
+                            colBackgroundHover: Appearance.colors.colPrimaryHover
+                            colRipple: Appearance.colors.colPrimaryActive
+                            colText: Appearance.colors.colOnPrimary
+                            onClicked: TlpSettingsService.apply()
+                        }
+
+                        DialogButton {
+                            buttonText: Translation.tr("Reset")
+                            enabled: TlpSettingsService.canResetOverrides
+                            onClicked: TlpSettingsService.reset()
+                        }
+                    }
 
                     StyledText {
+                        visible: TlpSettingsService.lastError.length > 0
                         Layout.fillWidth: true
-                        text: root.statusDescription()
+                        text: TlpSettingsService.lastError
+                        color: Appearance.colors.colError
                         wrapMode: Text.WordWrap
-                    }
-
-                }
-
-                DialogButton {
-                    buttonText: Translation.tr("Refresh status")
-                    enabled: !TlpSettingsService.busy
-                    onClicked: {
-                        TlpSettingsService.refresh()
-                        TlpService.refresh()
+                        font.pixelSize: Appearance.font.pixelSize.smaller
                     }
                 }
             }
 
-            StyledText {
-                visible: TlpSettingsService.lastError.length > 0
+            SettingsCardSection {
+                id: tlpDevicesCard
                 Layout.fillWidth: true
-                text: TlpSettingsService.lastError
-                color: Appearance.colors.colError
-                wrapMode: Text.WordWrap
-                font.pixelSize: Appearance.font.pixelSize.smaller
-            }
+                Layout.alignment: Qt.AlignTop
+                _preventBentoReparent: true
+                visible: root.deviceSavingGroups.length > 0
+                expanded: true
+                collapsible: false
+                icon: "wifi"
+                title: Translation.tr("Wireless, Audio & USB Power Saving")
 
-            SettingsDivider {}
+                SettingsGroup {
+                    Repeater {
+                        model: root.visible ? root.deviceSavingGroups : []
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: SettingsMaterialPreset.groupSpacing
+                        delegate: ColumnLayout {
+                            id: devGroupBlock
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignTop
+                            spacing: 4
+                            readonly property var groupSettings: TlpSettingsService._array(devGroupBlock.modelData?.settings)
+                            readonly property bool compactProfileRows: TlpSettingsService._settingsUseCompactProfileRows(devGroupBlock.groupSettings)
+                            readonly property bool singleSettingGroup: devGroupBlock.groupSettings.length === 1
+                            readonly property string groupTitleText: String(devGroupBlock.modelData?.title ?? "")
 
-                StyledText {
-                    Layout.fillWidth: true
-                    text: TlpSettingsService.hasPendingChanges
-                        ? Translation.tr("%1 staged change(s)").arg(TlpSettingsService.pendingCount)
-                        : Translation.tr("Effective values")
-                    color: TlpSettingsService.hasPendingChanges
-                        ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
-                    font.weight: TlpSettingsService.hasPendingChanges ? Font.Medium : Font.Normal
-                }
+                            StyledText {
+                                visible: !devGroupBlock.singleSettingGroup
+                                    && devGroupBlock.groupTitleText.length > 0
+                                Layout.fillWidth: true
+                                text: Translation.tr(devGroupBlock.groupTitleText)
+                                font.pixelSize: Appearance.font.pixelSize.small
+                                font.weight: Font.DemiBold
+                                color: Appearance.colors.colOnLayer1
+                            }
 
-                DialogButton {
-                    buttonText: Translation.tr("Discard")
-                    enabled: TlpSettingsService.hasPendingChanges && !TlpSettingsService.busy
-                    onClicked: TlpSettingsService.discard()
-                }
-
-                DialogButton {
-                    buttonText: TlpSettingsService.busy
-                        ? Translation.tr("Applying…")
-                        : Translation.tr("Apply")
-                    enabled: TlpSettingsService.hasPendingChanges
-                        && TlpSettingsService.supported
-                        && TlpSettingsService.configAvailable
-                        && !TlpSettingsService.busy
-                    colBackground: Appearance.colors.colPrimary
-                    colBackgroundHover: Appearance.colors.colPrimaryHover
-                    colRipple: Appearance.colors.colPrimaryActive
-                    colText: Appearance.colors.colOnPrimary
-                    onClicked: TlpSettingsService.apply()
-                }
-
-                DialogButton {
-                    buttonText: Translation.tr("Reset overrides")
-                    enabled: TlpSettingsService.canResetOverrides
-                    onClicked: TlpSettingsService.reset()
-                }
-            }
-
-        }
-    }
-
-    Item {
-        id: categoryRailContainer
-        objectName: "tlpCategoryNavigator"
-        visible: root.navigationCategories.length > 0
-        Layout.fillWidth: true
-        Layout.preferredHeight: 0
-        Layout.maximumHeight: 0
-        implicitHeight: 0
-        opacity: 0
-        clip: true
-        readonly property bool abyssTaskStyle: Config.options?.panelFamily === "abyss"
-        readonly property real padding: abyssTaskStyle ? SettingsMaterialPreset.taskTabPadding : 0
-
-        Rectangle {
-            objectName: "tlpCategoryRail"
-            anchors.fill: parent
-            visible: categoryRailContainer.abyssTaskStyle
-            color: SettingsMaterialPreset.taskRailColor
-            radius: SettingsMaterialPreset.taskRailRadius
-        }
-
-        ConfigSelectionArray {
-            id: categoryTabs
-            objectName: "tlpCategoryTabs"
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.margins: parent.padding
-            y: parent.padding
-            enableSettingsSearch: false
-            enabled: !TlpSettingsService.busy
-            taskNavigation: true
-            useAbyssPillShape: false
-            currentValue: root.selectedCategoryIndex
-            options: root.navigationCategories.map((category, index) => ({
-                displayName: Translation.tr(TlpSettingsService.categoryLabel(category)),
-                icon: String(category?.icon ?? "tune"),
-                value: index,
-                enabled: !TlpSettingsService.busy
-            }))
-            onSelected: value => root.selectCategory(Number(value))
-        }
-    }
-
-    readonly property var categoryColumnsModel: {
-        const categories = root.navigationCategories
-        const byId = ({})
-        for (const cat of categories) {
-            const id = String(cat?.id ?? "")
-            if (id.length > 0)
-                byId[id] = cat
-        }
-        const rawStacks = [
-            ["general", "graphics", "pcie"],
-            ["processor"],
-            ["disks", "network", "audio"],
-            ["usb", "radio", "radio-device-wizard"]
-        ]
-        const used = ({})
-        const result = []
-        for (const ids of rawStacks) {
-            const stack = []
-            for (const id of ids) {
-                if (Object.prototype.hasOwnProperty.call(byId, id)) {
-                    stack.push(byId[id])
-                    used[id] = true
-                }
-            }
-            if (stack.length > 0)
-                result.push(stack)
-        }
-        const extras = categories.filter(cat => !used[String(cat?.id ?? "")])
-        if (extras.length > 0) {
-            if (result.length > 0)
-                result[result.length - 1] = result[result.length - 1].concat(extras)
-            else
-                result.push(extras)
-        }
-        return result
-    }
-
-    GridLayout {
-        id: tlpCategoriesGrid
-        Layout.fillWidth: true
-        columns: width >= 620 ? 2 : 1
-        uniformCellWidths: columns === 2
-        columnSpacing: 14
-        rowSpacing: 14
-
-        Repeater {
-            model: root.visible ? root.categoryColumnsModel : []
-
-            delegate: ColumnLayout {
-                id: columnStack
-                required property var modelData
-                required property int index
-                readonly property var stackCategories: TlpSettingsService._array(columnStack.modelData)
-                    .map(cat => ({
-                        category: cat,
-                        groups: TlpSettingsService.groupsForCategory(cat, root.filterText)
-                    }))
-                    .filter(entry => entry.groups.length > 0)
-                Layout.preferredWidth: 1
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: 14
-                visible: stackCategories.length > 0
-
-                Repeater {
-                    model: columnStack.stackCategories
-
-                    delegate: SettingsCardSection {
-                        id: categoryCard
-                        required property var modelData
-                        required property int index
-                        readonly property var categoryData: categoryCard.modelData?.category ?? categoryCard.modelData
-                        readonly property string categoryLabelText: TlpSettingsService.categoryLabel(categoryCard.categoryData)
-                        Layout.fillWidth: true
-                        Layout.fillHeight: categoryCard.index === columnStack.stackCategories.length - 1
-                        expanded: true
-                        collapsible: false
-                        icon: String(categoryCard.categoryData?.icon ?? "tune")
-                        title: Translation.tr(categoryCard.categoryLabelText)
-                        readonly property var categoryGroups: categoryCard.modelData?.groups
-                            ?? TlpSettingsService.groupsForCategory(categoryCard.categoryData, root.filterText)
-                        visible: categoryGroups.length > 0
-
-                        SettingsGroup {
                             Repeater {
-                                model: categoryCard.categoryGroups
+                                model: devGroupBlock.groupSettings
 
-                                delegate: ColumnLayout {
-                                    id: groupBlock
+                                delegate: Integration.TlpSettingRow {
                                     required property var modelData
-                                    required property int index
-                                    Layout.fillWidth: true
-                                    spacing: 4
-                                    readonly property var groupSettings: TlpSettingsService._array(groupBlock.modelData?.settings)
-                                    readonly property bool compactProfileRows: TlpSettingsService._settingsUseCompactProfileRows(groupBlock.groupSettings)
-                                    readonly property bool singleSettingGroup: groupBlock.groupSettings.length === 1
-                                    readonly property string groupTitleText: String(groupBlock.modelData?.title ?? "")
-
-                                    SettingsDivider {
-                                        visible: groupBlock.index > 0
-                                    }
-
-                                    StyledText {
-                                        visible: !groupBlock.singleSettingGroup
-                                            && groupBlock.groupTitleText.length > 0
-                                            && (categoryCard.categoryGroups.length > 1
-                                                || groupBlock.groupTitleText !== categoryCard.categoryLabelText)
-                                        Layout.fillWidth: true
-                                        text: Translation.tr(groupBlock.groupTitleText)
-                                        font.pixelSize: Appearance.font.pixelSize.small
-                                        font.weight: Font.DemiBold
-                                        color: Appearance.colors.colOnLayer1
-                                    }
-
-                                    Repeater {
-                                        model: groupBlock.groupSettings
-
-                                        delegate: Integration.TlpSettingRow {
-                                            required property var modelData
-                                            definition: modelData
-                                            groupTitle: groupBlock.groupTitleText
-                                            groupDescription: ""
-                                            compactProfileRows: groupBlock.compactProfileRows
-                                            singleSettingGroup: groupBlock.singleSettingGroup
-                                        }
-                                    }
+                                    definition: modelData
+                                    groupTitle: devGroupBlock.groupTitleText
+                                    groupDescription: ""
+                                    compactProfileRows: devGroupBlock.compactProfileRows
+                                    singleSettingGroup: devGroupBlock.singleSettingGroup
                                 }
                             }
                         }
@@ -471,5 +356,80 @@ ColumnLayout {
                 }
             }
         }
+
+        // RIGHT COLUMN: Platform & CPU Power Profiles
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: false
+            Layout.preferredWidth: 1
+            Layout.alignment: Qt.AlignTop
+            spacing: SettingsMaterialPreset.pageSpacing
+
+            SettingsCardSection {
+                id: tlpTuningCard
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
+                _preventBentoReparent: true
+                visible: root.cpuProfileGroups.length > 0
+                expanded: true
+                collapsible: false
+                icon: "tune"
+                title: Translation.tr("Platform & CPU Power Profiles")
+
+                SettingsGroup {
+                    Repeater {
+                        model: root.visible ? root.cpuProfileGroups : []
+
+                        delegate: ColumnLayout {
+                            id: groupBlock
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignTop
+                            spacing: 4
+                            readonly property var groupSettings: TlpSettingsService._array(groupBlock.modelData?.settings)
+                            readonly property bool compactProfileRows: TlpSettingsService._settingsUseCompactProfileRows(groupBlock.groupSettings)
+                            readonly property bool singleSettingGroup: groupBlock.groupSettings.length === 1
+                            readonly property string groupTitleText: String(groupBlock.modelData?.title ?? "")
+
+                            StyledText {
+                                visible: !groupBlock.singleSettingGroup
+                                    && groupBlock.groupTitleText.length > 0
+                                Layout.fillWidth: true
+                                text: Translation.tr(groupBlock.groupTitleText)
+                                font.pixelSize: Appearance.font.pixelSize.small
+                                font.weight: Font.DemiBold
+                                color: Appearance.colors.colOnLayer1
+                            }
+
+                            Repeater {
+                                model: groupBlock.groupSettings
+
+                                delegate: Integration.TlpSettingRow {
+                                    required property var modelData
+                                    definition: modelData
+                                    groupTitle: groupBlock.groupTitleText
+                                    groupDescription: ""
+                                    compactProfileRows: groupBlock.compactProfileRows
+                                    singleSettingGroup: groupBlock.singleSettingGroup
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Item {
+        id: categoryRailContainer
+        objectName: "tlpCategoryNavigator"
+        visible: false
+        Layout.fillWidth: true
+        Layout.preferredHeight: 0
+        Layout.maximumHeight: 0
+        implicitHeight: 0
+        opacity: 0
+        clip: true
     }
 }

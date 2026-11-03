@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix="alis-intergration-native-") as name:
     config = private / "config/alis"
     config.mkdir(parents=True)
     options = json.loads((HOST / "defaults/config.json").read_text())
-    options["integrations"]["alisIntergration"] = {key:False for key in ("tlp","thinkfan","obsidian")}
+    options["integrations"]["alisIntergration"] = {key:False for key in ("tlp","thinkfan","obsidian","spaced_repetition")}
     options["battery"]["chargeLimit"]["enable"] = False
     options["powerProfiles"]["fanControl"]["enabled"] = False
     options["integrations"]["obsidian"]["autoTheme"] = False
@@ -92,8 +92,8 @@ ShellRoot {
    check(AlisIntergration.session===null,"default-off package started workers")
    check(findChild(integrations,"alisIntergrationObsidianTodoSettings")===null,"disabled Obsidian rendered owned controls")
    const installed = AlisIntergration.installedPlugins
-   check(waffleIntegrations.primaryTabs.length===4,"Waffle plugin tabs missing")
-   check(installed.length===3 && integrations.primaryTabs.length===4,"N installed plugins must have N+1 tabs")
+   check(waffleIntegrations.primaryTabs.length===installed.length+1,"Waffle plugin tabs missing")
+   check(installed.length===4 && integrations.primaryTabs.length===5,"N installed plugins must have N+1 tabs")
    AlisIntergration.installedPlugins=[]
    check(integrations.primaryTabs.length===1 && integrations.activePlugin==="management","empty package did not fall back to Management")
    AlisIntergration.installedPlugins=installed.slice(0,1)
@@ -107,7 +107,7 @@ ShellRoot {
     integrations.width=width
     tryCompare(integrations,"width",width,1000);wait(50)
     const buttons=tabOptions.children.filter(item=>item.hasOwnProperty("modelData") && item.hasOwnProperty("toggled"))
-    check(buttons.length===4 && buttons.every(button=>button.x>=-.01 && button.x+button.width<=tabOptions.width+.1),"plugin tabs overflow width "+width)
+    check(buttons.length===installed.length+1 && buttons.every(button=>button.x>=-.01 && button.x+button.width<=tabOptions.width+.1),"plugin tabs overflow width "+width)
    }
    capture("management")
    const preferences=JSON.stringify(Config.options)

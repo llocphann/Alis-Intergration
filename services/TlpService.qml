@@ -11,6 +11,7 @@ Item {
     property bool _live: true
     Component.onDestruction: root._live = false
     property string helperPath: "/usr/libexec/alis-battery-charge-limit"
+    readonly property string packagedHelperPath: decodeURIComponent(String(Qt.resolvedUrl("../assets/helpers/alis-battery-charge-limit")).replace(/^file:\/\//, ""))
 
     property bool available: false
     property bool supported: false
@@ -269,6 +270,11 @@ Item {
             const legacyHelper = "/usr/libexec/" + "i" + "nir-battery-charge-limit"
             if (root.helperPath === "/usr/libexec/alis-battery-charge-limit") {
                 root.helperPath = legacyHelper
+                Qt.callLater(() => { if (root._live) root._detect() })
+                return
+            }
+            if (root.helperPath === legacyHelper && root.packagedHelperPath.length > 0) {
+                root.helperPath = root.packagedHelperPath
                 Qt.callLater(() => { if (root._live) root._detect() })
                 return
             }

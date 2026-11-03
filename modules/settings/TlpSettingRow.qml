@@ -55,7 +55,7 @@ ColumnLayout {
     readonly property real editorHeight: 30 * Appearance.fontSizeScale
     readonly property real editorWidth: root.isSataLinkPower
         ? 188
-        : (root.settingType === "list" ? 216 : 148)
+        : (root.settingType === "list" ? 216 : 184)
 
     Layout.fillWidth: true
     spacing: 0

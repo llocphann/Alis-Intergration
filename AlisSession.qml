@@ -12,6 +12,7 @@ Item {
     readonly property var thinkfan: fan.item
     readonly property var obsidianTheme: theme.item
     readonly property var zettelkasten: notes.item
+    readonly property var spacedRepetition: spacedRepetitionLoader.item
     Loader { id: capabilities; active: host.tlpEnabled; source: "services/TlpRuntimeCapabilities.qml" }
     Loader {
         id: charge; active: host.tlpEnabled
@@ -42,4 +43,5 @@ Item {
     }
     Loader { id: theme; active: host.obsidianEnabled; source: "services/ObsidianTheme.qml" }
     Loader { id: notes; active: host.obsidianEnabled; source: "services/Zettelkasten.qml" }
+    Loader { id: spacedRepetitionLoader; active: host.spacedRepetitionEnabled ?? false; source: "services/SpacedRepetition.qml" }
 }

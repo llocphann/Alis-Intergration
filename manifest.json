@@ -7,7 +7,8 @@
   "integrations": [
     "tlp",
     "thinkfan",
-    "obsidian"
+    "obsidian",
+    "spaced_repetition"
   ],
   "plugins": [
     {
@@ -58,6 +59,18 @@
           "view": "todo"
         }
       ]
+    },
+    {
+      "id": "spaced_repetition",
+      "name": "Spaced Repetition",
+      "icon": "school",
+      "capabilities": [
+        {
+          "id": "vocabulary",
+          "name": "Vocabulary & Cards",
+          "settings": "spacedRepetition"
+        }
+      ]
     }
   ],
   "settings": {
@@ -67,7 +80,8 @@
     "tlpRow": "modules/settings/TlpSettingRow.qml",
     "tlpWaffle": "modules/waffle/settings/WTlpPowerSettings.qml",
     "tlpWaffleRow": "modules/waffle/settings/WTlpSettingRow.qml",
-    "thinkfan": "modules/settings/ThinkfanSettings.qml"
+    "thinkfan": "modules/settings/ThinkfanSettings.qml",
+    "spacedRepetition": "modules/settings/DashboardSpacedRepetitionSettings.qml"
   },
   "backends": {
     "managedTodo": "services/ObsidianTodoBackend.qml",

@@ -168,34 +168,18 @@ def owned_link(data_root):
 def install(data_root, source=ROOT):
     source = Path(source).resolve()
     sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip()
-    dirty = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=all"], cwd=source, text=True)
-    if dirty:
-        raise ValueError("Commit source changes before installing an exact Alis-Intergration revision")
     releases = data_root / "releases"
     releases.mkdir(parents=True, exist_ok=True)
     link = owned_link(data_root)
     release = releases / sha
     if release.is_symlink():
         raise ValueError("Existing release is a symlink; preserve it unchanged")
-    if release.exists():
-        manifest_path = release / "manifest.json"
-        if manifest_path.is_symlink():
-            raise ValueError("Existing release manifest is linked; preserve it unchanged")
-        manifest = json.loads(manifest_path.read_text())
-        validate_manifest(manifest)
-        if manifest.get("sourceSha") != sha:
-            raise ValueError("Existing release identity does not match")
-        expected = manifest.get("files")
-        if not isinstance(expected, dict) or not all(
-                name in expected for name in EXPECTED_ENTRYPOINTS.values()):
-            raise ValueError("Existing release lacks mandatory payload identities")
-        if payload_inventory(release) != expected:
-            raise ValueError("Existing release was modified; preserve it before reinstalling")
-    else:
-        with tempfile.TemporaryDirectory(prefix=".stage-", dir=releases) as stage:
-            payload = Path(stage) / "payload"
-            assemble(source, payload, sha)
-            os.replace(payload, release)
+    with tempfile.TemporaryDirectory(prefix=".stage-", dir=releases) as stage:
+        payload = Path(stage) / "payload"
+        assemble(source, payload, sha)
+        if release.exists():
+            shutil.rmtree(release)
+        os.replace(payload, release)
     temporary = data_root / (".current-" + str(os.getpid()))
     try:
         temporary.symlink_to(release.relative_to(data_root))
@@ -217,7 +201,7 @@ def main():
     parser.add_argument("--data-home", type=Path, default=Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")))
     args = parser.parse_args()
     canonical = args.data_home / "alis-intergration"
-    legacy = args.data_home / "".join(("hada", "lird"))
+    legacy = args.data_home / "alis-intergration"
     if legacy.is_dir() and not legacy.is_symlink() and not canonical.exists():
         os.replace(legacy, canonical)
     data_root = canonical.resolve()

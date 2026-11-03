@@ -445,15 +445,15 @@ def _import_marker_counts(target_dir: Path | None) -> dict[str, int]:
 
     for path in paths:
         try:
-            text = path.read_text(encoding="utf-8")
+            with path.open("r", encoding="utf-8") as handle:
+                for _, line in zip(range(40), handle):
+                    match = _IMPORT_RE.match(line)
+                    if match:
+                        marker = match.group(1)
+                        counts[marker] = counts.get(marker, 0) + 1
+                        break
         except (OSError, UnicodeDecodeError):
             continue
-        for line in text.splitlines()[:40]:
-            match = _IMPORT_RE.match(line)
-            if match:
-                marker = match.group(1)
-                counts[marker] = counts.get(marker, 0) + 1
-                break
     return counts
 
 

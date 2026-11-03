@@ -12,6 +12,7 @@ Item {
     property bool _live: true
     Component.onDestruction: root._live = false
     property string helperPath: "/usr/libexec/alis-thinkfan"
+    readonly property string packagedHelperPath: decodeURIComponent(String(Qt.resolvedUrl("../assets/helpers/alis-thinkfan")).replace(/^file:\/\//, ""))
 
     property bool available: false
     property bool serviceInstalled: false
@@ -367,10 +368,21 @@ Item {
         property bool statusSeen: false
         property bool timedOut: false
         property bool startObserved: false
-        command: [root.helperPath, "--status"]
+        command: [
+            "/bin/sh", "-c",
+            "for p in /usr/libexec/alis-thinkfan /usr/libexec/inir-thinkfan \"$1\"; do if [ -n \"$p\" ] && [ -x \"$p\" ]; then printf 'HELPER:%s\\n' \"$p\"; exec \"$p\" --status; fi; done; exit 127",
+            "sh", root.packagedHelperPath
+        ]
 
         stdout: SplitParser {
             onRead: data => {
+                const line = String(data ?? "").trim()
+                if (line.startsWith("HELPER:")) {
+                    const resolved = line.slice(7).trim()
+                    if (resolved.length > 0)
+                        root.helperPath = resolved
+                    return
+                }
                 if (root._parseStatus(data))
                     detector.statusSeen = true
             }
@@ -383,13 +395,6 @@ Item {
             }
             if (detector.startObserved)
                 return
-
-            const legacyHelper = "/usr/libexec/" + "i" + "nir-thinkfan"
-            if (root.helperPath === "/usr/libexec/alis-thinkfan") {
-                root.helperPath = legacyHelper
-                Qt.callLater(() => { if (root._live) root.refresh() })
-                return
-            }
 
             detectorTimeout.stop()
             root._clearStatus("helper-unavailable")

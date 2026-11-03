@@ -84,8 +84,10 @@ for old in ('Install Alis-Intergration', 'Remove Alis-Intergration', 'Restore Al
     assert old in catalog, 'installed package translation lookup removed: ' + old
     public(catalog[old], 'legacy translation value: ' + old)
 
-for path in ('README.md', 'docs/README.md', 'docs/SERVICES.md', 'docs/THINKFAN.md', 'docs/UNINSTALL.md', 'docs/RELEASING.md', 'docs/PACKAGES.md'):
+for path in ('README.md', 'ARCHITECTURE.md', 'STRUCTURE.md', 'CONTRIBUTING.md', 'docs/README.md', 'docs/SERVICES.md', 'docs/THINKFAN.md', 'docs/UNINSTALL.md', 'docs/RELEASING.md', 'docs/PACKAGES.md'):
     root = ROOT if path == 'README.md' else HOST
+    if not (root / path).exists():
+        continue
     source = (root / path).read_text()
     assert 'github.com/llocphann/\x48\x61\x64\x61\x6c\x69\x72\x64' not in source, path
     assert not re.search(r'(?<![A-Za-z0-9_])\x48\x61\x64\x61\x6c\x69\x72\x64(?![A-Za-z0-9_])', source), path

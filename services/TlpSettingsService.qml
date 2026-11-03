@@ -816,7 +816,13 @@ Item {
             if (statusProcess.startObserved)
                 return
 
-            if (root.helperPath === "/usr/libexec/alis-battery-charge-limit" && root.packagedHelperPath.length > 0) {
+            const legacyHelper = "/usr/libexec/" + "i" + "nir-battery-charge-limit"
+            if (root.helperPath === "/usr/libexec/alis-battery-charge-limit") {
+                root.helperPath = legacyHelper
+                Qt.callLater(() => { if (root._live) root.refresh() })
+                return
+            }
+            if (root.helperPath === legacyHelper && root.packagedHelperPath.length > 0) {
                 root.helperPath = root.packagedHelperPath
                 Qt.callLater(() => { if (root._live) root.refresh() })
                 return

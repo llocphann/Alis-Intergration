@@ -119,7 +119,7 @@ ShellRoot {
    const installed=Quickshell.env("REBRAND_INSTALLED")==="1"
    const enabled=Quickshell.env("REBRAND_ENABLED")==="1"
    tryCompare(AlisIntergration,"available",installed,4000)
-   check(page.primaryTabs.length===(installed?4:1),"old/new plugin tabs duplicated or missing")
+   check(page.primaryTabs.length===(installed?(AlisIntergration.installedPlugins.length+1):1),"old/new plugin tabs duplicated or missing")
    check(Todo.backend==="internal" && Todo.sourceLabel===Quickshell.env("REBRAND_SOURCE_LABEL"),"internal source/label changed")
    check(Todo.sharedVaultPath===Quickshell.env("REBRAND_VAULT"),"legacy vault fallback lost")
    check(Config.options.todo.obsidian.notePath==="Alis/Todo.md","stored note path renamed")

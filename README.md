@@ -1,10 +1,10 @@
 # Alis-Intergration
 
-Optional small and medium application integrations for Alis: TLP, Thinkfan
-and Obsidian. Alis owns generic Battery, Power Profiles, Todo, Notes,
-configuration and UI primitives. Alis-Intergration owns the integration workers,
-application-specific settings, byte-safe vault helpers and privileged helper
-payloads. Existing integration preferences and application data are retained.
+Optional small and medium application integrations for Alis: TLP, Thinkfan,
+Obsidian and Spaced Repetition. Alis owns generic Battery, Power Profiles, Todo, Notes,
+Dashboard, configuration and UI primitives. Alis-Intergration owns the integration workers,
+application-specific settings, Spaced Repetition learning engine (`spaced_repetition`),
+byte-safe vault helpers and privileged helper payloads. Existing integration preferences and application data are retained.
 
 Install a committed revision with `make install`. Installation does not enable
 an integration, launch Obsidian, change fan/charge policies, or stop existing
@@ -56,12 +56,19 @@ Owner verification. **Do not write task progress to Markdown.** This repository
 still owns its optional QML services, Settings, helpers and package-local tests;
 no user vault, privileged settings or existing data is changed by task tracking.
 
-Classic and Waffle TLP editors and Obsidian task/capture settings are owned
-here. Alis retains navigation, optional loaders, generic Battery controls
-and the preserved internal Todo store. Version 0.3 adds declarative `plugins` metadata to host API 1: each installed
-plugin names its capabilities by validated `settings` keys, with an optional
+Classic and Waffle TLP editors, Obsidian task/capture settings, and Spaced
+Repetition Dashboard/Settings (`modules/dashboard/DashboardSpacedRepetition.qml`,
+`modules/dashboard/DashboardSpacedRepetitionSettings.qml`, `services/SpacedRepetition.qml`,
+`services/SpacedRepetitionEngine.js`, `services/SpacedRepetitionLexicon.js`,
+`scripts/spaced_repetition/lookup_word_level.py`) are owned here. Alis retains
+navigation, optional loaders, generic Battery controls and the preserved
+internal Todo store. Version 0.3 adds declarative `plugins` metadata to host API 1: each installed
+plugin names its capabilities by validated `settings` keys (`tlp`, `thinkfan`, `obsidian`, `spaced_repetition`), with an optional
 `waffleSettings` presentation. Obsidian exposes Theming, Quicknotes and Todo;
-its combined legacy editor remains supported. Discovery reads metadata and
+its combined legacy editor remains supported. Spaced Repetition provides an
+SM-2/FSRS-inspired flashcard & vocabulary system with CEFR A1–C2 grading,
+bilingual English/Vietnamese definitions, morphology (root/prefix/suffix)
+analysis, and Bulk Auto-Syntax / Obsidian SR import. Discovery reads metadata and
 verifies the complete immutable payload without loading QML. Hosts without
 this navigation extension retain the existing API 1 entrypoints. Integration
 enable switches remain off by default.

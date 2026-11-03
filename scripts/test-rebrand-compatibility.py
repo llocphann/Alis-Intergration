@@ -85,8 +85,11 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
     old_manifest = json.loads(old_files['manifest.json'])
     assert new_manifest['id'] == old_manifest['id'] == 'alis-intergration'
     assert new_manifest['name'] == 'Alis-Intergration' and new_manifest['host'] == 'Alis'
-    for field in ('hostApi', 'session', 'settings', 'backends', 'integrations', 'plugins', 'derivedFrom', 'uiDerivedFrom'):
+    for field in ('hostApi', 'session', 'backends', 'derivedFrom', 'uiDerivedFrom'):
         assert new_manifest[field] == old_manifest[field], field
+    assert all(new_manifest['settings'].get(k) == v for k, v in old_manifest['settings'].items())
+    assert new_manifest['integrations'][:3] == old_manifest['integrations'] and 'spaced_repetition' in new_manifest['integrations']
+    assert new_manifest['plugins'][:3] == old_manifest['plugins'] and any(p['id'] == 'spaced_repetition' for p in new_manifest['plugins'])
     assert legacy_reader.inspect_package(candidate)['available'], 'API 1 host cannot load new display metadata'
     assert manager.discovery.inspect_package(candidate)['available']
     for path in old_files:
@@ -182,7 +185,7 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
     fresh_home = private / 'fresh-data/alis-intergration'
     assert manager.operate('install', fresh_home, HOST, revision_fetch=lambda:new_sha, archive_fetch=fetch)['available']
     assert manager.discovery.inspect(HOST, fresh_home.parent)['available']
-    assert [p['id'] for p in manager.discovery.inspect(HOST, fresh_home.parent)['plugins']] == ['tlp','thinkfan','obsidian']
+    assert [p['id'] for p in manager.discovery.inspect(HOST, fresh_home.parent)['plugins']] == ['tlp','thinkfan','obsidian','spaced_repetition']
     # The supported setup preview cannot touch the persisted transaction store.
     env = dict(os.environ, XDG_DATA_HOME=str(home.parent), XDG_STATE_HOME=str(private/'state'))
     preview = subprocess.run(['python3', str(HOST/'scripts/integration-setup.py'), 'install', '--dry-run'],

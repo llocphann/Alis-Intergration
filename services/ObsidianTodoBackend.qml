@@ -717,8 +717,10 @@ Scope {
                 return
             }
             try {
-                if (root._applyScanPayload(JSON.parse(output)))
-                    capabilityDebounce.restart()
+                if (root._applyScanPayload(JSON.parse(output))) {
+                    if (!root._capabilitySourceCurrent())
+                        capabilityDebounce.restart()
+                }
             } catch (error) {
                 root._clearUnavailable("scanner_invalid_output", "Obsidian Todo scanner returned invalid JSON")
             }
