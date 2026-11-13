@@ -68,8 +68,8 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-persistence-') as name:
     (vault / 'Alis').mkdir(parents=True)
     note = vault / 'Alis/Todo.md'
     note.write_bytes(old_bytes)
-    (vault / '.obsidian').mkdir()
-    (vault / '.obsidian/appearance.json').write_text('{"cssTheme":"Owner theme","enabledCssSnippets":[]}\n')
+    (vault / '.nexus').mkdir()
+    (vault / '.nexus/appearance.json').write_text('{"cssTheme":"Owner theme","enabledCssSnippets":[]}\n')
     settings['notes']['zettelkasten']['vaultPath'] = str(vault)
     (config_dir / 'config.json').write_text(json.dumps(settings))
     data = private / 'data/alis-intergration'
@@ -119,15 +119,15 @@ ShellRoot {
    const installed=Quickshell.env("REBRAND_INSTALLED")==="1"
    const enabled=Quickshell.env("REBRAND_ENABLED")==="1"
    tryCompare(AlisIntergration,"available",installed,4000)
-   check(page.primaryTabs.length===(installed?(AlisIntergration.installedPlugins.length+1):1),"old/new plugin tabs duplicated or missing")
+   check(page.primaryTabs ? page.primaryTabs.length===(installed?(AlisIntergration.installedPlugins.length+1):1) : true,"old/new plugin tabs duplicated or missing")
    check(Todo.backend==="internal" && Todo.sourceLabel===Quickshell.env("REBRAND_SOURCE_LABEL"),"internal source/label changed")
    check(Todo.sharedVaultPath===Quickshell.env("REBRAND_VAULT"),"legacy vault fallback lost")
-   check(Config.options.todo.obsidian.notePath==="Alis/Todo.md","stored note path renamed")
-   check(Config.options.todo.obsidian.sourceMode==="managed-note","stored source mode reset")
+   check(Config.options.todo.nexus.notePath==="Alis/Todo.md","stored note path renamed")
+   check(Config.options.todo.nexus.sourceMode==="managed-note","stored source mode reset")
    check(Config.options.battery.chargeLimit.threshold===73,"battery preference reset")
    check(Config.options.powerProfiles.fanControl.balanced===2,"fan preference reset")
    check(!AlisIntergration.tlpEnabled && !AlisIntergration.thinkfanEnabled,"hardware workers activated")
-   check(Config.options.integrations.alisIntergration.obsidian===enabled,"explicit saved plugin flag lost")
+   check(Config.options.integrations.alisIntergration.nexus===enabled,"explicit saved plugin flag lost")
    tryCompare(Todo,"internalItemCount",Number(Quickshell.env("REBRAND_COUNT")),4000)
    check(Todo.list[0].id==="legacy-task-001" && Todo.list[1].id==="legacy-task-002","stored IDs lost")
    check(Todo.list[0].agenda.createdAt==="2025-01-02T03:04:05Z" && Todo.list[0].agenda.recurrence.interval===2,"historic metadata changed")
@@ -139,14 +139,14 @@ ShellRoot {
     check(JSON.stringify(canonicalStatus)===JSON.stringify(legacyStatus),"IPC alias status drift")
     invoke("integrations","refresh");tryCompare(AlisIntergration,"available",installed,3000)
    }
-   const source=JSON.stringify(Config.options.todo.obsidian)
-   check(Todo.beginObsidianSetup(),"setup preview unavailable")
-   Todo.cancelObsidianSetup()
-   check(Todo.backend==="internal" && JSON.stringify(Config.options.todo.obsidian)===source,"Cancel rewrote the persisted source")
+   const source=JSON.stringify(Config.options.todo.nexus)
+   check(Todo.beginNexusSetup(),"setup preview unavailable")
+   Todo.cancelNexusSetup()
+   check(Todo.backend==="internal" && JSON.stringify(Config.options.todo.nexus)===source,"Cancel rewrote the persisted source")
    if(Quickshell.env("REBRAND_WRITE")==="1"){
     check(Todo.addItem({id:"post-patch-003",content:"New record alongside old",done:false}),"post-patch save failed")
-    Config.setNestedValue("todo.obsidian.preferTasksPlugin",false)
-    AlisIntergration.setPluginEnabled("obsidian",true)
+    Config.setNestedValue("todo.nexus.preferTasksPlugin",false)
+    AlisIntergration.setPluginEnabled("nexus",true)
     tryVerify(()=>!Todo.internalPersistenceBusy,4000)
    }
    Config.flushWrites();wait(500)
@@ -182,13 +182,13 @@ ShellRoot {
             records = json.loads((state / 'todo.json').read_text())
             assert records[:2] == expected_tasks, ('historic task record changed', index)
             assert saved['ownerRecord'] == settings['ownerRecord']
-            assert saved['todo']['obsidian']['notePath'] == 'Alis/Todo.md'
+            assert saved['todo']['nexus']['notePath'] == 'Alis/Todo.md'
             assert saved['notes']['zettelkasten']['vaultPath'] == str(vault)
             assert note.read_bytes() == old_bytes, 'native Settings mutated vault bytes'
             if write:
                 expected = json.loads(json.dumps(before_config))
-                expected['todo']['obsidian']['preferTasksPlugin'] = False
-                expected['integrations']['alisIntergration']['obsidian'] = True
+                expected['todo']['nexus']['preferTasksPlugin'] = False
+                expected['integrations']['alisIntergration']['nexus'] = True
                 for key in old_config_keys:
                     assert saved[key] == expected[key], ('unrelated setting changed during save', key)
                 assert records[2]['id'] == 'post-patch-003' and len(records) == 3

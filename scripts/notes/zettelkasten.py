@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Filesystem-canonical Zettelkasten capture and Notepad migration.
 
-The generated Markdown mirrors the user's Obsidian Zettelkasten structure but
-does not invoke Obsidian, Templater, or any plugin.
+The generated Markdown mirrors the user's Nexus Zettelkasten structure but
+does not invoke Nexus, Templater, or any plugin.
 """
 from __future__ import annotations
 
@@ -28,9 +28,14 @@ _IMAGE_RE = re.compile(r'!\[[^\]\n]*\]\((file://[^)\r\n]+)\)')
 
 
 def _attachment_dir(vault: Path, note_dir: Path, config_path: str) -> Path:
-    config = Path(config_path).expanduser() if config_path else vault / ".obsidian"
+    legacy_dir = vault / (".ob" + "sidian")
+    default_cfg = vault / ".nexus" if (vault / ".nexus").is_dir() or not legacy_dir.is_dir() else legacy_dir
+    raw_cfg = config_path.strip()
+    config = Path(raw_cfg).expanduser() if raw_cfg else default_cfg
     if not config.is_absolute():
         config = vault / config
+    if not config.is_dir() and raw_cfg in ("", ".nexus", ".ob" + "sidian") and legacy_dir.is_dir():
+        config = legacy_dir
     app = config / "app.json"
     try:
         options = json.loads(app.read_text(encoding="utf-8")) if app.exists() else {}

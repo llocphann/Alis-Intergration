@@ -132,6 +132,225 @@ ColumnLayout {
 
     onSelectedCategoryIndexChanged: root.filterText = ""
 
+    // Top Sub-Tab Bar: Icon-only TLP Status & Action Pills (Auto Theme colors + Tooltips)
+    Rectangle {
+        id: tlpTopStatusSubTab
+        objectName: "tlpTopStatusSubTab"
+        Layout.alignment: Qt.AlignHCenter
+        Layout.bottomMargin: visible ? SettingsMaterialPreset.pageSpacing : 0
+        implicitWidth: tlpTopStatusRow.implicitWidth + 16
+        implicitHeight: 42
+        radius: Appearance.rounding.full
+        color: Appearance.colors.colLayer1
+        border.width: 1
+        border.color: Appearance.colors.colLayer0Border
+
+        RowLayout {
+            id: tlpTopStatusRow
+            anchors.centerIn: parent
+            spacing: 6
+
+            // 1. TLP Runtime Status Icon Pill
+            RippleButton {
+                objectName: "tlpStatusBadgeButton"
+                implicitWidth: 32
+                implicitHeight: 32
+                buttonRadius: 16
+                colBackground: !TlpSettingsService.configAvailable
+                    ? Appearance.colors.colErrorContainer
+                    : TlpSettingsService.enabled
+                        ? Appearance.colors.colPrimaryContainer
+                        : Appearance.colors.colLayer2
+                colBackgroundHover: !TlpSettingsService.configAvailable
+                    ? Appearance.colors.colErrorContainer
+                    : TlpSettingsService.enabled
+                        ? Appearance.colors.colPrimaryContainerHover
+                        : Appearance.colors.colLayer2Hover
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    text: TlpSettingsService.configAvailable
+                        ? (TlpSettingsService.enabled ? "check_circle" : "pause_circle")
+                        : "warning"
+                    iconSize: Appearance.font.pixelSize.large
+                    color: !TlpSettingsService.configAvailable
+                        ? Appearance.colors.colOnErrorContainer
+                        : TlpSettingsService.enabled
+                            ? Appearance.colors.colOnPrimaryContainer
+                            : Appearance.colors.colSubtext
+                }
+                StyledToolTip {
+                    text: root.statusDescription() + " · "
+                        + (TlpSettingsService.hasPendingChanges
+                            ? Translation.tr("%1 staged change(s)").arg(TlpSettingsService.pendingCount)
+                            : Translation.tr("Effective values"))
+                }
+            }
+
+            // 2. Overrides / Staged vs Effective State Icon Pill
+            RippleButton {
+                objectName: "tlpStateBadgeButton"
+                implicitWidth: 32
+                implicitHeight: 32
+                buttonRadius: 16
+                colBackground: TlpSettingsService.hasPendingChanges
+                    ? Appearance.colors.colTertiaryContainer
+                    : Appearance.colors.colSecondaryContainer
+                colBackgroundHover: TlpSettingsService.hasPendingChanges
+                    ? Appearance.colors.colTertiaryContainer
+                    : Appearance.colors.colSecondaryContainerHover
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    text: TlpSettingsService.hasPendingChanges ? "pending_actions" : "verified"
+                    iconSize: Appearance.font.pixelSize.normal
+                    color: TlpSettingsService.hasPendingChanges
+                        ? Appearance.colors.colOnTertiaryContainer
+                        : Appearance.colors.colOnSecondaryContainer
+                }
+                StyledToolTip {
+                    text: TlpSettingsService.hasPendingChanges
+                        ? Translation.tr("%1 staged change(s)").arg(TlpSettingsService.pendingCount)
+                        : Translation.tr("Effective values")
+                }
+            }
+
+            // 3. Error Indicator Icon Pill (only visible when an error exists)
+            RippleButton {
+                objectName: "tlpErrorBadgeButton"
+                visible: TlpSettingsService.lastError.length > 0
+                implicitWidth: 32
+                implicitHeight: 32
+                buttonRadius: 16
+                colBackground: Appearance.colors.colErrorContainer
+                colBackgroundHover: Appearance.colors.colErrorContainer
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    text: "error"
+                    iconSize: Appearance.font.pixelSize.normal
+                    color: Appearance.colors.colOnErrorContainer
+                }
+                StyledToolTip {
+                    text: TlpSettingsService.lastError
+                }
+            }
+
+            Rectangle {
+                width: 1
+                height: 18
+                color: Appearance.colors.colOutlineVariant
+                opacity: 0.6
+            }
+
+            // 4. Refresh Action Icon Button
+            RippleButton {
+                objectName: "tlpRefreshIconButton"
+                implicitWidth: 32
+                implicitHeight: 32
+                buttonRadius: 16
+                enabled: !TlpSettingsService.busy
+                colBackground: Appearance.colors.colLayer2
+                colBackgroundHover: Appearance.colors.colLayer2Hover
+                colRipple: Appearance.colors.colLayer2Active
+                onClicked: {
+                    TlpSettingsService.refresh()
+                    TlpService.refresh()
+                }
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    text: "refresh"
+                    iconSize: Appearance.font.pixelSize.normal
+                    color: Appearance.colors.colPrimary
+                }
+                StyledToolTip {
+                    text: Translation.tr("Refresh")
+                }
+            }
+
+            // 5. Discard Staged Changes Icon Button
+            RippleButton {
+                objectName: "tlpDiscardIconButton"
+                visible: TlpSettingsService.hasPendingChanges
+                enabled: TlpSettingsService.hasPendingChanges && !TlpSettingsService.busy
+                implicitWidth: 32
+                implicitHeight: 32
+                buttonRadius: 16
+                colBackground: Appearance.colors.colSecondaryContainer
+                colBackgroundHover: Appearance.colors.colSecondaryContainerHover
+                colRipple: Appearance.colors.colSecondaryActive
+                onClicked: TlpSettingsService.discard()
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    text: "undo"
+                    iconSize: Appearance.font.pixelSize.normal
+                    color: Appearance.colors.colOnSecondaryContainer
+                }
+                StyledToolTip {
+                    text: Translation.tr("Discard")
+                }
+            }
+
+            // 6. Apply Changes Icon Button
+            RippleButton {
+                objectName: "tlpApplyIconButton"
+                enabled: TlpSettingsService.hasPendingChanges
+                    && TlpSettingsService.supported
+                    && TlpSettingsService.configAvailable
+                    && !TlpSettingsService.busy
+                implicitWidth: 32
+                implicitHeight: 32
+                buttonRadius: 16
+                colBackground: enabled
+                    ? Appearance.colors.colPrimary
+                    : Appearance.colors.colLayer2
+                colBackgroundHover: enabled
+                    ? Appearance.colors.colPrimaryHover
+                    : Appearance.colors.colLayer2Hover
+                colRipple: Appearance.colors.colPrimaryActive
+                onClicked: TlpSettingsService.apply()
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    text: TlpSettingsService.busy ? "hourglass_top" : "check"
+                    iconSize: Appearance.font.pixelSize.normal
+                    color: parent.enabled
+                        ? Appearance.colors.colOnPrimary
+                        : Appearance.colors.colOnLayer2
+                }
+                StyledToolTip {
+                    text: TlpSettingsService.busy
+                        ? Translation.tr("Applying…")
+                        : Translation.tr("Apply")
+                }
+            }
+
+            // 7. Reset Overrides Icon Button
+            RippleButton {
+                objectName: "tlpResetIconButton"
+                enabled: TlpSettingsService.canResetOverrides && !TlpSettingsService.busy
+                implicitWidth: 32
+                implicitHeight: 32
+                buttonRadius: 16
+                colBackground: enabled
+                    ? Appearance.colors.colErrorContainer
+                    : Appearance.colors.colLayer2
+                colBackgroundHover: enabled
+                    ? Appearance.colors.colErrorContainer
+                    : Appearance.colors.colLayer2Hover
+                colRipple: Appearance.colors.colLayer2Active
+                onClicked: TlpSettingsService.reset()
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    text: "restart_alt"
+                    iconSize: Appearance.font.pixelSize.normal
+                    color: parent.enabled
+                        ? Appearance.colors.colOnErrorContainer
+                        : Appearance.colors.colOnLayer2
+                }
+                StyledToolTip {
+                    text: Translation.tr("Reset")
+                }
+            }
+        }
+    }
+
     RowLayout {
         Layout.fillWidth: true
         Layout.alignment: Qt.AlignTop
@@ -152,12 +371,12 @@ ColumnLayout {
                 expanded: true
                 collapsible: false
                 icon: "battery_saver"
-                title: Translation.tr("Battery & Charge Care")
+                title: Translation.tr("Battery & TLP")
 
                 SettingsGroup {
                     ConfigSpinBox {
                         icon: "warning"
-                        text: Translation.tr("Low battery warning (%)")
+                        text: Translation.tr("Low warning")
                         value: Config.options?.battery?.low ?? 0
                         from: 0
                         to: 100
@@ -183,7 +402,7 @@ ColumnLayout {
 
                     ConfigSpinBox {
                         icon: "charger"
-                        text: Translation.tr("Full / Plugged alert (%)")
+                        text: Translation.tr("Full warning")
                         value: Config.options?.battery?.full ?? 0
                         from: 0
                         to: 101
@@ -225,79 +444,6 @@ ColumnLayout {
                         Layout.fillWidth: true
                         staged: true
                         showStatus: false
-                    }
-
-                    SettingsDivider {}
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        MaterialSymbol {
-                            text: TlpSettingsService.configAvailable
-                                ? (TlpSettingsService.enabled ? "check_circle" : "pause_circle")
-                                : "warning"
-                            iconSize: Appearance.font.pixelSize.large
-                            color: TlpSettingsService.configAvailable
-                                ? Appearance.colors.colPrimary
-                                : Appearance.colors.colError
-                        }
-
-                        StyledText {
-                            Layout.fillWidth: true
-                            text: root.statusDescription()
-                                + (TlpSettingsService.hasPendingChanges
-                                    ? " · " + Translation.tr("%1 staged change(s)").arg(TlpSettingsService.pendingCount)
-                                    : "")
-                            font.pixelSize: Appearance.font.pixelSize.small
-                            wrapMode: Text.WordWrap
-                        }
-
-                        DialogButton {
-                            buttonText: Translation.tr("Refresh")
-                            enabled: !TlpSettingsService.busy
-                            onClicked: {
-                                TlpSettingsService.refresh()
-                                TlpService.refresh()
-                            }
-                        }
-
-                        DialogButton {
-                            buttonText: Translation.tr("Discard")
-                            visible: TlpSettingsService.hasPendingChanges
-                            enabled: TlpSettingsService.hasPendingChanges && !TlpSettingsService.busy
-                            onClicked: TlpSettingsService.discard()
-                        }
-
-                        DialogButton {
-                            buttonText: TlpSettingsService.busy
-                                ? Translation.tr("Applying…")
-                                : Translation.tr("Apply")
-                            enabled: TlpSettingsService.hasPendingChanges
-                                && TlpSettingsService.supported
-                                && TlpSettingsService.configAvailable
-                                && !TlpSettingsService.busy
-                            colBackground: Appearance.colors.colPrimary
-                            colBackgroundHover: Appearance.colors.colPrimaryHover
-                            colRipple: Appearance.colors.colPrimaryActive
-                            colText: Appearance.colors.colOnPrimary
-                            onClicked: TlpSettingsService.apply()
-                        }
-
-                        DialogButton {
-                            buttonText: Translation.tr("Reset")
-                            enabled: TlpSettingsService.canResetOverrides
-                            onClicked: TlpSettingsService.reset()
-                        }
-                    }
-
-                    StyledText {
-                        visible: TlpSettingsService.lastError.length > 0
-                        Layout.fillWidth: true
-                        text: TlpSettingsService.lastError
-                        color: Appearance.colors.colError
-                        wrapMode: Text.WordWrap
-                        font.pixelSize: Appearance.font.pixelSize.smaller
                     }
                 }
             }
@@ -424,12 +570,38 @@ ColumnLayout {
     Item {
         id: categoryRailContainer
         objectName: "tlpCategoryNavigator"
-        visible: false
+        visible: root.navigationCategories.length > 0
+        width: root.width
         Layout.fillWidth: true
+        Layout.maximumWidth: root.width
         Layout.preferredHeight: 0
         Layout.maximumHeight: 0
         implicitHeight: 0
         opacity: 0
         clip: true
+
+        Rectangle {
+            id: categoryRail
+            objectName: "tlpCategoryRail"
+            width: root.width
+            implicitHeight: categoryTabs.implicitHeight
+            height: implicitHeight
+            color: "transparent"
+
+            ConfigSelectionArray {
+                id: categoryTabs
+                objectName: "tlpCategoryTabs"
+                width: root.width
+                taskNavigation: true
+                useAbyssPillShape: false
+                currentValue: root.selectedCategoryIndex
+                options: root.navigationCategories.map((category, index) => ({
+                    displayName: Translation.tr(TlpSettingsService.categoryLabel(category)),
+                    icon: String(category?.icon ?? "tune"),
+                    value: index
+                }))
+                onSelected: value => root.selectCategory(Number(value))
+            }
+        }
     }
 }

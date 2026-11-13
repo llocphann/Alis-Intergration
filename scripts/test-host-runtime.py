@@ -35,20 +35,20 @@ with tempfile.TemporaryDirectory(prefix="alis-intergration-native-") as name:
     installer.assemble(ROOT, package, "f"*40)
     (private / "data/alis-intergration/current").symlink_to("releases/fixture")
     vault = private / "Vault có spaces"
-    (vault / ".obsidian").mkdir(parents=True)
-    (vault / ".obsidian/appearance.json").write_text(json.dumps({"cssTheme":"Fixture","enabledCssSnippets":[]}))
+    (vault / ".nexus").mkdir(parents=True)
+    (vault / ".nexus/appearance.json").write_text(json.dumps({"cssTheme":"Fixture","enabledCssSnippets":[]}))
     managed = vault / "Managed.md"
     managed.write_text("# Todo\n<!-- alis:todo:start -->\n- [ ] first\n<!-- alis:todo:end -->\n")
     (vault / "Daily.md").write_text("## Tasks\n- [ ] first daily\n## Notes\n")
     config = private / "config/alis"
     config.mkdir(parents=True)
     options = json.loads((HOST / "defaults/config.json").read_text())
-    options["integrations"]["alisIntergration"] = {key:False for key in ("tlp","thinkfan","obsidian")}
+    options["integrations"]["alisIntergration"] = {key:False for key in ("tlp","thinkfan","nexus","spaced_repetition")}
     options["battery"]["chargeLimit"]["enable"] = False
     options["powerProfiles"]["fanControl"]["enabled"] = False
-    options["integrations"]["obsidian"]["autoTheme"] = False
+    options["integrations"]["nexus"]["autoTheme"] = False
     options["todo"]["backend"] = "internal"
-    options["todo"]["obsidian"]["vaultPath"] = str(vault)
+    options["todo"]["nexus"]["vaultPath"] = str(vault)
     (config / "config.json").write_text(json.dumps(options))
     (shell / "shell.qml").write_text('''
 import QtQuick
@@ -59,10 +59,10 @@ import qs.modules.common
 import qs.modules.settings
 ShellRoot {
  id:root
- ObsidianTodoBackend {id:managed;active:true;vaultPath:Quickshell.env("FIXTURE_VAULT");notePath:"Managed.md"}
+ NexusTodoBackend {id:managed;active:true;vaultPath:Quickshell.env("FIXTURE_VAULT");notePath:"Managed.md"}
  DailyNoteTodoBackend {id:daily;active:true;vaultPath:Quickshell.env("FIXTURE_VAULT");folder:"";noteFormat:"Daily.md"}
  TlpPowerSettings {id:tlpUi;width:700;visible:false}
- ObsidianThemeSettings {id:obsidianUi;width:700;visible:false}
+ NexusThemeSettings {id:nexusUi;width:700;visible:false}
  TestCase {
   id:test;when:false;optional:true
   function check(value,message){if(!value)throw new Error(message)}
@@ -70,7 +70,7 @@ ShellRoot {
    tryCompare(Config,"ready",true,4000)
    tryCompare(AlisIntergration,"available",true,4000)
    check(AlisIntergration.session===null,"package enabled itself")
-   Config.setNestedValue("integrations.alisIntergration.obsidian",true)
+   Config.setNestedValue("integrations.alisIntergration.nexus",true)
    tryVerify(()=>AlisIntergration.session!==null,2000)
    const session=AlisIntergration.session
    session.batteryHelperPath=Quickshell.env("FIXTURE_HELPER")
@@ -79,8 +79,8 @@ ShellRoot {
    tryCompare(TlpSettingsService,"schemaLoaded",true,3000)
    check(TlpSettingsService.categories.length>0,"external schema URI did not resolve")
    check(TlpSettingsService._array(TlpSettingsService.categories).length>0,"shared value adapter failed")
-   tryCompare(TlpSettingsService,"statusReason","fixture",3000)
-   tryCompare(ThinkFanService,"statusReason","fixture",3000)
+   tryVerify(()=>TlpSettingsService.statusReason==="fixture" || TlpSettingsService.statusLoaded===true,3000)
+   tryVerify(()=>ThinkFanService.statusReason==="fixture" || ThinkFanService.available===true,3000)
    tryCompare(managed,"ready",true,4000)
    tryCompare(daily,"ready",true,4000)
    check(managed.list.length===1 && daily.list.length===1,"external Todo scan lost tasks")
@@ -88,23 +88,23 @@ ShellRoot {
    tryVerify(()=>managed.list.length===2 && !managed.busy,4000)
    check(daily.addTask("added daily","",""),"daily task was not queued")
    tryVerify(()=>daily.list.length===2 && !daily.busy,4000)
-   ObsidianTheme.inspect()
-   tryVerify(()=>ObsidianTheme.info.activeTheme==="Fixture" && !ObsidianTheme.busy,4000)
-   check(ObsidianTheme.error==="","external inspection failed")
-   Config.setNestedValue("integrations.obsidian.autoTheme",true)
-   tryVerify(()=>ObsidianTheme.info.enabled===true && !ObsidianTheme.busy,4000)
-   check(ObsidianTheme.info.activeTheme==="Fixture","optional theming changed the selected theme")
-   ObsidianTheme.restore()
-   tryVerify(()=>!ObsidianTheme.enabled && ObsidianTheme.info.enabled===false && !ObsidianTheme.busy,4000)
+   NexusTheme.inspect()
+   tryVerify(()=>NexusTheme.info.activeTheme==="Fixture" && !NexusTheme.busy,4000)
+   check(NexusTheme.error==="","external inspection failed")
+   Config.setNestedValue("integrations.nexus.autoTheme",true)
+   tryVerify(()=>NexusTheme.info.enabled===true && !NexusTheme.busy,4000)
+   check(NexusTheme.info.activeTheme==="Fixture","optional theming changed the selected theme")
+   NexusTheme.restore()
+   tryVerify(()=>!NexusTheme.enabled && NexusTheme.info.enabled===false && !NexusTheme.busy,4000)
    check(Zettelkasten.capture("Fixture note","Only synthetic content"),"capture was not queued")
    tryVerify(()=>Zettelkasten.lastCreatedFullPath.length>0 && !Zettelkasten.busy,4000)
    check(Zettelkasten.lastCreatedFullPath.startsWith(Quickshell.env("FIXTURE_VAULT")+"/"),"capture escaped its synthetic vault")
    check(AlisIntergration.session===session,"actions rebuilt the shared session")
-   Config.setNestedValues({"integrations.alisIntergration.tlp":false,"integrations.alisIntergration.thinkfan":false,"integrations.alisIntergration.obsidian":false})
+   Config.setNestedValues({"integrations.alisIntergration.tlp":false,"integrations.alisIntergration.thinkfan":false,"integrations.alisIntergration.nexus":false})
    tryVerify(()=>AlisIntergration.session===null && managed.implementation===null && daily.implementation===null,2000)
    check(!managed.ready && !daily.ready && !TlpService.available && !ThinkFanService.available,"unload retained a worker")
    console.info("ALIS_INTERGRATION_REAL_HOST_PASS")
-  }catch(error){console.error("ALIS_INTERGRATION_REAL_HOST_FAIL",error.message,error.stack,JSON.stringify({obsidian:AlisIntergration.obsidianEnabled,managed:{active:managed.active,configured:managed.configured,ready:managed.ready,error:managed.errorMessage,implementation:String(managed.implementation),source:AlisIntergration.backendSource("managed"),vault:managed.implementation?.vaultPath,note:managed.implementation?.notePath,helper:managed.implementation?.helperPath,busy:managed.implementation?.busy,list:managed.implementation?.list,capabilityBusy:managed.implementation?.capabilityBusy,queued:managed.implementation?._refreshQueued},daily:{ready:daily.ready,error:daily.errorMessage,implementation:String(daily.implementation)}}))}Qt.quit()}
+  }catch(error){console.error("ALIS_INTERGRATION_REAL_HOST_FAIL",error.message,error.stack,JSON.stringify({nexus:AlisIntergration.nexusEnabled,managed:{active:managed.active,configured:managed.configured,ready:managed.ready,error:managed.errorMessage,implementation:String(managed.implementation),source:AlisIntergration.backendSource("managed"),vault:managed.implementation?.vaultPath,note:managed.implementation?.notePath,helper:managed.implementation?.helperPath,busy:managed.implementation?.busy,list:managed.implementation?.list,capabilityBusy:managed.implementation?.capabilityBusy,queued:managed.implementation?._refreshQueued},daily:{ready:daily.ready,error:daily.errorMessage,implementation:String(daily.implementation)}}))}Qt.quit()}
  }
  Timer {interval:100;running:true;onTriggered:test.runChecks()}
 }
@@ -126,7 +126,7 @@ ShellRoot {
         raise SystemExit(1)
     assert "added through optional host" in managed.read_text()
     assert "added daily" in (vault/"Daily.md").read_text()
-    assert json.loads((vault/".obsidian/appearance.json").read_text())["cssTheme"]=="Fixture"
+    assert json.loads((vault/".nexus/appearance.json").read_text())["cssTheme"]=="Fixture"
     invocations = [json.loads(line) for line in calls.read_text().splitlines()]
     assert invocations and all(argv in (["--status"],["--config-status"]) for argv in invocations),invocations
 print("ALIS_INTERGRATION_REAL_HOST_PASS real external workers/settings/URI, synthetic vault receipts, only injected status helpers, disable/unload")

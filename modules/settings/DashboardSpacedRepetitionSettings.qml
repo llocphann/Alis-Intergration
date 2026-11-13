@@ -4,8 +4,13 @@ import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 
-SettingsGroup {
+SettingsCardSection {
     id: root
+    objectName: "alisIntergrationSpacedRepetitionSettings"
+    settingsTaskSection: "spacedRepetition"
+    expanded: true
+    icon: "school"
+    title: Translation.tr("Spaced Repetition")
 
     function ensureSpacedRepetitionInPageOrder(): void {
         const current = Array.from(Config.options?.dashboard?.pageOrder ?? ["dashboard", "music", "weeklyPlanner"])
@@ -14,7 +19,8 @@ SettingsGroup {
         }
     }
 
-    SettingsSwitch {
+    SettingsGroup {
+        SettingsSwitch {
         Layout.fillWidth: true
         buttonIcon: "school"
         text: Translation.tr("Enable Spaced Repetition tab")
@@ -171,13 +177,28 @@ SettingsGroup {
         }
 
         ConfigSelectionArray {
-            currentValue: Config.options?.dashboard?.spacedRepetition?.studyDirection ?? "both"
+            currentValue: {
+                const raw = String(
+                    Config.options?.dashboard?.spacedRepetition?.studyDirection
+                    ?? Config.options?.dashboard?.spacedRepetition?.reviewMode
+                    ?? "both"
+                ).toLowerCase()
+                if (raw === "reverse" || raw === "reverse_flashcard" || raw === "reverseflashcard"
+                        || raw === "rmc" || raw === "reverse_mcq" || raw === "reversemultiplechoice")
+                    return "matching"
+                if (raw === "mcq" || raw === "multiple_choice" || raw === "multiplechoice")
+                    return "mc"
+                if (raw === "forward")
+                    return "flashcard"
+                return raw
+            }
             onSelected: value => Config.setNestedValue("dashboard.spacedRepetition.studyDirection", value)
             options: [
-                { displayName: Translation.tr("Both"), icon: "sync_alt", value: "both" },
-                { displayName: Translation.tr("Flashcard"), icon: "style", value: "flashcard" },
-                { displayName: Translation.tr("Reverse"), icon: "swap_horiz", value: "reverse" },
-                { displayName: Translation.tr("Cloze / Type"), icon: "edit_note", value: "cloze" }
+                { displayName: Translation.tr("Smart Mix"), icon: "auto_awesome", value: "both" },
+                { displayName: Translation.tr("Matching"), icon: "join_inner", value: "matching" },
+                { displayName: Translation.tr("Multiple Choice"), icon: "quiz", value: "mc" },
+                { displayName: Translation.tr("Cloze Reading"), icon: "edit_note", value: "cloze" },
+                { displayName: Translation.tr("Flashcard"), icon: "style", value: "flashcard" }
             ]
         }
 
@@ -208,5 +229,6 @@ SettingsGroup {
             checked: Config.options?.dashboard?.spacedRepetition?.autoCloze ?? true
             onCheckedChanged: Config.setNestedValue("dashboard.spacedRepetition.autoCloze", checked)
         }
+    }
     }
 }

@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix="alis-intergration-install-") as name:
     (release / "services/unlisted.qml").unlink()
     pycache = release / "scripts/todo/__pycache__"
     pycache.mkdir(parents=True, exist_ok=True)
-    (pycache / "obsidian_todo.cpython-314.pyc").write_bytes(b"bytecode")
+    (pycache / "nexus_todo.cpython-314.pyc").write_bytes(b"bytecode")
     assert installer.install(data, source) == release
     (pycache / "unlisted.qml").write_text("unlisted")
     expect_reinstall_rejected("unlisted non-bytecode in __pycache__ accepted")

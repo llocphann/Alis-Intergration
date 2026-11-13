@@ -1,7 +1,7 @@
 // SpacedRepetitionEngine.js
 // Pure scheduling, automated syntax parsing, queue construction, and storage migration
 // for the Alis Dashboard Spaced Repetition system.
-// Inspired by st3v3nmw/obsidian-spaced-repetition with enhancements:
+// Inspired by Markdown spaced-repetition workflows with enhancements:
 // - Automated syntax & zero-markup structured cards (no <!--SR:...--> pollution)
 // - Vocabulary-first (CEFR A1-C2, EN/DE gender/plural/IPA) + General Knowledge & Auto-Cloze
 // - Configurable boost multiplier, lapse retention, load balancing, and leech detection.
@@ -10,6 +10,28 @@ var SCHEMA_VERSION = 4;
 var DAY_MS = 86400000;
 var MINUTE_MS = 60000;
 var CEFR_ORDER = { "A1": 1, "A2": 2, "B1": 3, "B2": 4, "C1": 5, "C2": 6 };
+var ACTIVE_STUDY_MODES = ["matching", "mc", "cloze"];
+var FALLBACK_STUDY_MODE = "flashcard";
+var ALL_STUDY_MODES = ["matching", "mc", "cloze", "flashcard"];
+
+function normalizeStudyMode(rawMode) {
+    var m = String(rawMode || "").trim().toLowerCase();
+    if (m === "matching" || m === "match" || m === "rmc" || m === "reverse_mcq"
+            || m === "reversemultiplechoice" || m === "reverse"
+            || m === "reverse_flashcard" || m === "reverseflashcard") {
+        return "matching";
+    }
+    if (m === "mc" || m === "mcq" || m === "multiple_choice" || m === "multiplechoice") {
+        return "mc";
+    }
+    if (m === "cloze" || m === "cloze_reading" || m === "clozereading") {
+        return "cloze";
+    }
+    if (m === "flashcard" || m === "forward") {
+        return "flashcard";
+    }
+    return "matching";
+}
 
 function defaultOptions() {
     return {
@@ -29,7 +51,9 @@ function defaultOptions() {
         prioritizeOrder: "due_first",
         autoLookupLevel: true,
         autoLookupOnline: true,
-        autoCloze: true
+        autoCloze: true,
+        dailyGoalCards: 20,
+        weekendsEnabled: true
     };
 }
 
@@ -51,9 +75,20 @@ function normalizeOptions(raw) {
     var src = (raw && typeof raw === "object") ? raw : {};
     var lang = String(src.defaultLanguage || d.defaultLanguage).toLowerCase();
     if (["en", "de", "general", "other"].indexOf(lang) < 0) lang = "en";
-    var dir = String(src.studyDirection || d.studyDirection).toLowerCase();
-    if (dir === "flashcard") dir = "forward";
-    if (["forward", "reverse", "both", "cloze"].indexOf(dir) < 0) dir = "both";
+    var dir = String(src.studyDirection || src.reviewMode || src.studyMode || d.studyDirection).toLowerCase();
+    if (dir === "reverse" || dir === "reverse_flashcard" || dir === "reverseflashcard"
+            || dir === "rmc" || dir === "reverse_mcq" || dir === "reversemultiplechoice") {
+        dir = "matching";
+    } else if (dir === "mcq" || dir === "multiple_choice" || dir === "multiplechoice") {
+        dir = "mc";
+    } else if (dir === "cloze_reading" || dir === "clozereading") {
+        dir = "cloze";
+    } else if (dir === "flashcard") {
+        dir = "forward";
+    } else if (dir === "auto" || dir === "smart") {
+        dir = "both";
+    }
+    if (["forward", "matching", "mc", "both", "cloze"].indexOf(dir) < 0) dir = "both";
     var prio = String(src.prioritizeOrder || d.prioritizeOrder).toLowerCase().replace(/-/g, "_");
     if (prio === "hard_first") prio = "hardest_first";
     if (["due_first", "level_asc", "hardest_first", "new_first", "interleaved"].indexOf(prio) < 0) prio = "due_first";
@@ -75,7 +110,9 @@ function normalizeOptions(raw) {
         prioritizeOrder: prio,
         autoLookupLevel: src.autoLookupLevel !== false,
         autoLookupOnline: src.autoLookupOnline !== false,
-        autoCloze: src.autoCloze !== false
+        autoCloze: src.autoCloze !== false,
+        dailyGoalCards: Math.round(clampNumber(src.dailyGoalCards, 1, 500, d.dailyGoalCards)),
+        weekendsEnabled: src.weekendsEnabled !== undefined ? Boolean(src.weekendsEnabled) : d.weekendsEnabled
     };
 }
 
@@ -94,7 +131,7 @@ function escapeRegExp(str) {
 function normalizeClozeMarkup(text) {
     var s = String(text || "");
     var counter = 1;
-    // Convert Obsidian ==highlight== into {{c1::highlight}}
+    // Convert Nexus ==highlight== into {{c1::highlight}}
     s = s.replace(/==([^=\n]+)==/g, function(_, inner) {
         return "{{c" + (counter++) + "::" + inner.trim() + "}}";
     });
@@ -365,13 +402,15 @@ function normalizeCard(raw, indexFallback, nowMs, rawOptions, lexiconAnalyzer) {
     var interval = Math.max(0, Number(src.interval) || 0);
     var ease = Math.round(clampNumber(src.ease, 130, 500, opts.baseEase));
     var dueAt = now;
-    if (typeof src.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(src.dueDate.trim()) && (!Number.isFinite(Number(src.dueAt)) || civilDayKey(Number(src.dueAt)) !== src.dueDate.trim())) {
-        var parsedDue = Date.parse(src.dueDate.trim() + "T09:00:00Z");
+    var hasValidDueDate = typeof src.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(src.dueDate.trim());
+    var hasFiniteDueAt = Number.isFinite(Number(src.dueAt));
+    if (hasValidDueDate && (!hasFiniteDueAt || (interval >= 1 && civilDayKey(Number(src.dueAt)) !== src.dueDate.trim()))) {
+        var parsedDue = parseCivilDayLocalMs(src.dueDate.trim(), 9);
         if (Number.isFinite(parsedDue)) dueAt = parsedDue;
-    } else if (Number.isFinite(Number(src.dueAt))) {
+    } else if (hasFiniteDueAt) {
         dueAt = Number(src.dueAt);
     }
-    var dueDate = (typeof src.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(src.dueDate.trim()))
+    var dueDate = hasValidDueDate
         ? src.dueDate.trim()
         : civilDayKey(dueAt);
     var createdAt = Number.isFinite(Number(src.createdAt)) ? Number(src.createdAt) : now;
@@ -495,12 +534,14 @@ function chooseBalancedInterval(rawDays, nowMs, dueCountsByDay, maxInterval) {
         return base;
     }
     var span = base <= 14 ? 1 : 2;
+    var minOffset = base <= 7 ? 0 : -span;
+    var todayStr = civilDayKey(nowMs);
     var bestOffset = 0;
     var bestLoad = Infinity;
-    for (var offset = -span; offset <= span; offset++) {
+    for (var offset = minOffset; offset <= span; offset++) {
         var candidate = base + offset;
         if (candidate < 2 || candidate > maxInterval) continue;
-        var key = civilDayKey(nowMs + candidate * DAY_MS);
+        var key = addDaysKey(todayStr, candidate, nowMs);
         var load = Number(dueCountsByDay[key]) || 0;
         // Tie-break toward the exact base interval (offset === 0)
         if (load < bestLoad || (load === bestLoad && Math.abs(offset) < Math.abs(bestOffset))) {
@@ -529,20 +570,16 @@ function computePositiveRatingDays(c, opts, now, dueCountsByDay) {
     var hardRaw = Math.max(baseInt + 1, baseInt * opts.hardMultiplier * boost);
     var hardDays = Math.min(maxInt, Math.round(hardRaw));
 
-    var goodEaseFactor = (reps <= 1 && baseInt <= 3)
-        ? Math.min(Math.max(1.3, ease / 100), 2.0)
-        : Math.max(1.3, ease / 100);
+    var goodEaseFactor = Math.max(1.3, ease / 100);
     var goodRaw = Math.max(hardDays + 1, baseInt * goodEaseFactor * boost);
     var goodDays = (opts.loadBalance && reps >= 2)
-        ? Math.max(hardDays + 1, chooseBalancedInterval(goodRaw, now, dueCountsByDay, maxInt))
+        ? Math.min(maxInt, Math.max(hardDays + 1, chooseBalancedInterval(goodRaw, now, dueCountsByDay, maxInt)))
         : Math.min(maxInt, Math.max(hardDays + 1, Math.round(goodRaw)));
 
-    var easyEaseFactor = (reps <= 1 && baseInt <= 3)
-        ? Math.min(Math.max(1.5, Math.min(500, ease + 15) / 100), 2.2)
-        : Math.max(1.3, Math.min(500, ease + 15) / 100);
+    var easyEaseFactor = Math.max(1.3, Math.min(500, ease + 15) / 100);
     var easyRaw = Math.max(goodDays + 1, baseInt * easyEaseFactor * opts.easyBonus * boost);
     var easyDays = (opts.loadBalance && reps >= 2)
-        ? Math.max(goodDays + 1, chooseBalancedInterval(easyRaw, now, dueCountsByDay, maxInt))
+        ? Math.min(maxInt, Math.max(goodDays + 1, chooseBalancedInterval(easyRaw, now, dueCountsByDay, maxInt)))
         : Math.min(maxInt, Math.max(goodDays + 1, Math.round(easyRaw)));
 
     return { hard: hardDays, good: goodDays, easy: easyDays };
@@ -562,7 +599,9 @@ function computeNextSchedule(card, rating, nowMs, rawOptions, dueCountsByDay) {
     var opts = normalizeOptions(rawOptions);
     var now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
     var c = normalizeCard(card, 1, now, opts, null);
-    var r = String(rating || "good").toLowerCase();
+    var r = (rating === undefined || rating === null || String(rating).trim() === "")
+        ? "good"
+        : String(rating).trim().toLowerCase();
 
     var ease = c.ease;
     var reps = c.reps;
@@ -592,20 +631,23 @@ function computeNextSchedule(card, rating, nowMs, rawOptions, dueCountsByDay) {
         nextDueMs = now + nextInterval * DAY_MS;
         reps += 1;
         nextState = nextInterval >= 21 ? "mature" : "young";
-    } else if (r === "easy" || r === "3") {
+    } else if (r === "easy" || r === "3" || r === "4") {
         ease = Math.min(500, ease + 15);
         nextInterval = positiveDays.easy;
         nextDueMs = now + nextInterval * DAY_MS;
         reps += 1;
         nextState = nextInterval >= 21 ? "mature" : "young";
     } else {
-        // "good" / "2" (default)
+        // "good" / "normal" / "2" (default)
         nextInterval = positiveDays.good;
         nextDueMs = now + nextInterval * DAY_MS;
         reps += 1;
         nextState = nextInterval >= 21 ? "mature" : "young";
     }
 
+    var nextDueDate = nextInterval >= 1
+        ? addDaysKey(civilDayKey(now), Math.round(nextInterval), now)
+        : civilDayKey(now);
     var isLeech = lapses >= opts.leechThreshold;
     var updated = Object.assign({}, c, {
         ease: ease,
@@ -614,7 +656,7 @@ function computeNextSchedule(card, rating, nowMs, rawOptions, dueCountsByDay) {
         isLeech: isLeech,
         interval: nextInterval,
         dueAt: nextDueMs,
-        dueDate: civilDayKey(nextDueMs),
+        dueDate: nextDueDate,
         lastReviewedAt: now,
         state: nextState
     });
@@ -633,19 +675,19 @@ function scheduleReview(card, rating, nowMs, rawOptions, dueCountsByDay) {
     return computeNextSchedule(card, rating, nowMs, rawOptions, dueCountsByDay);
 }
 
-function previewIntervals(card, nowMs, rawOptions) {
+function previewIntervals(card, nowMs, rawOptions, dueCountsByDay) {
     if (!card || typeof card !== "object") {
         return { again: "<10m", hard: "1d", good: "2d", easy: "3d" };
     }
     return {
-        again: computeNextSchedule(card, "again", nowMs, rawOptions, null).label,
-        hard: computeNextSchedule(card, "hard", nowMs, rawOptions, null).label,
-        good: computeNextSchedule(card, "good", nowMs, rawOptions, null).label,
-        easy: computeNextSchedule(card, "easy", nowMs, rawOptions, null).label
+        again: computeNextSchedule(card, "again", nowMs, rawOptions, dueCountsByDay).label,
+        hard: computeNextSchedule(card, "hard", nowMs, rawOptions, dueCountsByDay).label,
+        good: computeNextSchedule(card, "good", nowMs, rawOptions, dueCountsByDay).label,
+        easy: computeNextSchedule(card, "easy", nowMs, rawOptions, dueCountsByDay).label
     };
 }
 
-function parseObsidianSrComment(text) {
+function parseNexusSrComment(text) {
     // Matches <!--SR:!2026-11-05,4,270-->
     var m = String(text || "").match(/<!--\s*SR:!(\d{4}-\d{2}-\d{2}),(\d+),(\d+)\s*-->/);
     var cleaned = String(text || "").replace(/<!--\s*SR:![\s\S]*?-->/g, "").trim();
@@ -668,7 +710,7 @@ function parseObsidianSrComment(text) {
     };
 }
 
-function parseObsidianUnitCard(frontLines, backLines, deck, prefLang, schedule, opts, lexiconAnalyzer) {
+function parseNexusUnitCard(frontLines, backLines, deck, prefLang, schedule, opts, lexiconAnalyzer) {
     var headLine = String(backLines[0] || "").trim();
     var headMatch = headLine.match(/^\*\*(.+?)\*\*\s*(?:\(([A-C][12])\))?\s*(?:\(([^)]+)\))?/i);
     if (!headMatch) return null;
@@ -750,7 +792,7 @@ function parseObsidianUnitCard(frontLines, backLines, deck, prefLang, schedule, 
 }
 
 function parseSingleQuickEntry(rawBlock, defaults, lexiconAnalyzer) {
-    var srParsed = parseObsidianSrComment(rawBlock);
+    var srParsed = parseNexusSrComment(rawBlock);
     var text = srParsed.cleaned.trim();
     if (!text || /^#+$/.test(text)) return null;
 
@@ -759,7 +801,7 @@ function parseSingleQuickEntry(rawBlock, defaults, lexiconAnalyzer) {
     var prefLang = String((defaults && defaults.language) || opts.defaultLanguage);
     var category = String((defaults && defaults.category) || "auto").toLowerCase();
 
-    // Check multi-line ? or ?? separator (Obsidian SR multi-line card)
+    // Check multi-line ? or ?? separator (Nexus SR multi-line card)
     var lines = text.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(Boolean);
     var qIndex = lines.indexOf("?");
     var qqIndex = lines.indexOf("??");
@@ -768,7 +810,7 @@ function parseSingleQuickEntry(rawBlock, defaults, lexiconAnalyzer) {
         var frontLines = lines.slice(0, sepIdx).join(" ");
         var backLines = lines.slice(sepIdx + 1);
         if (/\*\*____\*\*/.test(frontLines) && backLines.length > 0 && /^\*\*.+?\*\*/.test(backLines[0])) {
-            var unitCard = parseObsidianUnitCard(frontLines, backLines, deck, prefLang, srParsed.schedule, opts, lexiconAnalyzer);
+            var unitCard = parseNexusUnitCard(frontLines, backLines, deck, prefLang, srParsed.schedule, opts, lexiconAnalyzer);
             if (unitCard) return unitCard;
         }
         var meaningLine = backLines[0] || "";
@@ -928,15 +970,32 @@ function buildParsedEntry(rawLeft, rawRight, rawExample, isBidir, category, deck
     return primaryCard;
 }
 
+function parseCivilDayLocalMs(dayKeyStr, hour) {
+    if (typeof dayKeyStr !== "string") return NaN;
+    var m = dayKeyStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return NaN;
+    var y = parseInt(m[1], 10);
+    var mo = parseInt(m[2], 10) - 1;
+    var d = parseInt(m[3], 10);
+    var h = Number.isFinite(Number(hour)) ? Number(hour) : 9;
+    return new Date(y, mo, d, h, 0, 0, 0).getTime();
+}
+
 function todayKey(nowMs) {
     return civilDayKey(nowMs);
 }
 
 function addDaysKey(dayKeyStr, days, fallbackMs) {
-    var baseMs = (typeof dayKeyStr === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dayKeyStr))
-        ? Date.parse(dayKeyStr + "T12:00:00Z")
-        : (Number.isFinite(Number(fallbackMs)) ? Number(fallbackMs) : Date.now());
-    return civilDayKey(baseMs + (Number(days) || 0) * DAY_MS);
+    var delta = Math.round(Number(days) || 0);
+    if (typeof dayKeyStr === "string") {
+        var m = dayKeyStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (m) {
+            var dt = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10) + delta, 12, 0, 0, 0);
+            return civilDayKey(dt.getTime());
+        }
+    }
+    var baseMs = Number.isFinite(Number(fallbackMs)) ? Number(fallbackMs) : Date.now();
+    return civilDayKey(baseMs + delta * DAY_MS);
 }
 
 function parseQuickInput(rawText, defaultsOrDeck, langOrAnalyzer, categoryOpt, analyzerOpt) {
@@ -1075,6 +1134,61 @@ function parseBulkText(rawText, defaultsOrDeck, langOrAnalyzer, categoryOpt, ana
     return parseQuickInput(rawText, defaultsOrDeck, langOrAnalyzer, categoryOpt, analyzerOpt);
 }
 
+function effectiveCardDueDate(card, nowMs, todayStr) {
+    if (!card || typeof card !== "object") return todayStr || civilDayKey(nowMs);
+    var now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+    var today = (typeof todayStr === "string" && /^\d{4}-\d{2}-\d{2}$/.test(todayStr))
+        ? todayStr
+        : civilDayKey(now);
+    var interval = Math.max(0, Number(card.interval) || 0);
+    var lastRev = Number(card.lastReviewedAt) || 0;
+    var dueAt = Number(card.dueAt);
+    var dueDateStr = (typeof card.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(card.dueDate.trim()))
+        ? card.dueDate.trim()
+        : (Number.isFinite(dueAt) ? civilDayKey(dueAt) : today);
+
+    if (interval >= 1 && lastRev > 0 && lastRev <= now) {
+        var lastRevDay = civilDayKey(lastRev);
+        var minScheduledDay = addDaysKey(lastRevDay, Math.max(1, Math.round(interval)), lastRev);
+        if (dueDateStr && dueDateStr > minScheduledDay) {
+            return dueDateStr;
+        }
+        return minScheduledDay;
+    }
+    return dueDateStr || today;
+}
+
+function isCardDueOnDay(card, nowMs, todayStr) {
+    if (!card || typeof card !== "object") return false;
+    var reps = Number(card.reps) || 0;
+    if (reps === 0 && card.state === "new") return false;
+    var now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+    var today = (typeof todayStr === "string" && /^\d{4}-\d{2}-\d{2}$/.test(todayStr))
+        ? todayStr
+        : civilDayKey(now);
+    var interval = Math.max(0, Number(card.interval) || 0);
+    var lastRev = Number(card.lastReviewedAt) || 0;
+    var dueAt = Number(card.dueAt);
+    var dueDateStr = (typeof card.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(card.dueDate.trim()))
+        ? card.dueDate.trim()
+        : (Number.isFinite(dueAt) ? civilDayKey(dueAt) : "");
+
+    if (interval > 0 && interval < 1) {
+        return !Number.isFinite(dueAt) || dueAt <= now || Boolean(dueDateStr && dueDateStr <= today);
+    }
+
+    if (interval >= 1 && lastRev > 0 && lastRev <= now) {
+        var lastRevDay = civilDayKey(lastRev);
+        if (lastRevDay === today) return false;
+        return effectiveCardDueDate(card, now, today) <= today;
+    }
+
+    if (dueDateStr) {
+        return dueDateStr <= today;
+    }
+    return Number.isFinite(dueAt) && dueAt <= now;
+}
+
 function buildStudyQueue(cards, filters, statsToday, nowMs, rawOptions) {
     // Allow 3-argument call: buildStudyQueue(cards, filtersWithOptions, nowMs)
     if (typeof statsToday === "number" && nowMs === undefined) {
@@ -1124,22 +1238,25 @@ function buildStudyQueue(cards, filters, statsToday, nowMs, rawOptions) {
     var todayStr = civilDayKey(now);
     var aheadCutoffStr = addDaysKey(todayStr, aheadDays, now);
 
-    var dueReviews = [];
-    var dueNew = [];
+    var allDueReviews = [];
+    var allPendingLearning = [];
+    var allDueNew = [];
     var aheadPool = [];
 
     for (var j = 0; j < filtered.length; j++) {
         var item = filtered[j];
         var isNew = (Number(item.reps) || 0) === 0 && item.state === "new";
+        var itemInterval = Math.max(0, Number(item.interval) || 0);
         var itemDueMs = Number(item.dueAt);
-        var isDue = (Number.isFinite(itemDueMs) && itemDueMs <= now)
-            || (typeof item.dueDate === "string" && item.dueDate <= todayStr);
+        var isDue = isCardDueOnDay(item, now, todayStr);
         if (isNew) {
-            if (dueNew.length < remNew) dueNew.push(item);
-            else aheadPool.push(item);
+            allDueNew.push(item);
         } else if (isDue) {
-            if (dueReviews.length < remRev) dueReviews.push(item);
-            else aheadPool.push(item);
+            if (itemInterval > 0 && itemInterval < 1 && Number.isFinite(itemDueMs) && itemDueMs > now) {
+                allPendingLearning.push(item);
+            } else {
+                allDueReviews.push(item);
+            }
         } else {
             aheadPool.push(item);
         }
@@ -1158,8 +1275,21 @@ function buildStudyQueue(cards, filters, statsToday, nowMs, rawOptions) {
         return (Number(a.dueAt) || 0) - (Number(b.dueAt) || 0);
     };
 
-    dueReviews.sort(sorter);
-    dueNew.sort(sorter);
+    allDueReviews.sort(sorter);
+    allDueNew.sort(sorter);
+    allPendingLearning.sort(function(a, b) {
+        return (Number(a.dueAt) || 0) - (Number(b.dueAt) || 0);
+    });
+
+    var dueReviews = allDueReviews.slice(0, remRev);
+    var remLearningSlots = Math.max(0, remRev - dueReviews.length);
+    var pendingLearning = allPendingLearning.slice(0, remLearningSlots);
+    var dueNew = allDueNew.slice(0, remNew);
+    aheadPool = aheadPool.concat(
+        allDueReviews.slice(remRev),
+        allPendingLearning.slice(remLearningSlots),
+        allDueNew.slice(remNew)
+    );
 
     var queue = [];
     if (opts.prioritizeOrder === "interleaved") {
@@ -1173,6 +1303,9 @@ function buildStudyQueue(cards, filters, statsToday, nowMs, rawOptions) {
         queue = dueNew.concat(dueReviews);
     } else {
         queue = dueReviews.concat(dueNew);
+    }
+    if (pendingLearning.length > 0) {
+        queue = queue.concat(pendingLearning);
     }
 
     if (boostMode === "hard") {
@@ -1200,9 +1333,94 @@ function buildStudyQueue(cards, filters, statsToday, nowMs, rawOptions) {
     return queue;
 }
 
+function buildYearHeatmap(historyByDay, yearArg, nowMs, goalCardsArg) {
+    var now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+    var nowDate = new Date(now);
+    var todayStr = civilDayKey(now);
+    var year = Number.isFinite(Number(yearArg)) && Number(yearArg) > 1970 ? Math.round(Number(yearArg)) : nowDate.getFullYear();
+    var goalCards = Math.max(1, Math.round(Number(goalCardsArg) || 20));
+    var hist = (historyByDay && typeof historyByDay === "object") ? historyByDay : {};
+
+    var t1 = Math.max(3, Math.round(goalCards * 0.35));
+    var t2 = Math.max(t1 + 2, Math.round(goalCards * 0.75));
+    var t3 = Math.max(t2 + 2, Math.round(goalCards * 1.25));
+
+    var startDate = new Date(year, 0, 1);
+    var startDow = (startDate.getDay() + 6) % 7; // 0=Mon .. 6=Sun
+    var cursor = new Date(year, 0, 1 - startDow);
+    var endOfYear = new Date(year, 11, 31);
+
+    var monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    var weeks = [];
+    var currentMonth = -1;
+    var maxReviewed = 1;
+    var activeDays = 0;
+    var totalReviewedYear = 0;
+
+    while (cursor <= endOfYear) {
+        var weekDays = [];
+        var monthLabel = "";
+        for (var d = 0; d < 7; d++) {
+            var y = cursor.getFullYear();
+            var m = cursor.getMonth();
+            var day = cursor.getDate();
+            var dateStr = y + "-" + String(m + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+            var inYear = (y === year);
+            var isFuture = dateStr > todayStr;
+            var entry = inYear ? hist[dateStr] : null;
+            var rev = (entry && typeof entry === "object") ? (Number(entry.reviewed) || 0) : 0;
+            var pass = (entry && typeof entry === "object") ? (Number(entry.passed) || 0) : 0;
+            var newS = (entry && typeof entry === "object") ? (Number(entry.newStudied) || 0) : 0;
+
+            if (inYear && m !== currentMonth && day <= 7) {
+                monthLabel = monthNames[m];
+                currentMonth = m;
+            }
+            if (inYear && rev > 0) {
+                activeDays++;
+                totalReviewedYear += rev;
+                if (rev > maxReviewed) maxReviewed = rev;
+            }
+
+            var lvl = 0;
+            if (rev > 0) {
+                if (rev <= t1) lvl = 1;
+                else if (rev <= t2) lvl = 2;
+                else if (rev <= t3) lvl = 3;
+                else lvl = 4;
+            }
+
+            weekDays.push({
+                dateStr: dateStr,
+                reviewed: rev,
+                passed: pass,
+                newStudied: newS,
+                inYear: inYear,
+                isFuture: isFuture,
+                isToday: dateStr === todayStr,
+                level: lvl
+            });
+            cursor.setDate(cursor.getDate() + 1);
+        }
+        weeks.push({
+            monthLabel: monthLabel,
+            days: weekDays
+        });
+    }
+
+    return {
+        year: year,
+        weeks: weeks,
+        maxReviewed: maxReviewed,
+        activeDays: activeDays,
+        totalReviewedYear: totalReviewedYear
+    };
+}
+
 function computeAnalytics(cards, historyByDay, nowMs, rawOptions) {
     var opts = normalizeOptions(rawOptions);
     var now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+    var todayKeyStr = civilDayKey(now);
     var list = Array.isArray(cards) ? cards : [];
     var hist = (historyByDay && typeof historyByDay === "object") ? historyByDay : {};
 
@@ -1232,10 +1450,12 @@ function computeAnalytics(cards, historyByDay, nowMs, rawOptions) {
         var interval = Number(c.interval) || 0;
         var lapses = Number(c.lapses) || 0;
         var dueAt = Number(c.dueAt) || 0;
+        var isNewCard = reps === 0 && c.state === "new";
+        var isDueToday = !isNewCard && isCardDueOnDay(c, now, todayKeyStr);
 
         easeSum += (Number(c.ease) || opts.baseEase);
-        if (dueAt <= now) counts.due++;
-        if (reps === 0 && c.state === "new") counts.newCards++;
+        if (isDueToday) counts.due++;
+        if (isNewCard) counts.newCards++;
         else if (interval < 1 || c.state === "learning" || c.state === "relearning") counts.learning++;
         else if (interval < 21) counts.young++;
         else counts.mature++;
@@ -1257,23 +1477,55 @@ function computeAnalytics(cards, historyByDay, nowMs, rawOptions) {
         var dName = String(c.deck || "General");
         if (!deckMap[dName]) deckMap[dName] = { name: dName, total: 0, due: 0, newCount: 0 };
         deckMap[dName].total++;
-        if (dueAt <= now) deckMap[dName].due++;
+        if (isDueToday) deckMap[dName].due++;
         if (reps === 0) deckMap[dName].newCount++;
 
-        var dayKey = civilDayKey(dueAt);
-        dueCountsByDay[dayKey] = (dueCountsByDay[dayKey] || 0) + 1;
+        if (!isNewCard) {
+            var dayKey = effectiveCardDueDate(c, now, todayKeyStr);
+            dueCountsByDay[dayKey] = (dueCountsByDay[dayKey] || 0) + 1;
+        }
     }
 
-    var todayKeyStr = civilDayKey(now);
     var todayEntry = hist[todayKeyStr] || { reviewed: 0, passed: 0, newStudied: 0, reviewsDone: 0 };
     var totalReviewedAllTime = 0;
     var totalPassedAllTime = 0;
+    var totalNewAllTime = 0;
+    var activeDaysAllTime = 0;
+
+    var nowObj = new Date(now);
+    var dayOfWeek = (nowObj.getDay() + 6) % 7; // 0=Mon..6=Sun
+    var mondayObj = new Date(nowObj.getFullYear(), nowObj.getMonth(), nowObj.getDate() - dayOfWeek);
+    var mondayStr = civilDayKey(mondayObj.getTime());
+    var monthPrefix = todayKeyStr.slice(0, 7);
+
+    var weekReviewed = 0, weekPassed = 0, weekNew = 0, weekActiveDays = 0;
+    var monthReviewed = 0, monthPassed = 0, monthNew = 0, monthActiveDays = 0;
+
     var dayKeys = Object.keys(hist);
     for (var k = 0; k < dayKeys.length; k++) {
-        var h = hist[dayKeys[k]];
+        var dKey = dayKeys[k];
+        var h = hist[dKey];
         if (h && typeof h === "object") {
-            totalReviewedAllTime += (Number(h.reviewed) || 0);
-            totalPassedAllTime += (Number(h.passed) || 0);
+            var rCount = Number(h.reviewed) || 0;
+            var pCount = Number(h.passed) || 0;
+            var nCount = Number(h.newStudied) || 0;
+            totalReviewedAllTime += rCount;
+            totalPassedAllTime += pCount;
+            totalNewAllTime += nCount;
+            if (rCount > 0) activeDaysAllTime++;
+
+            if (dKey >= mondayStr && dKey <= todayKeyStr) {
+                weekReviewed += rCount;
+                weekPassed += pCount;
+                weekNew += nCount;
+                if (rCount > 0) weekActiveDays++;
+            }
+            if (dKey.slice(0, 7) === monthPrefix && dKey <= todayKeyStr) {
+                monthReviewed += rCount;
+                monthPassed += pCount;
+                monthNew += nCount;
+                if (rCount > 0) monthActiveDays++;
+            }
         }
     }
 
@@ -1292,6 +1544,127 @@ function computeAnalytics(cards, historyByDay, nowMs, rawOptions) {
             break;
         }
     }
+
+    // Study-Tracker Consistency Tracker (Mon-Sun strip, Goal Streak, 30d Hit Rate)
+    var goalCards = opts.dailyGoalCards;
+    var weekendsEnabled = opts.weekendsEnabled;
+    var dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    var weeklyDays = [];
+    var weeklyMet = 0;
+    var weeklyTarget = weekendsEnabled ? 7 : 5;
+
+    for (var wd = 0; wd < 7; wd++) {
+        var dDate = new Date(mondayObj.getFullYear(), mondayObj.getMonth(), mondayObj.getDate() + wd);
+        var dStr = civilDayKey(dDate.getTime());
+        var dEntry = hist[dStr];
+        var dRev = (dEntry && typeof dEntry === "object") ? (Number(dEntry.reviewed) || 0) : 0;
+        var dPass = (dEntry && typeof dEntry === "object") ? (Number(dEntry.passed) || 0) : 0;
+        var isRestDay = !weekendsEnabled && (wd === 5 || wd === 6);
+        var isFuture = dStr > todayKeyStr;
+        var met = dRev >= goalCards;
+        if (met && (!isRestDay || weekendsEnabled)) {
+            weeklyMet++;
+        }
+        weeklyDays.push({
+            label: dayLabels[wd],
+            dateStr: dStr,
+            reviewed: dRev,
+            passed: dPass,
+            met: met,
+            active: dRev > 0,
+            isFuture: isFuture,
+            isRestDay: isRestDay,
+            isToday: dStr === todayKeyStr
+        });
+    }
+
+    // Goal streak & 30d hit rate
+    var goalStreak = 0;
+    var cursorGoal = new Date(nowObj.getFullYear(), nowObj.getMonth(), nowObj.getDate());
+    if ((Number(todayEntry.reviewed) || 0) < goalCards) {
+        cursorGoal.setDate(cursorGoal.getDate() - 1);
+    }
+    for (var gs = 0; gs < 365; gs++) {
+        var gStr = civilDayKey(cursorGoal.getTime());
+        var gDow = (cursorGoal.getDay() + 6) % 7;
+        var gRest = !weekendsEnabled && (gDow === 5 || gDow === 6);
+        var gRev = hist[gStr] ? (Number(hist[gStr].reviewed) || 0) : 0;
+        if (gRev >= goalCards) {
+            goalStreak++;
+            cursorGoal.setDate(cursorGoal.getDate() - 1);
+        } else if (gRest) {
+            cursorGoal.setDate(cursorGoal.getDate() - 1);
+        } else {
+            break;
+        }
+    }
+
+    var metDays30d = 0;
+    var totalTargetDays30d = 0;
+    var cursor30 = new Date(nowObj.getFullYear(), nowObj.getMonth(), nowObj.getDate());
+    for (var d30 = 0; d30 < 30; d30++) {
+        var s30 = civilDayKey(cursor30.getTime());
+        var dow30 = (cursor30.getDay() + 6) % 7;
+        var rest30 = !weekendsEnabled && (dow30 === 5 || dow30 === 6);
+        var rev30 = hist[s30] ? (Number(hist[s30].reviewed) || 0) : 0;
+        if (!rest30) {
+            totalTargetDays30d++;
+            if (rev30 >= goalCards) metDays30d++;
+        } else if (rev30 >= goalCards) {
+            totalTargetDays30d++;
+            metDays30d++;
+        }
+        cursor30.setDate(cursor30.getDate() - 1);
+    }
+    var hitRate30d = totalTargetDays30d > 0 ? Math.round((metDays30d / totalTargetDays30d) * 100) : 0;
+
+    var scopedStats = {
+        today: {
+            reviewed: Number(todayEntry.reviewed) || 0,
+            passed: Number(todayEntry.passed) || 0,
+            newStudied: Number(todayEntry.newStudied) || 0,
+            retention: (Number(todayEntry.reviewed) || 0) > 0
+                ? Math.round(((Number(todayEntry.passed) || 0) / (Number(todayEntry.reviewed) || 1)) * 100) : 100,
+            activeDays: (Number(todayEntry.reviewed) || 0) > 0 ? 1 : 0
+        },
+        week: {
+            reviewed: weekReviewed,
+            passed: weekPassed,
+            newStudied: weekNew,
+            retention: weekReviewed > 0 ? Math.round((weekPassed / weekReviewed) * 100) : 100,
+            activeDays: weekActiveDays
+        },
+        month: {
+            reviewed: monthReviewed,
+            passed: monthPassed,
+            newStudied: monthNew,
+            retention: monthReviewed > 0 ? Math.round((monthPassed / monthReviewed) * 100) : 100,
+            activeDays: monthActiveDays
+        },
+        total: {
+            reviewed: totalReviewedAllTime,
+            passed: totalPassedAllTime,
+            newStudied: totalNewAllTime,
+            retention: totalReviewedAllTime > 0 ? Math.round((totalPassedAllTime / totalReviewedAllTime) * 100) : 100,
+            activeDays: activeDaysAllTime
+        }
+    };
+
+    var totalCardsSafe = Math.max(1, counts.total);
+    var maturityTiers = {
+        mature: {
+            count: counts.mature,
+            pct: counts.total > 0 ? Math.round((counts.mature / totalCardsSafe) * 100) : 0
+        },
+        young: {
+            count: counts.young,
+            pct: counts.total > 0 ? Math.round((counts.young / totalCardsSafe) * 100) : 0
+        },
+        learning: {
+            count: counts.learning + counts.newCards,
+            pct: counts.total > 0 ? Math.max(0, 100 - Math.round((counts.mature / totalCardsSafe) * 100) - Math.round((counts.young / totalCardsSafe) * 100)) : 0
+        }
+    };
 
     return {
         counts: counts,
@@ -1315,7 +1688,21 @@ function computeAnalytics(cards, historyByDay, nowMs, rawOptions) {
         streak: streak,
         todayReviewed: Number(todayEntry.reviewed) || 0,
         todayNewStudied: Number(todayEntry.newStudied) || 0,
-        todayReviewsDone: Number(todayEntry.reviewsDone) || 0
+        todayReviewsDone: Number(todayEntry.reviewsDone) || 0,
+        consistency: {
+            goalCards: goalCards,
+            weekendsEnabled: weekendsEnabled,
+            weeklyDays: weeklyDays,
+            weeklyMet: weeklyMet,
+            weeklyTarget: Math.min(weeklyTarget, Math.max(weeklyMet, weeklyTarget)),
+            goalStreak: goalStreak,
+            hitRate30d: hitRate30d,
+            metDays30d: metDays30d,
+            totalTargetDays30d: totalTargetDays30d
+        },
+        scopedStats: scopedStats,
+        maturityTiers: maturityTiers,
+        heatmap: buildYearHeatmap(hist, nowObj.getFullYear(), now, goalCards)
     };
 }
 
@@ -3525,6 +3912,12 @@ function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
             retained[key] = rawPayload[key];
         }
     }
+    if (typeof retained.reviewMode === "string") {
+        retained.reviewMode = normalizeStudyMode(retained.reviewMode);
+    }
+    if (typeof retained.studyMode === "string") {
+        retained.studyMode = normalizeStudyMode(retained.studyMode);
+    }
 
     var rawCards = Array.isArray(rawPayload.cards) ? rawPayload.cards : [];
     var cards = [];
@@ -3567,7 +3960,7 @@ function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
         }
         for (var rc = 0; rc < cards.length; rc++) {
             var cardItem = cards[rc];
-            if (cardItem && (/^sr-unit\d+/i.test(cardItem.id) || /^sr-seed-/i.test(cardItem.id))) {
+            if (cardItem && (/^sr-unit\d+/i.test(cardItem.id) || /^sr-seed-/i.test(cardItem.id)) && !(Number(cardItem.lastReviewedAt) > 0)) {
                 cardItem.state = "new";
                 cardItem.interval = 0;
                 cardItem.ease = opts.baseEase;
@@ -3607,3 +4000,273 @@ function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
         retainedStorageFields: retained
     };
 }
+
+function shuffleWithRng(arr, randomFn) {
+    var rng = typeof randomFn === "function" ? randomFn : Math.random;
+    var copy = Array.isArray(arr) ? arr.slice() : [];
+    for (var i = copy.length - 1; i > 0; i--) {
+        var j = Math.floor(rng() * (i + 1));
+        if (j < 0) j = 0;
+        if (j > i) j = i;
+        var tmp = copy[i];
+        copy[i] = copy[j];
+        copy[j] = tmp;
+    }
+    return copy;
+}
+
+function selectNextStudyMode(studyQueue, allCards, stateObj, randomFn) {
+    var queue = Array.isArray(studyQueue) ? studyQueue : [];
+    var cards = Array.isArray(allCards) ? allCards : [];
+    var prev = (stateObj && typeof stateObj === "object") ? stateObj : {};
+    var prevBag = Array.isArray(prev.bag) ? prev.bag.slice() : [];
+    var lastMode = String(prev.lastMode || "");
+
+    if (prev.exhaustedActiveModes === true) {
+        return {
+            mode: FALLBACK_STUDY_MODE,
+            state: { bag: [], lastMode: FALLBACK_STUDY_MODE, exhaustedActiveModes: true }
+        };
+    }
+
+    var target = queue.length > 0 ? queue[0] : (cards.length > 0 ? cards[0] : null);
+    if (!target) {
+        return {
+            mode: "matching",
+            state: { bag: [], lastMode: "matching" }
+        };
+    }
+
+    var validDefCards = 0;
+    for (var i = 0; i < cards.length; i++) {
+        var c = cards[i];
+        if (!c || typeof c !== "object") continue;
+        var f = String(c.front || c.headword || c.term || "").trim();
+        var d = String(c.definitionEn || c.back || c.meaning || "").trim();
+        if (f.length > 0 && d.length > 0) validDefCards++;
+    }
+
+    var queueValidDefCards = 0;
+    for (var qi = 0; qi < queue.length; qi++) {
+        var qc = queue[qi];
+        if (!qc || typeof qc !== "object") continue;
+        var qf = String(qc.front || qc.headword || qc.term || "").trim();
+        var qd = String(qc.definitionEn || qc.back || qc.meaning || "").trim();
+        if (qf.length > 0 && qd.length > 0) queueValidDefCards++;
+    }
+
+    var targetDef = String(target.definitionEn || target.back || target.meaning || "").trim();
+    var targetCloze = String(target.clozeText || target.example || "").trim();
+
+    // When multiple cards are due/new on the same day, randomly combine the 3 active-recall modes:
+    // Matching ("matching"), Multiple Choice ("mc"), and Cloze Reading ("cloze").
+    // Matching renders a 5-word left column, so in Smart Mix only include Matching when at least 5 due/new
+    // cards are in the queue (avoiding padding the left column with already-reviewed cards from yesterday),
+    // or when neither Multiple Choice nor Cloze Reading is available.
+    // Flashcard ("flashcard") is strictly the last resort when none of the 3 active modes can be used.
+    var canMc = validDefCards >= 2 && targetDef.length > 0;
+    var canCloze = targetCloze.length > 0;
+    var canMatching = queueValidDefCards >= 5
+        || (!canMc && !canCloze && ((queue.length > 1 && validDefCards >= 2) || validDefCards >= 5));
+
+    var eligible = [];
+    if (canMatching) eligible.push("matching");
+    if (canMc) eligible.push("mc");
+    if (canCloze) eligible.push("cloze");
+
+    if (eligible.length === 0) {
+        return {
+            mode: FALLBACK_STUDY_MODE,
+            state: { bag: [], lastMode: FALLBACK_STUDY_MODE }
+        };
+    }
+
+    if (eligible.length === 1) {
+        var single = eligible[0];
+        return {
+            mode: single,
+            state: { bag: [], lastMode: single }
+        };
+    }
+
+    var nextBag = prevBag.filter(function(m) { return eligible.indexOf(m) >= 0; });
+    if (nextBag.length === 0) {
+        nextBag = shuffleWithRng(eligible, randomFn);
+        if (nextBag.length > 1 && nextBag[0] === lastMode) {
+            var swapTmp = nextBag[0];
+            nextBag[0] = nextBag[1];
+            nextBag[1] = swapTmp;
+        }
+    }
+
+    var chosen = nextBag.shift();
+    return {
+        mode: chosen,
+        state: {
+            bag: nextBag,
+            lastMode: chosen
+        }
+    };
+}
+
+function buildMatchingRound(studyQueue, allCards, randomFn) {
+    var queue = Array.isArray(studyQueue) ? studyQueue : [];
+    var deckPool = Array.isArray(allCards) ? allCards.slice() : [];
+
+    var usedIds = {};
+    var usedFronts = {};
+    var usedDefs = {};
+    var leftWords = [];
+
+    var addWordCandidate = function(card, inQueueFlag) {
+        if (!card || typeof card !== "object" || leftWords.length >= 5) return false;
+        var cid = String(card.id || "");
+        var front = String(card.front || card.headword || card.term || "").trim();
+        var defEn = String(card.definitionEn || card.back || card.meaning || "").trim();
+        if (!cid || !front || !defEn) return false;
+        var fKey = front.toLowerCase();
+        var dKey = defEn.toLowerCase();
+        if (usedIds[cid] || usedFronts[fKey] || usedDefs[dKey]) return false;
+        usedIds[cid] = true;
+        usedFronts[fKey] = true;
+        usedDefs[dKey] = true;
+        leftWords.push({
+            id: cid,
+            front: front,
+            headword: String(card.headword || card.term || front).trim(),
+            gender: String(card.gender || card.article || "").trim(),
+            phonetics: String(card.phonetics || card.phonetic || "").trim(),
+            pos: String(card.pos || "").trim(),
+            cefrLevel: String(card.cefrLevel || card.level || "").trim(),
+            category: String(card.category || "vocabulary").trim(),
+            language: String(card.language || "en").trim(),
+            definitionEn: defEn,
+            meaningVi: String(card.meaningVi || "").trim(),
+            inQueue: Boolean(inQueueFlag),
+            matched: false,
+            mistakeCount: 0
+        });
+        return true;
+    };
+
+    for (var i = 0; i < queue.length && leftWords.length < 5; i++) {
+        addWordCandidate(queue[i], true);
+    }
+
+    if (leftWords.length === 0) {
+        return {
+            leftWords: [],
+            rightDefs: [],
+            rightDefinitions: []
+        };
+    }
+
+    var anchor = leftWords[0];
+    var sameLangAndCat = [];
+    var sameCat = [];
+    var others = [];
+    for (var j = 0; j < deckPool.length; j++) {
+        var cand = deckPool[j];
+        if (!cand || typeof cand !== "object") continue;
+        if (anchor && cand.category === anchor.category && cand.language === anchor.language) {
+            sameLangAndCat.push(cand);
+        } else if (anchor && cand.category === anchor.category) {
+            sameCat.push(cand);
+        } else {
+            others.push(cand);
+        }
+    }
+
+    var orderForPadding = function(group) {
+        var unreviewed = [];
+        var reviewed = [];
+        for (var gi = 0; gi < group.length; gi++) {
+            var gc = group[gi];
+            if (!(Number(gc.lastReviewedAt) > 0) && (Number(gc.reps) || 0) === 0) {
+                unreviewed.push(gc);
+            } else {
+                reviewed.push(gc);
+            }
+        }
+        var shuffledRev = shuffleWithRng(reviewed, randomFn);
+        shuffledRev.sort(function(a, b) {
+            return (Number(a.lastReviewedAt) || 0) - (Number(b.lastReviewedAt) || 0);
+        });
+        return shuffleWithRng(unreviewed, randomFn).concat(shuffledRev);
+    };
+
+    var orderedPadCandidates = orderForPadding(sameLangAndCat)
+        .concat(orderForPadding(sameCat))
+        .concat(orderForPadding(others));
+
+    for (var k = 0; k < orderedPadCandidates.length && leftWords.length < 5; k++) {
+        addWordCandidate(orderedPadCandidates[k], false);
+    }
+
+    var orderedDeckCandidates = shuffleWithRng(sameLangAndCat, randomFn)
+        .concat(shuffleWithRng(sameCat, randomFn))
+        .concat(shuffleWithRng(others, randomFn));
+
+    var distractorPool = orderedDeckCandidates.slice();
+    if (typeof starterCards === "function") {
+        distractorPool = distractorPool.concat(shuffleWithRng(starterCards(Date.now(), defaultOptions(), null), randomFn));
+    }
+
+    var distractorDef = null;
+    for (var m = 0; m < distractorPool.length; m++) {
+        var dc = distractorPool[m];
+        if (!dc || typeof dc !== "object") continue;
+        var dId = String(dc.id || "");
+        var dFront = String(dc.front || dc.headword || dc.term || "").trim();
+        var dDef = String(dc.definitionEn || dc.back || dc.meaning || "").trim();
+        if (!dDef) continue;
+        var dfKey = dFront.toLowerCase();
+        var ddKey = dDef.toLowerCase();
+        if ((dId && usedIds[dId]) || (dfKey && usedFronts[dfKey]) || usedDefs[ddKey]) continue;
+        distractorDef = {
+            defId: "distractor-" + (dId || "extra"),
+            targetCardId: "",
+            pairId: "",
+            definitionEn: dDef,
+            meaningVi: String(dc.meaningVi || "").trim(),
+            front: dFront,
+            isDistractor: true,
+            matched: false
+        };
+        break;
+    }
+
+    if (!distractorDef) {
+        distractorDef = {
+            defId: "distractor-fallback",
+            targetCardId: "",
+            pairId: "",
+            definitionEn: "a supplementary hypothesis introduced only to prevent falsification of a theory",
+            meaningVi: "giả thuyết phụ bổ sung chỉ nhằm tránh việc lý thuyết bị bác bỏ",
+            front: "ad hoc hypothesis",
+            isDistractor: true,
+            matched: false
+        };
+    }
+
+    var matchingDefs = leftWords.map(function(w) {
+        return {
+            defId: "def-" + w.id,
+            targetCardId: w.id,
+            pairId: w.id,
+            definitionEn: w.definitionEn,
+            meaningVi: w.meaningVi,
+            front: w.front,
+            isDistractor: false,
+            matched: false
+        };
+    });
+
+    var rightDefs = shuffleWithRng(matchingDefs.concat([distractorDef]), randomFn);
+    return {
+        leftWords: leftWords,
+        rightDefs: rightDefs,
+        rightDefinitions: rightDefs
+    };
+}
+

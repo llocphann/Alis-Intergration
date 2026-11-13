@@ -1,13 +1,13 @@
 # Alis-Intergration
 
 Optional small and medium application integrations for Alis: TLP, Thinkfan,
-Obsidian and Spaced Repetition. Alis owns generic Battery, Power Profiles, Todo, Notes,
+Nexus and Spaced Repetition. Alis owns generic Battery, Power Profiles, Todo, Notes,
 Dashboard, configuration and UI primitives. Alis-Intergration owns the integration workers,
 application-specific settings, Spaced Repetition learning engine (`spaced_repetition`),
 byte-safe vault helpers and privileged helper payloads. Existing integration preferences and application data are retained.
 
 Install a committed revision with `make install`. Installation does not enable
-an integration, launch Obsidian, change fan/charge policies, or stop existing
+an integration, launch Nexus, change fan/charge policies, or stop existing
 system services. Each integration loads one disposable QML tree when explicitly
 enabled in Alis. Missing packages report unavailable rather than claiming an
 operation succeeded. `make uninstall` deactivates only this package's owned
@@ -29,13 +29,13 @@ TLP configuration overrides. Prefixes and `DESTDIR` are supported for packaging.
 `LIBEXECDIR`, `POLKIT_ACTIONS_DIR`, `ALIS_SYSTEM_SHAREDIR` and `TLP_CONFDIR`
 control helper, policy, schema and profile locations; helper installation does
 not create profile directories or overrides. TLP (including its optional
-Radio Device Wizard), Thinkfan and Obsidian remain separately installed apps.
+Radio Device Wizard), Thinkfan and Nexus remain separately installed apps.
 
-## Obsidian automatic colors
+## Nexus automatic colors
 
-Alis Settings → Integrations → Obsidian → Auto theming is the only controller. “Follow Alis colors” updates `99_Alis_Theme.css` after the vault's existing snippets; Apply performs a one-time update and Disable removes only this owned selection. The generator owns the dark-to-light ramp, dark/light surface roles, theme-tinted sidebar, startup masks and numeric accent/status channels. It preserves the selected theme, fonts, notes and original snippets. A recognized old `99_Alis_Theme` selection is retired without deleting its bytes; an unrecognized user file is preserved. The new destination also refuses to overwrite unowned CSS.
+Alis Settings → Integrations → Nexus → Auto theming is the only controller. “Follow Alis colors” updates `99_Alis_Theme.css` after the vault's existing snippets; Apply performs a one-time update and Disable removes only this owned selection. The generator owns the dark-to-light ramp, dark/light surface roles, theme-tinted sidebar, startup masks and numeric accent/status channels. It preserves the selected theme, fonts, notes and original snippets. A recognized old `99_Alis_Theme` selection is retired without deleting its bytes; an unrecognized user file is preserved. The new destination also refuses to overwrite unowned CSS.
 
-No auto-theme setting or synchronization plugin is needed inside Obsidian. This integration runs on Linux with Alis and the optional Integration package; Windows/macOS are unsupported. The startup templates preserve the vault's original animations. Saved Graph/Local Graph color groups are explicit numeric Obsidian overrides, so they keep their saved colors: CSS cannot rewrite their in-memory values. Graph files are not modified and Obsidian CLI evaluation is never used.
+No auto-theme setting or synchronization plugin is needed inside Nexus. This integration runs on Linux with Alis and the optional Integration package; Windows/macOS are unsupported. The startup templates preserve the vault's original animations. Saved Graph/Local Graph color groups are explicit numeric Nexus overrides, so they keep their saved colors: CSS cannot rewrite their in-memory values. Graph files are not modified and Nexus CLI evaluation is never used.
 
 Run `make test` for scoped filesystem/helper and installation contracts.
 Native tests prefer a sibling `Alis` host checkout, with a sibling `Alis`
@@ -56,19 +56,19 @@ Owner verification. **Do not write task progress to Markdown.** This repository
 still owns its optional QML services, Settings, helpers and package-local tests;
 no user vault, privileged settings or existing data is changed by task tracking.
 
-Classic and Waffle TLP editors, Obsidian task/capture settings, and Spaced
+Classic and Waffle TLP editors, Nexus task/capture settings, and Spaced
 Repetition Dashboard/Settings (`modules/dashboard/DashboardSpacedRepetition.qml`,
 `modules/dashboard/DashboardSpacedRepetitionSettings.qml`, `services/SpacedRepetition.qml`,
 `services/SpacedRepetitionEngine.js`, `services/SpacedRepetitionLexicon.js`,
 `scripts/spaced_repetition/lookup_word_level.py`) are owned here. Alis retains
 navigation, optional loaders, generic Battery controls and the preserved
 internal Todo store. Version 0.3 adds declarative `plugins` metadata to host API 1: each installed
-plugin names its capabilities by validated `settings` keys (`tlp`, `thinkfan`, `obsidian`, `spaced_repetition`), with an optional
-`waffleSettings` presentation. Obsidian exposes Theming, Quicknotes and Todo;
+plugin names its capabilities by validated `settings` keys (`tlp`, `thinkfan`, `nexus`, `spaced_repetition`), with an optional
+`waffleSettings` presentation. Nexus exposes Theming, Quicknotes and Todo;
 its combined legacy editor remains supported. Spaced Repetition provides an
 SM-2/FSRS-inspired flashcard & vocabulary system with CEFR A1–C2 grading,
 bilingual English/Vietnamese definitions, morphology (root/prefix/suffix)
-analysis, and Bulk Auto-Syntax / Obsidian SR import. Discovery reads metadata and
+analysis, and Bulk Auto-Syntax / Nexus SR import. Discovery reads metadata and
 verifies the complete immutable payload without loading QML. Hosts without
 this navigation extension retain the existing API 1 entrypoints. Integration
 enable switches remain off by default.
@@ -86,3 +86,8 @@ wording, remains an explicit security compatibility exception. This rebrand
 does not reinstall helpers, move directories or rewrite notes. See
 [compatibility contracts](docs/COMPATIBILITY.md) and the
 [pre-edit identifier inventory](docs/compatibility/INT-R05-identifiers.json).
+
+## Development & Release Cadence (`1.0.0`)
+
+- **LLM-Assisted Engineering:** Designed and developed with the assistance of Large Language Models (LLMs) under maintainer review.
+- **Release Schedule:** Maintained alongside Alis `1.0.0` with updates released on a **quarterly, semi-annual, or annual** cadence.

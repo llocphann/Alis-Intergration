@@ -22,9 +22,9 @@ with tempfile.TemporaryDirectory(prefix="alis-capture-failures-") as name:
     config = private / "config/alis"
     config.mkdir(parents=True)
     options = json.loads((HOST / "defaults/config.json").read_text())
-    options["todo"]["obsidian"]["vaultPath"] = str(vault)
-    options["integrations"]["alisIntergration"] = {key: False for key in ("tlp", "thinkfan", "obsidian")}
-    options["integrations"]["obsidian"]["autoTheme"] = False
+    options["todo"]["nexus"]["vaultPath"] = str(vault)
+    options["integrations"]["alisIntergration"] = {key: False for key in ("tlp", "thinkfan", "nexus")}
+    options["integrations"]["nexus"]["autoTheme"] = False
     (config / "config.json").write_text(json.dumps(options))
     good = {"ok": True, "notePath": "Notes/saved.md", "noteFullPath": str(vault / "Notes/saved.md")}
     cases = [(1, json.dumps(good)), (0, '{"ok":true}'), (0, "null"), (0, "[]"),

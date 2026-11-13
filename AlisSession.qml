@@ -10,8 +10,9 @@ Item {
     readonly property var tlpSettings: settings.item
     readonly property var tlpCapabilities: capabilities.item
     readonly property var thinkfan: fan.item
-    readonly property var obsidianTheme: theme.item
+    readonly property var nexusTheme: theme.item
     readonly property var zettelkasten: notes.item
+    readonly property var nexus: nexusLoader.item
     readonly property var spacedRepetition: spacedRepetitionLoader.item
     Loader { id: capabilities; active: host.tlpEnabled; source: "services/TlpRuntimeCapabilities.qml" }
     Loader {
@@ -41,7 +42,8 @@ Item {
         onActiveChanged: syncSource()
         Component.onCompleted: syncSource()
     }
-    Loader { id: theme; active: host.obsidianEnabled; source: "services/ObsidianTheme.qml" }
-    Loader { id: notes; active: host.obsidianEnabled; source: "services/Zettelkasten.qml" }
+    Loader { id: theme; active: host.nexusEnabled; source: "services/NexusTheme.qml" }
+    Loader { id: notes; active: host.nexusEnabled; source: "services/Zettelkasten.qml" }
+    Loader { id: nexusLoader; active: host.nexusEnabled; source: "services/NexusService.qml" }
     Loader { id: spacedRepetitionLoader; active: host.spacedRepetitionEnabled ?? false; source: "services/SpacedRepetition.qml" }
 }

@@ -10,7 +10,7 @@ import Quickshell.Io
  * Independent heading-based Markdown Todo backend.
  *
  * Reads and mutates checkbox lines under one configured Markdown heading.
- * Obsidian and third-party plugins may share the file, but none are required.
+ * Nexus and third-party plugins may share the file, but none are required.
  */
 Scope {
     id: root
@@ -36,7 +36,7 @@ Scope {
     property var managedMeta: ({})
     property var migrationPreview: null
     readonly property var capabilities: ({
-        backend: "obsidian",
+        backend: "nexus",
         sourceMode: "markdown-note",
         noteReadable: root.ready,
         noteWritable: root.ready,
@@ -61,7 +61,7 @@ Scope {
         && root.defaultDurationMinutes > 0
 
     readonly property string helperPath:
-        decodeURIComponent(String(Qt.resolvedUrl("../scripts/todo/obsidian_daily_todo.py")).replace(/^file:\/\//, ""))
+        decodeURIComponent(String(Qt.resolvedUrl("../scripts/todo/nexus_daily_todo.py")).replace(/^file:\/\//, ""))
     readonly property string watchPath: root.noteFullPath
 
     function _sourceKey(): string {
@@ -141,7 +141,7 @@ Scope {
     }
 
     function refreshCapabilities(): void {
-        // Markdown source mode intentionally does not need Obsidian or plugin state.
+        // Markdown source mode intentionally does not need Nexus or plugin state.
     }
 
     function initializeSection(): bool {

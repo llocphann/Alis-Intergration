@@ -35,20 +35,20 @@ with tempfile.TemporaryDirectory(prefix="alis-intergration-native-") as name:
     installer.assemble(ROOT, package, "f"*40)
     (private / "data/alis-intergration/current").symlink_to("releases/fixture")
     vault = private / "Vault có spaces"
-    (vault / ".obsidian").mkdir(parents=True)
-    (vault / ".obsidian/appearance.json").write_text(json.dumps({"cssTheme":"Fixture","enabledCssSnippets":[]}))
+    (vault / ".nexus").mkdir(parents=True)
+    (vault / ".nexus/appearance.json").write_text(json.dumps({"cssTheme":"Fixture","enabledCssSnippets":[]}))
     managed = vault / "Managed.md"
     managed.write_text("# Todo\n<!-- alis:todo:start -->\n- [ ] first\n<!-- alis:todo:end -->\n")
     (vault / "Daily.md").write_text("## Tasks\n- [ ] first daily\n## Notes\n")
     config = private / "config/alis"
     config.mkdir(parents=True)
     options = json.loads((HOST / "defaults/config.json").read_text())
-    options["integrations"]["alisIntergration"] = {key:False for key in ("tlp","thinkfan","obsidian","spaced_repetition")}
+    options["integrations"]["alisIntergration"] = {key:False for key in ("tlp","thinkfan","nexus","spaced_repetition")}
     options["battery"]["chargeLimit"]["enable"] = False
     options["powerProfiles"]["fanControl"]["enabled"] = False
-    options["integrations"]["obsidian"]["autoTheme"] = False
+    options["integrations"]["nexus"]["autoTheme"] = False
     options["todo"]["backend"] = "internal"
-    options["todo"]["obsidian"]["vaultPath"] = str(vault)
+    options["todo"]["nexus"]["vaultPath"] = str(vault)
     (config / "config.json").write_text(json.dumps(options))
     (shell / "shell.qml").write_text(r"""
 import QtQuick
@@ -90,7 +90,7 @@ ShellRoot {
    tryCompare(waffleHost,"status",Loader.Ready,2000)
    tryCompare(waffleIntegrationHost,"status",Loader.Ready,2000)
    check(AlisIntergration.session===null,"default-off package started workers")
-   check(findChild(integrations,"alisIntergrationObsidianTodoSettings")===null,"disabled Obsidian rendered owned controls")
+   check(findChild(integrations,"alisIntergrationNexusTodoSettings")===null,"disabled Nexus rendered owned controls")
    const installed = AlisIntergration.installedPlugins
    check(waffleIntegrations.primaryTabs.length===installed.length+1,"Waffle plugin tabs missing")
    check(installed.length===4 && integrations.primaryTabs.length===5,"N installed plugins must have N+1 tabs")
@@ -114,42 +114,42 @@ ShellRoot {
    check(classicRow.implicitHeight===0 && waffleRow.implicitHeight===0,"disabled rows started an editor")
    waffle.visible=true;wait(100);waffle.visible=false
    check(JSON.stringify(Config.options)===preferences,"disabled settings mutated preferences")
-   const savedSource=JSON.stringify(Config.options.todo.obsidian)
-   Config.setNestedValue("todo.backend","obsidian")
+   const savedSource=JSON.stringify(Config.options.todo.nexus)
+   Config.setNestedValue("todo.backend","nexus")
    const restore=findChild(integrations,"integrationRestoreInternalTodos")
    tryVerify(()=>restore!==null && restore.visible && restore.enabled,3000)
    restore.clicked()
    tryCompare(Todo,"backend","internal",1000)
-   check(JSON.stringify(Config.options.todo.obsidian)===savedSource && AlisIntergration.session===null,"disabled-plugin recovery changed source paths or started workers")
-   Config.setNestedValue("integrations.alisIntergration.obsidian",true)
+   check(JSON.stringify(Config.options.todo.nexus)===savedSource && AlisIntergration.session===null,"disabled-plugin recovery changed source paths or started workers")
+   Config.setNestedValue("integrations.alisIntergration.nexus",true)
    tryVerify(()=>AlisIntergration.session!==null,2000)
    const session=AlisIntergration.session
    session.batteryHelperPath=Quickshell.env("FIXTURE_HELPER");session.fanHelperPath=Quickshell.env("FIXTURE_HELPER")
-   integrations.activateSettingsSearchSection("Obsidian Todo")
-   check(integrations.capabilityTabs.length===3,"Obsidian capability tabs missing")
+   integrations.activateSettingsSearchSection("Nexus Todo")
+   check(integrations.capabilityTabs.length===3,"Nexus capability tabs missing")
    const capabilityTabs=findChild(findChild(integrations,"integrationCapabilityTabs"),"settingsTaskOptions")
    tryVerify(()=>capabilityTabs.children.filter(child=>child.hasOwnProperty("modelData")).length===3,1000)
    tryVerify(()=>capabilityTabs.children.filter(child=>child.hasOwnProperty("modelData")).every(button=>button.buttonText.length>0 && button.width>50 && capabilityTabs.width>200),2000)
-   tryVerify(()=>findChild(integrations,"alisIntergrationObsidianTodoSettings")!==null,3000)
-   const pattern=findChild(integrations,"obsidianTodoNotePattern"),heading=findChild(integrations,"obsidianTodoHeading"),folder=findChild(integrations,"obsidianQuickNoteFolder")
+   tryVerify(()=>findChild(integrations,"alisIntergrationNexusTodoSettings")!==null,3000)
+   const pattern=findChild(integrations,"nexusTodoNotePattern"),heading=findChild(integrations,"nexusTodoHeading"),folder=findChild(integrations,"nexusQuickNoteFolder")
    check(pattern && heading && folder,"owned Todo/capture editors missing")
    check(pattern.visible && !folder.visible,"Todo tab exposed Quicknotes controls")
-   capture("obsidian-todo")
+   capture("nexus-todo")
    pattern.text=" /Capture/My Tasks.md/ ";pattern.editingFinished()
    heading.text=" New tasks ";heading.editingFinished()
    integrations.selectCapability("quicknotes")
-   tryVerify(()=>findChild(integrations,"obsidianQuickNoteFolder")?.visible===true,2000)
-   const quickFolder=findChild(integrations,"obsidianQuickNoteFolder")
-   check(!findChild(integrations,"obsidianTodoNotePattern").visible,"Quicknotes tab exposed Todo controls")
+   tryVerify(()=>findChild(integrations,"nexusQuickNoteFolder")?.visible===true,2000)
+   const quickFolder=findChild(integrations,"nexusQuickNoteFolder")
+   check(!findChild(integrations,"nexusTodoNotePattern").visible,"Quicknotes tab exposed Todo controls")
    quickFolder.text=" Capture/Fleeting ";quickFolder.editingFinished()
-   tryCompare(Config.options.todo.obsidian.dailyNote,"folder","Capture",1000)
-   check(Config.options.todo.obsidian.dailyNote.format==="My Tasks.md" && Config.options.todo.obsidian.dailyNote.plannerHeading==="New tasks","extracted task fields lost parsing/save behavior")
+   tryCompare(Config.options.todo.nexus.dailyNote,"folder","Capture",1000)
+   check(Config.options.todo.nexus.dailyNote.format==="My Tasks.md" && Config.options.todo.nexus.dailyNote.plannerHeading==="New tasks","extracted task fields lost parsing/save behavior")
    check(Config.options.notes.zettelkasten.folder==="Capture/Fleeting","extracted capture field did not save")
    integrations.activateSettingsSearchSection("Calendar Sync")
-   tryVerify(()=>findChild(integrations,"alisIntergrationObsidianTodoSettings")===null,1000)
-   integrations.activateSettingsSearchSection("Obsidian Todo")
-   tryVerify(()=>findChild(integrations,"obsidianTodoNotePattern")!==null,2000)
-   check(findChild(integrations,"obsidianTodoNotePattern").text==="Capture/My Tasks.md","reopening task fields lost saved state")
+   tryVerify(()=>findChild(integrations,"alisIntergrationNexusTodoSettings")===null,1000)
+   integrations.activateSettingsSearchSection("Nexus Todo")
+   tryVerify(()=>findChild(integrations,"nexusTodoNotePattern")!==null,2000)
+   check(findChild(integrations,"nexusTodoNotePattern").text==="Capture/My Tasks.md","reopening task fields lost saved state")
    Config.setNestedValue("integrations.alisIntergration.tlp",true)
    tryCompare(TlpSettingsService,"schemaLoaded",true,3000)
    tryCompare(TlpSettingsService,"statusReason","fixture",3000)
@@ -214,11 +214,11 @@ ShellRoot {
    check(AlisIntergration.session===session,"UI routes rebuilt shared workers")
    // Pending/editor notifications immediately followed by unload must be safe.
    TlpSettingsService.discard()
-   Config.setNestedValues({"integrations.alisIntergration.tlp":false,"integrations.alisIntergration.obsidian":false,"integrations.alisIntergration.thinkfan":false})
+   Config.setNestedValues({"integrations.alisIntergration.tlp":false,"integrations.alisIntergration.nexus":false,"integrations.alisIntergration.thinkfan":false})
    tryVerify(()=>AlisIntergration.session===null,2000);wait(150)
    check(findChild(classicRow,"alisIntergrationTlpSettingRow")===null && findChild(waffleRow,"alisIntergrationWaffleTlpSettingRow")===null,"disabled rows survived")
    check(findChild(waffle,"alisIntergrationWaffleTlpSettings")===null,"disabled Waffle page survived")
-   check(Config.options.todo.obsidian.dailyNote.folder==="Capture" && Config.options.notes.zettelkasten.folder==="Capture/Fleeting","unload lost saved settings")
+   check(Config.options.todo.nexus.dailyNote.folder==="Capture" && Config.options.notes.zettelkasten.folder==="Capture/Fleeting","unload lost saved settings")
    console.info("ALIS_INTERGRATION_SETTINGS_HOST_PASS")
   }catch(e){console.error("ALIS_INTERGRATION_SETTINGS_HOST_FAIL",e.message,e.stack)}Qt.quit()}
  }

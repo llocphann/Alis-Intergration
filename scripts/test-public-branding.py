@@ -32,8 +32,8 @@ def public(text, location):
 
 package_qml = sorted((ROOT / 'modules').rglob('*.qml'))
 host_qml = [HOST / path for path in (
-    'modules/settings/IntegrationsConfig.qml', 'modules/settings/ObsidianThemeSettings.qml',
-    'modules/settings/ObsidianTodoSettings.qml', 'modules/settings/ThinkfanSettings.qml',
+    'modules/settings/IntegrationsConfig.qml', 'modules/settings/NexusThemeSettings.qml',
+    'modules/settings/NexusTodoSettings.qml', 'modules/settings/ThinkfanSettings.qml',
     'modules/settings/TlpPowerSettings.qml', 'modules/waffle/settings/pages/WTlpPage.qml')]
 for path in package_qml + host_qml:
     source = path.read_text()
@@ -43,7 +43,7 @@ for path in package_qml + host_qml:
     if path.name == 'IntegrationsConfig.qml':
         assert '"Alis-Intergration " + AlisIntergration.version' in source
 
-for root, names in ((ROOT, ('scripts/install.py', 'scripts/notes/zettelkasten.py', 'scripts/todo/obsidian_todo.py')),
+for root, names in ((ROOT, ('scripts/install.py', 'scripts/notes/zettelkasten.py', 'scripts/todo/nexus_todo.py')),
                     (HOST, ('scripts/alis-intergration-manager.py', 'scripts/alis-intergration-system-package.py'))):
     for name in names:
         for node in ast.walk(ast.parse((root / name).read_text())):
@@ -58,7 +58,7 @@ assert manifest['id'] == 'alis-intergration' and manifest['hostApi'] == 1 and ma
 assert (ROOT / 'README.md').read_text().startswith('# Alis-Intergration\n')
 assert 'editing Alis-Intergration.' in (ROOT / 'AGENTS.md').read_text()
 todo = (HOST / 'services/Todo.qml').read_text()
-assert re.search(r'if \(!root\.useObsidian\)\s+return "Alis"', todo)
+assert re.search(r'if \(!root\.useNexus\)\s+return "Alis"', todo)
 assert '?? "Alis/Todo.md"' in todo, 'old saved/default note path lost'
 service = (HOST / 'services/AlisIntergration.qml').read_text()
 for target in ('integrations', 'alis-intergration'):
@@ -70,8 +70,8 @@ for target in ('integrations', 'alis-intergration'):
     assert f'[{target}]="refresh status"' in registry
 
 wrapper_hints = {
-    'modules/settings/ObsidianThemeSettings.qml': 'Install Alis-Intergration; enable this integration in Settings → Integrations.',
-    'modules/settings/ObsidianTodoSettings.qml': 'Install Alis-Intergration; enable Obsidian in Settings → Integrations.',
+    'modules/settings/NexusThemeSettings.qml': 'Install Alis-Intergration; enable this integration in Settings → Integrations.',
+    'modules/settings/NexusTodoSettings.qml': 'Install Alis-Intergration; enable Nexus in Settings → Integrations.',
     'modules/settings/ThinkfanSettings.qml': 'Install Alis-Intergration; enable Thinkfan in Settings → Integrations.',
     'modules/waffle/settings/pages/WTlpPage.qml': 'Install Alis-Intergration; enable TLP in Settings → Integrations.',
 }

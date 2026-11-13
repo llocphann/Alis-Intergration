@@ -11,7 +11,7 @@ import qs.modules.common
  *
  * Uses HostServices.Todo.sharedVaultPath, the same resolved vault as the Todo backends.
  * Legacy Quick Notes vault overrides are handled centrally by HostServices.Todo.
- * No Obsidian process/plugin is needed.
+ * No external process/plugin is needed.
  */
 Item {
     id: root
@@ -55,7 +55,7 @@ Item {
         if (!root.ready) {
             root._setError(
                 "not_configured",
-                "Configure an Obsidian vault before saving a Zettelkasten quick note"
+                "Configure a Nexus vault before saving a Zettelkasten quick note"
             )
             return false
         }
@@ -78,7 +78,7 @@ Item {
             "--body", content,
             "--type", root.defaultType,
             "--attachment-root", String(attachmentRoot ?? ""),
-            "--config-path", String(Config.options?.integrations?.obsidian?.configPath ?? "")
+            "--config-path", String(Config.options?.integrations?.nexus?.configPath ?? "")
         ]
         captureProc.running = true
         return true
@@ -87,6 +87,10 @@ Item {
     function openLast(): bool {
         if (root.lastCreatedFullPath.length === 0)
             return false
+        if (HostServices.AlisIntergration.nexus && typeof HostServices.AlisIntergration.nexus.openNote === "function") {
+            HostServices.AlisIntergration.nexus.openNote(root.lastCreatedPath.length > 0 ? root.lastCreatedPath : root.lastCreatedFullPath)
+            return true
+        }
         Quickshell.execDetached(["xdg-open", root.lastCreatedFullPath])
         return true
     }

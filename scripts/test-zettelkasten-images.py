@@ -23,7 +23,7 @@ class Images(unittest.TestCase):
         self.base = Path(self.temp.name)
         self.vault = self.base / "Vault có dấu"
         self.vault.mkdir()
-        self.config = self.vault / ".obsidian"
+        self.config = self.vault / ".nexus"
         self.config.mkdir()
         self.store = self.base / "state" / "notepad-attachments"
         self.store.mkdir(parents=True)

@@ -36,7 +36,7 @@ def module(name, path):
 installer = module('rebrand_installer', ROOT / 'scripts/install.py')
 manager = module('rebrand_manager', HOST / 'scripts/alis-intergration-manager.py')
 legacy_reader = module('legacy_reader', FIXTURE / 'legacy-host-discovery.py')
-todo = module('rebrand_todo', ROOT / 'scripts/todo/obsidian_todo.py')
+todo = module('rebrand_todo', ROOT / 'scripts/todo/nexus_todo.py')
 new_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
 old_sha = provenance['integrationSha']
 
@@ -185,7 +185,7 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
     fresh_home = private / 'fresh-data/alis-intergration'
     assert manager.operate('install', fresh_home, HOST, revision_fetch=lambda:new_sha, archive_fetch=fetch)['available']
     assert manager.discovery.inspect(HOST, fresh_home.parent)['available']
-    assert [p['id'] for p in manager.discovery.inspect(HOST, fresh_home.parent)['plugins']] == ['tlp','thinkfan','obsidian','spaced_repetition']
+    assert [p['id'] for p in manager.discovery.inspect(HOST, fresh_home.parent)['plugins']] == ['tlp','thinkfan','nexus','spaced_repetition']
     # The supported setup preview cannot touch the persisted transaction store.
     env = dict(os.environ, XDG_DATA_HOME=str(home.parent), XDG_STATE_HOME=str(private/'state'))
     preview = subprocess.run(['python3', str(HOST/'scripts/integration-setup.py'), 'install', '--dry-run'],

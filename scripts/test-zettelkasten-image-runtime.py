@@ -36,9 +36,9 @@ with tempfile.TemporaryDirectory(prefix="alis-intergration-note-image-") as name
     options = json.loads((HOST / "defaults/config.json").read_text())
     options["panelFamily"] = "abyss"
     options["abyss"]["companion"]["enabled"] = False
-    options["integrations"]["alisIntergration"].update(tlp=False, thinkfan=False, obsidian=True)
-    options["integrations"]["obsidian"].update(autoTheme=False, configPath=str(config))
-    options["todo"]["obsidian"]["vaultPath"] = str(vault)
+    options["integrations"]["alisIntergration"].update(tlp=False, thinkfan=False, nexus=True)
+    options["integrations"]["nexus"].update(autoTheme=False, configPath=str(config))
+    options["todo"]["nexus"]["vaultPath"] = str(vault)
     (shell / "shell.qml").write_text(r'''
 import QtQuick
 import QtTest

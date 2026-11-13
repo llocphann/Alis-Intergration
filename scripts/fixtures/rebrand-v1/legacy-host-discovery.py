@@ -11,12 +11,12 @@ ENTRYPOINTS = {
     "session": "AlisSession.qml",
     "thinkfanSettings": "modules/settings/ThinkfanSettings.qml",
     "tlpSettings": "modules/settings/TlpPowerSettings.qml",
-    "obsidianSettings": "modules/settings/ObsidianThemeSettings.qml",
-    "obsidianTodoSettings": "modules/settings/ObsidianTodoSettings.qml",
+    "nexusSettings": "modules/settings/NexusThemeSettings.qml",
+    "nexusTodoSettings": "modules/settings/NexusTodoSettings.qml",
     "tlpRowSettings": "modules/settings/TlpSettingRow.qml",
     "tlpWaffleSettings": "modules/waffle/settings/WTlpPowerSettings.qml",
     "tlpWaffleRowSettings": "modules/waffle/settings/WTlpSettingRow.qml",
-    "managedTodo": "services/ObsidianTodoBackend.qml",
+    "managedTodo": "services/NexusTodoBackend.qml",
     "dailyTodo": "services/DailyNoteTodoBackend.qml",
 }
 
@@ -63,7 +63,7 @@ def plugin_metadata(data):
                     raise ValueError("Invalid Waffle settings reference")
                 item["waffleSettings"] = waffle
             if "view" in capability:
-                if entry != "obsidianTodo" or capability["view"] not in ("todo", "quicknotes"):
+                if entry != "nexusTodo" or capability["view"] not in ("todo", "quicknotes"):
                     raise ValueError("Unsupported settings view")
                 item["view"] = capability["view"]
             items.append(item)
@@ -88,8 +88,8 @@ def inspect_package(package):
         if not isinstance(settings, dict) or not isinstance(backends, dict):
             raise ValueError("invalid entrypoints")
         entries = {"session": data.get("session"), "tlpSettings": settings.get("tlp"), "thinkfanSettings": settings.get("thinkfan"),
-                   "obsidianSettings": settings.get("obsidian"),
-                   "obsidianTodoSettings": settings.get("obsidianTodo"), "tlpRowSettings": settings.get("tlpRow"),
+                   "nexusSettings": settings.get("nexus"),
+                   "nexusTodoSettings": settings.get("nexusTodo"), "tlpRowSettings": settings.get("tlpRow"),
                    "tlpWaffleSettings": settings.get("tlpWaffle"), "tlpWaffleRowSettings": settings.get("tlpWaffleRow"),
                    "managedTodo": backends.get("managedTodo"),
                    "dailyTodo": backends.get("dailyTodo")}

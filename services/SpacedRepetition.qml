@@ -1,18 +1,20 @@
-pragma Singleton
 pragma ComponentBehavior: Bound
 
 import qs.modules.common
+import qs.services
+import qs.services as HostServices
 import QtQuick
 import Quickshell
 import Quickshell.Io
 import "SpacedRepetitionEngine.js" as Engine
 import "SpacedRepetitionLexicon.js" as Lexicon
 
-Singleton {
+Item {
     id: root
 
     property string filePath: Directories.spacedRepetitionPath
-    property string lookupScriptPath: AlisIntergration.spacedRepetitionLookupScriptPath()
+    property string lookupScriptPath: (HostServices.AlisIntergration?.spacedRepetitionLookupScriptPath?.() ?? "")
+        || decodeURIComponent(String(Qt.resolvedUrl("../scripts/integrations/lookup_word_level.py")).replace(/^file:\/\//, ""))
         || `${Directories.scriptsPath}/spaced-repetition/lookup_word_level.py`
     property var cards: []
     property var historyByDay: ({})
@@ -36,23 +38,61 @@ Singleton {
     property string searchQuery: ""
     property string boostMode: ""
     property int boostAheadDays: 3
-    property string studyMode: "flashcard" // "flashcard", "reverse", "cloze"
+    property string studyMode: "matching" // "matching", "mc", "cloze", "flashcard"
+    property bool smartMixEnabled: true
+    property var _smartModeState: ({ bag: [], lastMode: "" })
+    property bool _rollingSmartMode: false
     property bool cardRevealed: false
     property var _undoStack: []
     property real _sessionClockMs: Date.now()
 
     readonly property bool canUndoReview: root._undoStack.length > 0
     readonly property bool boostActive: root.boostMode.length > 0
-    readonly property string configuredStudyDirection: String(Config.options?.dashboard?.spacedRepetition?.studyDirection ?? "both").toLowerCase()
+    readonly property string configuredStudyDirection: String(
+        Config.options?.dashboard?.spacedRepetition?.studyDirection
+        ?? Config.options?.dashboard?.spacedRepetition?.reviewMode
+        ?? "both"
+    ).toLowerCase()
 
-    onConfiguredStudyDirectionChanged: {
-        if (root.configuredStudyDirection === "reverse")
-            root.studyMode = "reverse"
-        else if (root.configuredStudyDirection === "cloze")
-            root.studyMode = "cloze"
-        else if (root.configuredStudyDirection === "flashcard" || root.configuredStudyDirection === "forward")
-            root.studyMode = "flashcard"
+    onStudyModeChanged: {
+        const normalized = Engine.normalizeStudyMode(root.studyMode)
+        if (root.studyMode !== normalized) {
+            root.studyMode = normalized
+            return
+        }
+        root.cardRevealed = false
     }
+
+    function syncConfiguredStudyDirection(): void {
+        const raw = String(root.configuredStudyDirection ?? "both").trim().toLowerCase()
+        if (raw === "reverse"
+                || raw === "reverse_flashcard"
+                || raw === "reverseflashcard"
+                || raw === "rmc"
+                || raw === "reverse_mcq"
+                || raw === "reversemultiplechoice"
+                || raw === "matching") {
+            root.smartMixEnabled = false
+            root.studyMode = "matching"
+        } else if (raw === "mc"
+                || raw === "mcq"
+                || raw === "multiple_choice"
+                || raw === "multiplechoice") {
+            root.smartMixEnabled = false
+            root.studyMode = "mc"
+        } else if (raw === "cloze" || raw === "cloze_reading") {
+            root.smartMixEnabled = false
+            root.studyMode = "cloze"
+        } else if (raw === "flashcard" || raw === "forward") {
+            root.smartMixEnabled = false
+            root.studyMode = "flashcard"
+        } else {
+            root.smartMixEnabled = true
+            root.rollNextStudyMode()
+        }
+    }
+
+    onConfiguredStudyDirectionChanged: root.syncConfiguredStudyDirection()
 
     readonly property var options: Engine.normalizeOptions({
         enable: Config.options?.dashboard?.spacedRepetition?.enable ?? true,
@@ -71,8 +111,19 @@ Singleton {
         prioritizeOrder: Config.options?.dashboard?.spacedRepetition?.prioritizeOrder ?? "due_first",
         autoLookupLevel: Config.options?.dashboard?.spacedRepetition?.autoLookupLevel ?? true,
         autoLookupOnline: Config.options?.dashboard?.spacedRepetition?.autoLookupOnline ?? true,
-        autoCloze: Config.options?.dashboard?.spacedRepetition?.autoCloze ?? true
+        autoCloze: Config.options?.dashboard?.spacedRepetition?.autoCloze ?? true,
+        dailyGoalCards: Config.options?.dashboard?.spacedRepetition?.dailyGoalCards ?? 20,
+        weekendsEnabled: Config.options?.dashboard?.spacedRepetition?.weekendsEnabled ?? true
     })
+
+    function getYearHeatmap(year: int): var {
+        return Engine.buildYearHeatmap(
+            root.historyByDay,
+            year,
+            root._sessionClockMs,
+            root.options.dailyGoalCards
+        )
+    }
 
     readonly property var analytics: Engine.computeAnalytics(
         root.cards,
@@ -125,7 +176,8 @@ Singleton {
     readonly property var currentIntervals: Engine.previewIntervals(
         root.currentCard,
         root._sessionClockMs,
-        root.options
+        root.options,
+        root.analytics.dueCountsByDay
     )
 
     readonly property var filteredLibraryCards: {
@@ -166,6 +218,28 @@ Singleton {
 
     onCurrentCardChanged: {
         root.cardRevealed = false
+    }
+
+    Timer {
+        id: clockRefreshTimer
+        interval: 60000
+        running: true
+        repeat: true
+        onTriggered: {
+            const now = Date.now()
+            if (Engine.civilDayKey(now) !== Engine.civilDayKey(root._sessionClockMs)) {
+                root._sessionClockMs = now
+                return
+            }
+            const hasExpiredStep = root.cards.some(c => {
+                if (!c) return false
+                const iv = Number(c.interval) || 0
+                const due = Number(c.dueAt) || 0
+                return iv > 0 && iv < 1 && due > root._sessionClockMs && due <= now
+            })
+            if (hasExpiredStep)
+                root._sessionClockMs = now
+        }
     }
 
     function refreshClock(): void {
@@ -266,6 +340,25 @@ Singleton {
         return (targets && targets.length > 0) ? String(targets[0]) : String(card.headword || card.term || card.front || "")
     }
 
+    function normalizeStudyMode(rawMode: string): string {
+        return Engine.normalizeStudyMode(rawMode)
+    }
+
+    function rollNextStudyMode(): string {
+        if (!root.smartMixEnabled)
+            return root.studyMode
+        const picked = Engine.selectNextStudyMode(root.studyQueue, root.cards, root._smartModeState)
+        root._smartModeState = picked.state
+        root._rollingSmartMode = true
+        root.studyMode = picked.mode
+        root._rollingSmartMode = false
+        return picked.mode
+    }
+
+    function buildMatchingRound(): var {
+        return Engine.buildMatchingRound(root.studyQueue, root.cards)
+    }
+
     function revealCard(): void {
         if (root.currentCard)
             root.cardRevealed = true
@@ -275,14 +368,17 @@ Singleton {
         return root.rateCurrentCard(rating)
     }
 
-    function rateCurrentCard(rating: string): bool {
-        const active = root.currentCard
+    function rateCardById(cardId: string, rating: string, advanceMode = true): bool {
+        const cleanId = String(cardId ?? "").trim()
+        const active = cleanId ? root.cards.find(item => item && item.id === cleanId) : root.currentCard
         if (!active) return false
         const now = Date.now()
         root._sessionClockMs = now
         const wasNew = (Number(active.reps) || 0) === 0 && active.state === "new"
         const prevCardSnapshot = JSON.parse(JSON.stringify(active))
         const prevHistorySnapshot = JSON.parse(JSON.stringify(root.historyByDay))
+        const prevModeSnapshot = root.studyMode
+        const prevSmartStateSnapshot = JSON.parse(JSON.stringify(root._smartModeState ?? ({ bag: [], lastMode: "" })))
 
         const scheduled = Engine.scheduleReview(
             active,
@@ -307,14 +403,25 @@ Singleton {
 
         root._undoStack = root._undoStack.slice(-19).concat([{
             card: prevCardSnapshot,
-            historyByDay: prevHistorySnapshot
+            historyByDay: prevHistorySnapshot,
+            studyMode: prevModeSnapshot,
+            smartModeState: prevSmartStateSnapshot
         }])
         root.cards = nextCards
         root.historyByDay = nextHistory
         root.cardRevealed = false
+        if (advanceMode && root.smartMixEnabled) {
+            root.rollNextStudyMode()
+        }
         root.scheduleSave()
         root.cardReviewed(scheduled.card, rating, scheduled.label)
         return true
+    }
+
+    function rateCurrentCard(rating: string): bool {
+        const active = root.currentCard
+        if (!active) return false
+        return root.rateCardById(active.id, rating, true)
     }
 
     function undoLastReview(): bool {
@@ -324,6 +431,10 @@ Singleton {
         root._undoStack = stack
         root.cards = root.cards.map(item => item.id === last.card.id ? last.card : item)
         root.historyByDay = last.historyByDay
+        if (last.smartModeState)
+            root._smartModeState = last.smartModeState
+        if (last.studyMode)
+            root.studyMode = Engine.normalizeStudyMode(last.studyMode)
         root.cardRevealed = false
         root._sessionClockMs = Date.now()
         root.scheduleSave()
@@ -388,8 +499,10 @@ Singleton {
             interval: 0,
             reps: 0,
             lapses: 0,
+            isLeech: false,
             ease: root.options.baseEase,
             dueAt: now,
+            dueDate: Engine.civilDayKey(now),
             lastReviewedAt: 0
         })
     }
@@ -584,17 +697,15 @@ Singleton {
         property var pendingLocal: null
         property string pendingCardId: ""
         property string outputBuffer: ""
-        stdout: SplitParser {
-            splitMarker: ""
-            onRead: data => {
-                lookupProc.outputBuffer += data
-            }
+        stdout: StdioCollector {
+            id: lookupStdoutCollector
         }
         onExited: (exitCode) => {
             let merged = lookupProc.pendingLocal ?? ({})
-            if (exitCode === 0 && lookupProc.outputBuffer.trim().length > 0) {
+            const rawText = String(lookupStdoutCollector.text ?? "").trim()
+            if (exitCode === 0 && rawText.length > 0) {
                 try {
-                    const online = JSON.parse(lookupProc.outputBuffer.trim())
+                    const online = JSON.parse(rawText)
                     merged = Lexicon.mergeOnlineLookup(merged, online)
                 } catch (e) {
                     // Fallback to offline analysis
@@ -693,15 +804,22 @@ Singleton {
         watchChanges: true
         printErrors: false
         onLoaded: {
-            if (root._saving || root._saveQueued) return
+            if (root._saving || root._saveQueued || root._savePending) return
             const rawText = srFileView.text()
             if (!rawText || rawText.trim() === "") {
+                if (root.ready && root.cards.length > 0) {
+                    root.scheduleSave()
+                    return
+                }
                 const seeded = Engine.migrateStorage(null, Date.now(), root.options, Lexicon.analyzeTerm)
-                root.cards = seeded.cards
                 root.historyByDay = seeded.historyByDay
                 root.retainedStorageFields = seeded.retainedStorageFields
                 root.nextId = seeded.nextId
+                root.cards = seeded.cards
+                root.syncConfiguredStudyDirection()
                 root.ready = true
+                if (root.smartMixEnabled)
+                    root.rollNextStudyMode()
                 root.scheduleSave()
                 return
             }
@@ -710,12 +828,43 @@ Singleton {
             try {
                 const parsed = JSON.parse(rawText)
                 const migrated = Engine.migrateStorage(parsed, Date.now(), root.options, Lexicon.analyzeTerm)
-                root.cards = migrated.cards
+                if (root.ready && root.cards.length > 0) {
+                    let maxMemRev = 0
+                    for (let i = 0; i < root.cards.length; i++) {
+                        const r = Number(root.cards[i]?.lastReviewedAt) || 0
+                        if (r > maxMemRev) maxMemRev = r
+                    }
+                    let maxDiskRev = 0
+                    for (let j = 0; j < migrated.cards.length; j++) {
+                        const dr = Number(migrated.cards[j]?.lastReviewedAt) || 0
+                        if (dr > maxDiskRev) maxDiskRev = dr
+                    }
+                    if (maxMemRev > maxDiskRev) {
+                        root.scheduleSave()
+                        return
+                    }
+                }
                 root.historyByDay = migrated.historyByDay
                 root.retainedStorageFields = migrated.retainedStorageFields
                 root.nextId = migrated.nextId
+                root.cards = migrated.cards
                 root._lastSavedJson = rawText
                 root.errorMessage = ""
+                root.syncConfiguredStudyDirection()
+                if (root.retainedStorageFields?.reviewMode || root.retainedStorageFields?.studyMode) {
+                    const legacyMode = Engine.normalizeStudyMode(root.retainedStorageFields.reviewMode || root.retainedStorageFields.studyMode)
+                    const shouldRollSmart = root.smartMixEnabled && (
+                        (legacyMode === "flashcard" && root.studyQueue.length > 1)
+                        || (legacyMode === "matching" && root.studyQueue.length > 0 && root.studyQueue.length < 5)
+                    )
+                    if (!shouldRollSmart) {
+                        root.studyMode = legacyMode
+                    } else {
+                        root.rollNextStudyMode()
+                    }
+                } else if (root.smartMixEnabled) {
+                    root.rollNextStudyMode()
+                }
                 root.ready = true
                 if (root.serializeStorage() !== rawText) {
                     root.scheduleSave()
@@ -724,9 +873,12 @@ Singleton {
                 root.errorMessage = Translation.tr("Could not parse Spaced Repetition storage file.")
                 if (!root.ready) {
                     const fallback = Engine.migrateStorage(null, Date.now(), root.options, Lexicon.analyzeTerm)
-                    root.cards = fallback.cards
                     root.historyByDay = fallback.historyByDay
                     root.nextId = fallback.nextId
+                    root.cards = fallback.cards
+                    root.syncConfiguredStudyDirection()
+                    if (root.smartMixEnabled)
+                        root.rollNextStudyMode()
                     root.ready = true
                 }
             }
@@ -734,10 +886,13 @@ Singleton {
         onLoadFailed: (error) => {
             if (error === FileViewError.FileNotFound) {
                 const seeded = Engine.migrateStorage(null, Date.now(), root.options, Lexicon.analyzeTerm)
-                root.cards = seeded.cards
                 root.historyByDay = seeded.historyByDay
                 root.retainedStorageFields = seeded.retainedStorageFields
                 root.nextId = seeded.nextId
+                root.cards = seeded.cards
+                root.syncConfiguredStudyDirection()
+                if (root.smartMixEnabled)
+                    root.rollNextStudyMode()
                 root.ready = true
                 root.scheduleSave()
                 return

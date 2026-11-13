@@ -160,7 +160,7 @@
             },
             {
               "line": 4,
-              "text": "and Obsidian. Alis owns generic Battery, Power Profiles, Todo, Notes,",
+              "text": "and Nexus. Alis owns generic Battery, Power Profiles, Todo, Notes,",
               "role": "review-active",
               "tokens": [
                 "Alis"
@@ -679,7 +679,7 @@
           ]
         },
         {
-          "path": "modules/settings/ObsidianThemeSettings.qml",
+          "path": "modules/settings/NexusThemeSettings.qml",
           "sha256": "aaeaee66c0457d350b53a8bf2d4f86e4f7b37bb0e923b514b2a059871443946f",
           "occurrences": [
             {
@@ -694,12 +694,12 @@
           ]
         },
         {
-          "path": "modules/settings/ObsidianTodoSettings.qml",
+          "path": "modules/settings/NexusTodoSettings.qml",
           "sha256": "7eface9f17260b4f42e6690b51a850005e55b49ca9f5771eaa7db134fab64c38",
           "occurrences": [
             {
               "line": 15,
-              "text": "    objectName: \"alisIntergrationObsidianTodoSettings\"",
+              "text": "    objectName: \"alisIntergrationNexusTodoSettings\"",
               "role": "compatibility-protocol-review",
               "tokens": [
                 "alis-intergration"
@@ -1017,7 +1017,7 @@
           ]
         },
         {
-          "path": "scripts/integrations/obsidian_theme.py",
+          "path": "scripts/integrations/nexus_theme.py",
           "sha256": "5e14dfdd3e1cf8b290f50b679313eb19b22e4b8b5a5a8080578ffd7b9e4d11e1",
           "occurrences": [
             {
@@ -1463,7 +1463,7 @@
             },
             {
               "line": 46,
-              "text": "    options[\"integrations\"][\"alis-intergration\"] = {key:False for key in (\"tlp\",\"thinkfan\",\"obsidian\")}",
+              "text": "    options[\"integrations\"][\"alis-intergration\"] = {key:False for key in (\"tlp\",\"thinkfan\",\"nexus\")}",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -1487,7 +1487,7 @@
             },
             {
               "line": 73,
-              "text": "   Config.setNestedValue(\"integrations.alisIntergration.obsidian\",true)",
+              "text": "   Config.setNestedValue(\"integrations.alisIntergration.nexus\",true)",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -1528,7 +1528,7 @@
             },
             {
               "line": 103,
-              "text": "   Config.setNestedValues({\"integrations.alisIntergration.tlp\":false,\"integrations.alisIntergration.thinkfan\":false,\"integrations.alisIntergration.obsidian\":false})",
+              "text": "   Config.setNestedValues({\"integrations.alisIntergration.tlp\":false,\"integrations.alisIntergration.thinkfan\":false,\"integrations.alisIntergration.nexus\":false})",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration",
@@ -1554,7 +1554,7 @@
             },
             {
               "line": 107,
-              "text": "  }catch(error){console.error(\"ALIS_INTERGRATION_REAL_HOST_FAIL\",error.message,error.stack,JSON.stringify({obsidian:AlisIntergration.obsidianEnabled,managed:{active:managed.active,configured:managed.configured,ready:managed.ready,error:managed.errorMessage,implementation:String(managed.implementation),source:AlisIntergration.backendSource(\"managed\"),vault:managed.implementation?.vaultPath,note:managed.implementation?.notePath,helper:managed.implementation?.helperPath,busy:managed.implementation?.busy",
+              "text": "  }catch(error){console.error(\"ALIS_INTERGRATION_REAL_HOST_FAIL\",error.message,error.stack,JSON.stringify({nexus:AlisIntergration.nexusEnabled,managed:{active:managed.active,configured:managed.configured,ready:managed.ready,error:managed.errorMessage,implementation:String(managed.implementation),source:AlisIntergration.backendSource(\"managed\"),vault:managed.implementation?.vaultPath,note:managed.implementation?.notePath,helper:managed.implementation?.helperPath,busy:managed.implementation?.busy",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "ALIS_INTERGRATION",
@@ -1695,12 +1695,12 @@
           ]
         },
         {
-          "path": "scripts/test-obsidian-path-settings-runtime.py",
+          "path": "scripts/test-nexus-path-settings-runtime.py",
           "sha256": "648adb0a48d87a0d49e063a98f64e42e051b1605c3b178616986b57436eea548",
           "occurrences": [
             {
               "line": 10,
-              "text": "with tempfile.TemporaryDirectory(prefix=\"alis-obsidian-path-ui-\") as name:",
+              "text": "with tempfile.TemporaryDirectory(prefix=\"alis-nexus-path-ui-\") as name:",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis"
@@ -1716,7 +1716,7 @@
             },
             {
               "line": 54,
-              "text": "  env[\"ALIS_INTERGRATION_SETTINGS\"]=(ROOT/\"modules/settings/ObsidianThemeSettings.qml\").as_uri()",
+              "text": "  env[\"ALIS_INTERGRATION_SETTINGS\"]=(ROOT/\"modules/settings/NexusThemeSettings.qml\").as_uri()",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "ALIS_INTERGRATION"
@@ -1725,12 +1725,12 @@
           ]
         },
         {
-          "path": "scripts/test-obsidian-theme.py",
+          "path": "scripts/test-nexus-theme.py",
           "sha256": "e9bf253c86c977c51464d2cb7c0868f3676ab19954667efcc00434484c7b4697",
           "occurrences": [
             {
               "line": 9,
-              "text": "  self.tmp=tempfile.TemporaryDirectory(prefix=\"alis-obsidian-theme-\");self.addCleanup(self.tmp.cleanup)",
+              "text": "  self.tmp=tempfile.TemporaryDirectory(prefix=\"alis-nexus-theme-\");self.addCleanup(self.tmp.cleanup)",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis"
@@ -1739,12 +1739,12 @@
           ]
         },
         {
-          "path": "scripts/test-obsidian-todo-settings.py",
+          "path": "scripts/test-nexus-todo-settings.py",
           "sha256": "1b39188d7fddb689845bd3a71b8ab11449df9951b5c0af01b4a2db499ed1beaf",
           "occurrences": [
             {
               "line": 2,
-              "text": "\"\"\"Owned Obsidian task/capture settings contract; host routing is tested in Alis.\"\"\"",
+              "text": "\"\"\"Owned Nexus task/capture settings contract; host routing is tested in Alis.\"\"\"",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -1752,7 +1752,7 @@
             },
             {
               "line": 43,
-              "text": "print('ALIS_INTERGRATION_OBSIDIAN_TODO_SETTINGS_PASS')",
+              "text": "print('ALIS_INTERGRATION_NEXUS_TODO_SETTINGS_PASS')",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "ALIS_INTERGRATION"
@@ -1760,7 +1760,7 @@
             },
             {
               "line": 62,
-              "text": "    \"Physical Obsidian vault folder. Alis resolves the configured note strictly inside this directory.\",",
+              "text": "    \"Physical Nexus vault folder. Alis resolves the configured note strictly inside this directory.\",",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -1769,12 +1769,12 @@
           ]
         },
         {
-          "path": "scripts/test-obsidian-worker-contracts.py",
+          "path": "scripts/test-nexus-worker-contracts.py",
           "sha256": "7598d02618960436e309ab620201c1299c39bee05db6a33f9e4a187aeaac7636",
           "occurrences": [
             {
               "line": 157,
-              "text": "print(\"ALIS_INTERGRATION_OBSIDIAN_WORKER_CONTRACTS_PASS managed/daily source identity, migration/status/plugin boundaries, quick-note template and shared vault\")",
+              "text": "print(\"ALIS_INTERGRATION_NEXUS_WORKER_CONTRACTS_PASS managed/daily source identity, migration/status/plugin boundaries, quick-note template and shared vault\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "ALIS_INTERGRATION"
@@ -1849,7 +1849,7 @@
             },
             {
               "line": 46,
-              "text": "    options[\"integrations\"][\"alis-intergration\"] = {key:False for key in (\"tlp\",\"thinkfan\",\"obsidian\")}",
+              "text": "    options[\"integrations\"][\"alis-intergration\"] = {key:False for key in (\"tlp\",\"thinkfan\",\"nexus\")}",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -1873,7 +1873,7 @@
             },
             {
               "line": 93,
-              "text": "   check(findChild(integrations,\"alisIntergrationObsidianTodoSettings\")===null,\"disabled Obsidian rendered owned controls\")",
+              "text": "   check(findChild(integrations,\"alisIntergrationNexusTodoSettings\")===null,\"disabled Nexus rendered owned controls\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -1921,7 +1921,7 @@
             },
             {
               "line": 123,
-              "text": "   check(JSON.stringify(Config.options.todo.obsidian)===savedSource && AlisIntergration.session===null,\"disabled-plugin recovery changed source paths or started workers\")",
+              "text": "   check(JSON.stringify(Config.options.todo.nexus)===savedSource && AlisIntergration.session===null,\"disabled-plugin recovery changed source paths or started workers\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis-Intergration"
@@ -1929,7 +1929,7 @@
             },
             {
               "line": 124,
-              "text": "   Config.setNestedValue(\"integrations.alisIntergration.obsidian\",true)",
+              "text": "   Config.setNestedValue(\"integrations.alisIntergration.nexus\",true)",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -1953,7 +1953,7 @@
             },
             {
               "line": 133,
-              "text": "   tryVerify(()=>findChild(integrations,\"alisIntergrationObsidianTodoSettings\")!==null,3000)",
+              "text": "   tryVerify(()=>findChild(integrations,\"alisIntergrationNexusTodoSettings\")!==null,3000)",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -1961,7 +1961,7 @@
             },
             {
               "line": 149,
-              "text": "   tryVerify(()=>findChild(integrations,\"alisIntergrationObsidianTodoSettings\")===null,1000)",
+              "text": "   tryVerify(()=>findChild(integrations,\"alisIntergrationNexusTodoSettings\")===null,1000)",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -2075,7 +2075,7 @@
             },
             {
               "line": 192,
-              "text": "   Config.setNestedValues({\"integrations.alisIntergration.tlp\":false,\"integrations.alisIntergration.obsidian\":false,\"integrations.alisIntergration.thinkfan\":false})",
+              "text": "   Config.setNestedValues({\"integrations.alisIntergration.tlp\":false,\"integrations.alisIntergration.nexus\":false,\"integrations.alisIntergration.thinkfan\":false})",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration",
@@ -2224,7 +2224,7 @@
           ]
         },
         {
-          "path": "scripts/test-todo-obsidian-helper.py",
+          "path": "scripts/test-todo-nexus-helper.py",
           "sha256": "9d83fcdcf1d107bb8963d199ee922670a0f613f8d778b4dd4e2f990bb776101e",
           "occurrences": [
             {
@@ -2237,7 +2237,7 @@
             },
             {
               "line": 37,
-              "text": "        return vault, path, obsidian_todo.scan_note(str(vault), \"Alis/Todo.md\")",
+              "text": "        return vault, path, nexus_todo.scan_note(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2357,7 +2357,7 @@
             },
             {
               "line": 121,
-              "text": "        result = obsidian_todo.scan_note(str(vault), \"Alis/Todo.md\")",
+              "text": "        result = nexus_todo.scan_note(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2439,7 +2439,7 @@
             },
             {
               "line": 194,
-              "text": "        result = obsidian_todo.initialize_section(str(vault), \"Alis/Todo.md\")",
+              "text": "        result = nexus_todo.initialize_section(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2456,7 +2456,7 @@
             },
             {
               "line": 203,
-              "text": "        again = obsidian_todo.initialize_section(str(vault), \"Alis/Todo.md\")",
+              "text": "        again = nexus_todo.initialize_section(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2497,7 +2497,7 @@
             },
             {
               "line": 234,
-              "text": "            obsidian_todo.initialize_section(str(vault), \"Alis/Todo.md\")",
+              "text": "            nexus_todo.initialize_section(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2514,7 +2514,7 @@
             },
             {
               "line": 242,
-              "text": "        result = obsidian_todo.initialize_section(str(vault), \"Alis/Todo.md\")",
+              "text": "        result = nexus_todo.initialize_section(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2538,7 +2538,7 @@
             },
             {
               "line": 254,
-              "text": "            obsidian_todo.initialize_section(str(vault), \"Alis/Todo.md\")",
+              "text": "            nexus_todo.initialize_section(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2655,7 +2655,7 @@
             },
             {
               "line": 370,
-              "text": "        before = obsidian_todo.scan_note(str(vault), \"Alis/Todo.md\")",
+              "text": "        before = nexus_todo.scan_note(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2824,7 +2824,7 @@
             },
             {
               "line": 485,
-              "text": "        current = obsidian_todo.scan_note(str(vault), \"Alis/Todo.md\")",
+              "text": "        current = nexus_todo.scan_note(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2865,7 +2865,7 @@
           ]
         },
         {
-          "path": "scripts/test-todo-obsidian-tasks-runtime.py",
+          "path": "scripts/test-todo-nexus-tasks-runtime.py",
           "sha256": "331a29f82f37149ac6723bc081f95b01f7f3d1cca9afe94da9754fd2458095ce",
           "occurrences": [
             {
@@ -2902,7 +2902,7 @@
             },
             {
               "line": 300,
-              "text": "        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), \"Alis/Todo.md\")",
+              "text": "        scan = nexus_tasks.nexus_todo.scan_note(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2918,7 +2918,7 @@
             },
             {
               "line": 319,
-              "text": "        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), \"Alis/Todo.md\")",
+              "text": "        scan = nexus_tasks.nexus_todo.scan_note(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2943,7 +2943,7 @@
             },
             {
               "line": 342,
-              "text": "        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), \"Alis/Todo.md\")",
+              "text": "        scan = nexus_tasks.nexus_todo.scan_note(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2959,7 +2959,7 @@
             },
             {
               "line": 385,
-              "text": "        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), \"Alis/Todo.md\")",
+              "text": "        scan = nexus_tasks.nexus_todo.scan_note(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -2991,7 +2991,7 @@
             },
             {
               "line": 430,
-              "text": "        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), \"Alis/Todo.md\")",
+              "text": "        scan = nexus_tasks.nexus_todo.scan_note(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -3023,7 +3023,7 @@
             },
             {
               "line": 476,
-              "text": "        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), \"Alis/Todo.md\")",
+              "text": "        scan = nexus_tasks.nexus_todo.scan_note(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -3039,7 +3039,7 @@
             },
             {
               "line": 512,
-              "text": "        scan = obsidian_tasks.obsidian_todo.scan_note(str(vault), \"Alis/Todo.md\")",
+              "text": "        scan = nexus_tasks.nexus_todo.scan_note(str(vault), \"Alis/Todo.md\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -3075,7 +3075,7 @@
           "occurrences": [
             {
               "line": 26,
-              "text": "    options[\"integrations\"][\"alis-intergration\"] = {key: False for key in (\"tlp\", \"thinkfan\", \"obsidian\")}",
+              "text": "    options[\"integrations\"][\"alis-intergration\"] = {key: False for key in (\"tlp\", \"thinkfan\", \"nexus\")}",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -3121,7 +3121,7 @@
             },
             {
               "line": 39,
-              "text": "    options[\"integrations\"][\"alis-intergration\"].update(tlp=False, thinkfan=False, obsidian=True)",
+              "text": "    options[\"integrations\"][\"alis-intergration\"].update(tlp=False, thinkfan=False, nexus=True)",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -3144,12 +3144,12 @@
           ]
         },
         {
-          "path": "scripts/todo/obsidian_tasks.py",
+          "path": "scripts/todo/nexus_tasks.py",
           "sha256": "451df346334b9de47e004c762dc7df88d8684a69c0e89114849bbe3a64b60de5",
           "occurrences": [
             {
               "line": 177,
-              "text": "    return base / f\"alis-{os.getuid()}-obsidian-cli.lock\"",
+              "text": "    return base / f\"alis-{os.getuid()}-nexus-cli.lock\"",
               "role": "compatibility-protocol-review",
               "tokens": [
                 "alis"
@@ -3229,7 +3229,7 @@
             },
             {
               "line": 463,
-              "text": "        \"ALIS_VAULT_MISMATCH\": (\"active_vault_mismatch\", \"active Obsidian vault does not match configured vault\"),",
+              "text": "        \"ALIS_VAULT_MISMATCH\": (\"active_vault_mismatch\", \"active Nexus vault does not match configured vault\"),",
               "role": "compatibility-protocol-review",
               "tokens": [
                 "ALIS"
@@ -3237,7 +3237,7 @@
             },
             {
               "line": 464,
-              "text": "        \"ALIS_NO_FILESYSTEM_ADAPTER\": (\"unsupported_adapter\", \"active Obsidian vault is not a desktop filesystem vault\"),",
+              "text": "        \"ALIS_NO_FILESYSTEM_ADAPTER\": (\"unsupported_adapter\", \"active Nexus vault is not a desktop filesystem vault\"),",
               "role": "compatibility-protocol-review",
               "tokens": [
                 "ALIS"
@@ -3245,7 +3245,7 @@
             },
             {
               "line": 465,
-              "text": "        \"ALIS_FILE_MISSING\": (\"note_not_found\", \"configured note is not loaded in the active Obsidian vault\"),",
+              "text": "        \"ALIS_FILE_MISSING\": (\"note_not_found\", \"configured note is not loaded in the active Nexus vault\"),",
               "role": "compatibility-protocol-review",
               "tokens": [
                 "ALIS"
@@ -3253,7 +3253,7 @@
             },
             {
               "line": 466,
-              "text": "        \"ALIS_TASKS_API_MISSING\": (\"tasks_api_unavailable\", \"Obsidian Tasks API v1 is unavailable\"),",
+              "text": "        \"ALIS_TASKS_API_MISSING\": (\"tasks_api_unavailable\", \"Nexus Tasks API v1 is unavailable\"),",
               "role": "compatibility-protocol-review",
               "tokens": [
                 "ALIS"
@@ -3261,7 +3261,7 @@
             },
             {
               "line": 467,
-              "text": "        \"ALIS_BAD_TASKS_RESULT\": (\"tasks_api_invalid_result\", \"Obsidian Tasks returned an invalid toggle result\"),",
+              "text": "        \"ALIS_BAD_TASKS_RESULT\": (\"tasks_api_invalid_result\", \"Nexus Tasks returned an invalid toggle result\"),",
               "role": "compatibility-protocol-review",
               "tokens": [
                 "ALIS"
@@ -3269,7 +3269,7 @@
             },
             {
               "line": 468,
-              "text": "        \"ALIS_CONFLICT\": (\"conflict\", \"task changed before Obsidian could apply the mutation\"),",
+              "text": "        \"ALIS_CONFLICT\": (\"conflict\", \"task changed before Nexus could apply the mutation\"),",
               "role": "compatibility-protocol-review",
               "tokens": [
                 "ALIS"
@@ -3286,12 +3286,12 @@
           ]
         },
         {
-          "path": "scripts/todo/obsidian_todo.py",
+          "path": "scripts/todo/nexus_todo.py",
           "sha256": "5c77aafe50c14f042ddfcfe54aea8e2b733cf6bc27c26c03c79d2a46844495e1",
           "occurrences": [
             {
               "line": 2,
-              "text": "\"\"\"Safe Markdown bridge for the Alis Todo Obsidian backend.",
+              "text": "\"\"\"Safe Markdown bridge for the Alis Todo Nexus backend.",
               "role": "review-active",
               "tokens": [
                 "Alis"
@@ -3315,7 +3315,7 @@
             },
             {
               "line": 32,
-              "text": "# Metadata whose completion behavior belongs to Obsidian Tasks, not Alis.",
+              "text": "# Metadata whose completion behavior belongs to Nexus Tasks, not Alis.",
               "role": "review-active",
               "tokens": [
                 "Alis"
@@ -3669,7 +3669,7 @@
             },
             {
               "line": 51,
-              "text": "        run: python3 scripts/test-alis-intergration-obsidian-wrapper.py",
+              "text": "        run: python3 scripts/test-alis-intergration-nexus-wrapper.py",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -4203,7 +4203,7 @@
             },
             {
               "line": 71,
-              "text": "Obsidian implementation tests run in the Alis-Intergration repository. These preflight",
+              "text": "Nexus implementation tests run in the Alis-Intergration repository. These preflight",
               "role": "review-active",
               "tokens": [
                 "Alis-Intergration"
@@ -4217,7 +4217,7 @@
           "occurrences": [
             {
               "line": 12,
-              "text": "| **Alis-Intergration** | Validates the separately installed TLP, Thinkfan and Obsidian package and loads only selected integrations. IPC target: `alis-intergration`. Missing or disabled packages keep their workers unloaded; Core installation and removal preserve optional payloads and user profiles. |",
+              "text": "| **Alis-Intergration** | Validates the separately installed TLP, Thinkfan and Nexus package and loads only selected integrations. IPC target: `alis-intergration`. Missing or disabled packages keep their workers unloaded; Core installation and removal preserve optional payloads and user profiles. |",
               "role": "review-active",
               "tokens": [
                 "Alis-Intergration",
@@ -4549,7 +4549,7 @@
             },
             {
               "line": 122,
-              "text": "                    visible: Todo.backend === \"obsidian\" && !AlisIntergration.obsidianEnabled",
+              "text": "                    visible: Todo.backend === \"nexus\" && !AlisIntergration.nexusEnabled",
               "role": "review-active",
               "tokens": [
                 "Alis-Intergration"
@@ -4771,7 +4771,7 @@
           ]
         },
         {
-          "path": "modules/settings/ObsidianThemeSettings.qml",
+          "path": "modules/settings/NexusThemeSettings.qml",
           "sha256": "0b6fc95ca582e376c1049e408f47c830fa91aa6bfb8bb5ccce9952a50d02550a",
           "occurrences": [
             {
@@ -4784,7 +4784,7 @@
             },
             {
               "line": 21,
-              "text": "        active: AlisIntergration.obsidianEnabled",
+              "text": "        active: AlisIntergration.nexusEnabled",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -4792,7 +4792,7 @@
             },
             {
               "line": 22,
-              "text": "        source: AlisIntergration.settingsSource(\"obsidian\")",
+              "text": "        source: AlisIntergration.settingsSource(\"nexus\")",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -4809,12 +4809,12 @@
           ]
         },
         {
-          "path": "modules/settings/ObsidianTodoSettings.qml",
+          "path": "modules/settings/NexusTodoSettings.qml",
           "sha256": "a473fec77affd25957161c37fa3bef49477b3678eeea80217e7034a637cb522d",
           "occurrences": [
             {
               "line": 15,
-              "text": "        active: AlisIntergration.obsidianEnabled && root.visible",
+              "text": "        active: AlisIntergration.nexusEnabled && root.visible",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -4822,7 +4822,7 @@
             },
             {
               "line": 16,
-              "text": "        source: AlisIntergration.settingsSource(\"obsidianTodo\")",
+              "text": "        source: AlisIntergration.settingsSource(\"nexusTodo\")",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -4830,7 +4830,7 @@
             },
             {
               "line": 30,
-              "text": "            text: Translation.tr(\"Install Alis-Intergration; enable Obsidian in Settings \u2192 Integrations.\")",
+              "text": "            text: Translation.tr(\"Install Alis-Intergration; enable Nexus in Settings \u2192 Integrations.\")",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -5486,7 +5486,7 @@
           "occurrences": [
             {
               "line": 32,
-              "text": "  [alis-intergration]=\"Optional TLP, Thinkfan and Obsidian package discovery. Integration selections remain under Settings \u2192 Integrations; discovery does not install or enable a package.\"",
+              "text": "  [alis-intergration]=\"Optional TLP, Thinkfan and Nexus package discovery. Integration selections remain under Settings \u2192 Integrations; discovery does not install or enable a package.\"",
               "role": "host-integration-surface-review",
               "tokens": [
                 "alis-intergration"
@@ -5566,7 +5566,7 @@
           ]
         },
         {
-          "path": "scripts/test-agenda-obsidian-runtime.py",
+          "path": "scripts/test-agenda-nexus-runtime.py",
           "sha256": "843053558d2f7fd67c3b8f9d3ec6b1f72d7b20c20d1333371d6bfcfee8cbc3b4",
           "occurrences": [
             {
@@ -5589,7 +5589,7 @@
             },
             {
               "line": 74,
-              "text": "  }catch(error){console.error(\"AGENDA_OBSIDIAN_FAIL\",error.message,error.stack,JSON.stringify({events:Events.list,unlinks:Events.todoUnlinks,tasks:Todo.list,backendTasks:Todo.obsidianBackend.list,error:Todo.obsidianErrorCode,requested:Todo.requestedBackend,mode:Todo.obsidianSourceMode,configured:Todo.obsidianConfigured,host:AlisIntergration.status()}));Qt.quit()}}",
+              "text": "  }catch(error){console.error(\"AGENDA_NEXUS_FAIL\",error.message,error.stack,JSON.stringify({events:Events.list,unlinks:Events.todoUnlinks,tasks:Todo.list,backendTasks:Todo.nexusBackend.list,error:Todo.nexusErrorCode,requested:Todo.requestedBackend,mode:Todo.nexusSourceMode,configured:Todo.nexusConfigured,host:AlisIntergration.status()}));Qt.quit()}}",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -5597,7 +5597,7 @@
             },
             {
               "line": 93,
-              "text": "  data['integrations']={'alis-intergration':{'obsidian':True,'tlp':False,'thinkfan':False}}",
+              "text": "  data['integrations']={'alis-intergration':{'nexus':True,'tlp':False,'thinkfan':False}}",
               "role": "host-integration-surface-review",
               "tokens": [
                 "alis-intergration"
@@ -5903,12 +5903,12 @@
           ]
         },
         {
-          "path": "scripts/test-alis-intergration-obsidian-wrapper.py",
+          "path": "scripts/test-alis-intergration-nexus-wrapper.py",
           "sha256": "ed1606e02ee3f1b8c04696bb17643c2982dd1de24afa91d6174924291337d3f9",
           "occurrences": [
             {
               "line": 2,
-              "text": "\"\"\"Guard Alis's Obsidian Settings wrapper after real owner width=0 report.",
+              "text": "\"\"\"Guard Alis's Nexus Settings wrapper after real owner width=0 report.",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis"
@@ -5924,7 +5924,7 @@
             },
             {
               "line": 24,
-              "text": "    assert \"AlisIntergration.obsidianEnabled\" in source, f\"{name}: lost opt-in gate\"",
+              "text": "    assert \"AlisIntergration.nexusEnabled\" in source, f\"{name}: lost opt-in gate\"",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis-Intergration"
@@ -5956,7 +5956,7 @@
             },
             {
               "line": 31,
-              "text": "print(\"ALIS_INTERGRATION_OBSIDIAN_WRAPPER_PASS both deferred cards fill page width; optional helper precondition visible\")",
+              "text": "print(\"ALIS_INTERGRATION_NEXUS_WRAPPER_PASS both deferred cards fill page width; optional helper precondition visible\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "ALIS_INTERGRATION"
@@ -6082,7 +6082,7 @@
             },
             {
               "line": 114,
-              "text": "        options[\"integrations\"][\"alis-intergration\"] = {key:not present for key in (\"tlp\",\"thinkfan\",\"obsidian\")}",
+              "text": "        options[\"integrations\"][\"alis-intergration\"] = {key:not present for key in (\"tlp\",\"thinkfan\",\"nexus\")}",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -6165,7 +6165,7 @@
             },
             {
               "line": 208,
-              "text": "    Config.setNestedValue(\"integrations.alisIntergration.obsidian\",true)",
+              "text": "    Config.setNestedValue(\"integrations.alisIntergration.nexus\",true)",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -6173,7 +6173,7 @@
             },
             {
               "line": 214,
-              "text": "    Config.setNestedValue(\"integrations.alisIntergration.obsidian\",false)",
+              "text": "    Config.setNestedValue(\"integrations.alisIntergration.nexus\",false)",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -6436,7 +6436,7 @@
             },
             {
               "line": 22,
-              "text": "                if explicit is not None:original[\"integrations\"][\"alis-intergration\"]={key:explicit for key in (\"tlp\",\"thinkfan\",\"obsidian\")}",
+              "text": "                if explicit is not None:original[\"integrations\"][\"alis-intergration\"]={key:explicit for key in (\"tlp\",\"thinkfan\",\"nexus\")}",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -6476,7 +6476,7 @@
             },
             {
               "line": 37,
-              "text": "    base=Path(name);path=base/\"alis/config.json\";path.parent.mkdir();path.write_text(json.dumps({\"todo\":{\"backend\":\"obsidian\"}}))",
+              "text": "    base=Path(name);path=base/\"alis/config.json\";path.parent.mkdir();path.write_text(json.dumps({\"todo\":{\"backend\":\"nexus\"}}))",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis"
@@ -6484,7 +6484,7 @@
             },
             {
               "line": 39,
-              "text": "    assert result.returncode==0 and json.loads(path.read_text())[\"integrations\"][\"alis-intergration\"]=={\"tlp\":False,\"thinkfan\":False,\"obsidian\":True}",
+              "text": "    assert result.returncode==0 and json.loads(path.read_text())[\"integrations\"][\"alis-intergration\"]=={\"tlp\":False,\"thinkfan\":False,\"nexus\":True}",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -6631,7 +6631,7 @@
           "occurrences": [
             {
               "line": 22,
-              "text": "    options[\"integrations\"][\"alis-intergration\"][\"obsidian\"] = True  # Saved selection survives missing package.",
+              "text": "    options[\"integrations\"][\"alis-intergration\"][\"nexus\"] = True  # Saved selection survives missing package.",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -6647,7 +6647,7 @@
             },
             {
               "line": 44,
-              "text": "   check(AlisIntergration.session===null && !AlisIntergration.obsidianEnabled,\"missing package started workers\")",
+              "text": "   check(AlisIntergration.session===null && !AlisIntergration.nexusEnabled,\"missing package started workers\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "Alis-Intergration",
@@ -6656,7 +6656,7 @@
             },
             {
               "line": 45,
-              "text": "   check(Config.options.integrations.alisIntergration.obsidian===true,\"discovery erased the saved plugin choice\")",
+              "text": "   check(Config.options.integrations.alisIntergration.nexus===true,\"discovery erased the saved plugin choice\")",
               "role": "regression-oracle-and-fixture-review",
               "tokens": [
                 "alis-intergration"
@@ -6896,7 +6896,7 @@
             },
             {
               "line": 25,
-              "text": "assert 'active: AlisIntergration.obsidianEnabled' in OBSIDIAN",
+              "text": "assert 'active: AlisIntergration.nexusEnabled' in NEXUS",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -6904,7 +6904,7 @@
             },
             {
               "line": 26,
-              "text": "assert 'source: AlisIntergration.settingsSource(\"obsidian\")' in OBSIDIAN",
+              "text": "assert 'source: AlisIntergration.settingsSource(\"nexus\")' in NEXUS",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -6912,7 +6912,7 @@
             },
             {
               "line": 322,
-              "text": "    \"ObsidianThemeSettings.qml\": (\"Install Alis-Intergration; enable this integration in Settings \u2192 Integrations.\",),",
+              "text": "    \"NexusThemeSettings.qml\": (\"Install Alis-Intergration; enable this integration in Settings \u2192 Integrations.\",),",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -6920,7 +6920,7 @@
             },
             {
               "line": 323,
-              "text": "    \"ObsidianTodoSettings.qml\": (\"Install Alis-Intergration; enable Obsidian in Settings \u2192 Integrations.\",),",
+              "text": "    \"NexusTodoSettings.qml\": (\"Install Alis-Intergration; enable Nexus in Settings \u2192 Integrations.\",),",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -6944,7 +6944,7 @@
             },
             {
               "line": 337,
-              "text": "    (\"ObsidianThemeSettings.qml\", 'AlisIntergration.settingsSource(\"obsidian\")'),",
+              "text": "    (\"NexusThemeSettings.qml\", 'AlisIntergration.settingsSource(\"nexus\")'),",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -6952,7 +6952,7 @@
             },
             {
               "line": 338,
-              "text": "    (\"ObsidianTodoSettings.qml\", 'AlisIntergration.settingsSource(\"obsidianTodo\")'),",
+              "text": "    (\"NexusTodoSettings.qml\", 'AlisIntergration.settingsSource(\"nexusTodo\")'),",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -6982,7 +6982,7 @@
             },
             {
               "line": 79,
-              "text": "   check(!AlisIntergration.obsidianEnabled && !ObsidianTheme.enabled && !ObsidianTheme.busy,",
+              "text": "   check(!AlisIntergration.nexusEnabled && !NexusTheme.enabled && !NexusTheme.busy,",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -7119,12 +7119,12 @@
           ]
         },
         {
-          "path": "scripts/test-todo-obsidian-daily-backend-contract.py",
+          "path": "scripts/test-todo-nexus-daily-backend-contract.py",
           "sha256": "17451da0be334abeb036246daa60e5e4346587fc42439bf070c992c472619080",
           "occurrences": [
             {
               "line": 8,
-              "text": "assert 'active: root.active && AlisIntergration.obsidianEnabled' in backend",
+              "text": "assert 'active: root.active && AlisIntergration.nexusEnabled' in backend",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -7141,12 +7141,12 @@
           ]
         },
         {
-          "path": "scripts/test-todo-obsidian-read-backend-contract.py",
+          "path": "scripts/test-todo-nexus-read-backend-contract.py",
           "sha256": "237f412934b146ff526735fd25a0206f8d504df679a9c1bbbb7e9fe6c84d9299",
           "occurrences": [
             {
               "line": 8,
-              "text": "assert 'active: root.active && AlisIntergration.obsidianEnabled' in backend",
+              "text": "assert 'active: root.active && AlisIntergration.nexusEnabled' in backend",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -7163,7 +7163,7 @@
           ]
         },
         {
-          "path": "scripts/test-todo-obsidian-settings-ui.py",
+          "path": "scripts/test-todo-nexus-settings-ui.py",
           "sha256": "bc7554fdb26127d3d1302ea7235a92744e86e9b12c46ba3e7824c81525e566fd",
           "occurrences": [
             {
@@ -7184,7 +7184,7 @@
             },
             {
               "line": 14,
-              "text": "assert 'Todo.backend === \"obsidian\" && !AlisIntergration.obsidianEnabled' in page",
+              "text": "assert 'Todo.backend === \"nexus\" && !AlisIntergration.nexusEnabled' in page",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -7192,7 +7192,7 @@
             },
             {
               "line": 16,
-              "text": "assert 'source: AlisIntergration.settingsSource(\"obsidianTodo\")' in wrapper",
+              "text": "assert 'source: AlisIntergration.settingsSource(\"nexusTodo\")' in wrapper",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -7200,7 +7200,7 @@
             },
             {
               "line": 17,
-              "text": "assert 'active: AlisIntergration.obsidianEnabled && root.visible' in wrapper",
+              "text": "assert 'active: AlisIntergration.nexusEnabled && root.visible' in wrapper",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -7222,7 +7222,7 @@
             },
             {
               "line": 99,
-              "text": "assert 'active: AlisIntergration.obsidianEnabled' in obsidian_settings",
+              "text": "assert 'active: AlisIntergration.nexusEnabled' in nexus_settings",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -7230,7 +7230,7 @@
             },
             {
               "line": 100,
-              "text": "assert 'source: AlisIntergration.settingsSource(\"obsidian\")' in obsidian_settings",
+              "text": "assert 'source: AlisIntergration.settingsSource(\"nexus\")' in nexus_settings",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -7441,7 +7441,7 @@
             },
             {
               "line": 6,
-              "text": "MIGRATION_DESCRIPTION=\"Keeps previously selected TLP, Thinkfan and Obsidian features when moving their workers to optional AlisIntergration.\"",
+              "text": "MIGRATION_DESCRIPTION=\"Keeps previously selected TLP, Thinkfan and Nexus features when moving their workers to optional AlisIntergration.\"",
               "role": "review-active",
               "tokens": [
                 "Alis-Intergration"
@@ -7645,7 +7645,7 @@
             },
             {
               "line": 100,
-              "text": "        active: root.active && AlisIntergration.obsidianEnabled",
+              "text": "        active: root.active && AlisIntergration.nexusEnabled",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -7756,12 +7756,12 @@
           ]
         },
         {
-          "path": "services/ObsidianTheme.qml",
+          "path": "services/NexusTheme.qml",
           "sha256": "9c44c9494c5876f5fd41849acb4b25beb57922f6b2462b81a57a9a3f73f63d7a",
           "occurrences": [
             {
               "line": 9,
-              "text": "    readonly property var implementation: AlisIntergration.session?.obsidianTheme ?? (null)",
+              "text": "    readonly property var implementation: AlisIntergration.session?.nexusTheme ?? (null)",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -7810,7 +7810,7 @@
           ]
         },
         {
-          "path": "services/ObsidianTodoBackend.qml",
+          "path": "services/NexusTodoBackend.qml",
           "sha256": "65f955396ac53f2416feefe129f976622fb0aafa9f74616d2cdbcabaf9196429",
           "occurrences": [
             {
@@ -7887,7 +7887,7 @@
             },
             {
               "line": 99,
-              "text": "        active: root.active && AlisIntergration.obsidianEnabled",
+              "text": "        active: root.active && AlisIntergration.nexusEnabled",
               "role": "host-integration-surface-review",
               "tokens": [
                 "Alis-Intergration"
@@ -8347,7 +8347,7 @@
             },
             {
               "line": 5763,
-              "text": "  \"Install Alis-Intergration; enable Obsidian in Settings \u2192 Integrations.\": \"Install Alis-Intergration; enable Obsidian in Settings \u2192 Integrations.\",",
+              "text": "  \"Install Alis-Intergration; enable Nexus in Settings \u2192 Integrations.\": \"Install Alis-Intergration; enable Nexus in Settings \u2192 Integrations.\",",
               "role": "review-active",
               "tokens": [
                 "Alis-Intergration",
@@ -8548,7 +8548,7 @@
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/archive/integrations/TODO_OBSIDIAN_INTEGRATION.md",
+          "path": "docs/archive/integrations/TODO_NEXUS_INTEGRATION.md",
           "sha256": "824dd172ee8d15138f0a90204db4eaf5ce1ace58db5dc71371db3891fbaadb28",
           "occurrenceCount": 27,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
@@ -8956,73 +8956,73 @@
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/evidence/abyss-product/20261012-agenda-obsidian/final-source/managed-note-delete-create.md",
+          "path": "docs/evidence/abyss-product/20261012-agenda-nexus/final-source/managed-note-delete-create.md",
           "sha256": "bb8b58ea4ddeaf5f95d2744c00307770280f48e3d5e65d15d35a0e283028903b",
           "occurrenceCount": 2,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/evidence/abyss-product/20261012-agenda-obsidian/final-source/managed-note-delete-delete-task.md",
+          "path": "docs/evidence/abyss-product/20261012-agenda-nexus/final-source/managed-note-delete-delete-task.md",
           "sha256": "0012a0ac1677182062a30d96836a3f775305509219ef3eaba0575810b2b75177",
           "occurrenceCount": 2,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/evidence/abyss-product/20261012-agenda-obsidian/final-source/managed-note-delete-restart-deleted.md",
+          "path": "docs/evidence/abyss-product/20261012-agenda-nexus/final-source/managed-note-delete-restart-deleted.md",
           "sha256": "0012a0ac1677182062a30d96836a3f775305509219ef3eaba0575810b2b75177",
           "occurrenceCount": 2,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/evidence/abyss-product/20261012-agenda-obsidian/final-source/managed-note-delete-restart.md",
+          "path": "docs/evidence/abyss-product/20261012-agenda-nexus/final-source/managed-note-delete-restart.md",
           "sha256": "bb8b58ea4ddeaf5f95d2744c00307770280f48e3d5e65d15d35a0e283028903b",
           "occurrenceCount": 2,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/evidence/abyss-product/20261012-agenda-obsidian/final-source/managed-note-unlink-create.md",
+          "path": "docs/evidence/abyss-product/20261012-agenda-nexus/final-source/managed-note-unlink-create.md",
           "sha256": "728923a7438e62ec8a97a77ffb6ab644c028c98f56abbf5fa6a9d20b573c9b5d",
           "occurrenceCount": 2,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/evidence/abyss-product/20261012-agenda-obsidian/final-source/managed-note-unlink-edit.md",
+          "path": "docs/evidence/abyss-product/20261012-agenda-nexus/final-source/managed-note-unlink-edit.md",
           "sha256": "66a16fb6e69ec113ee31b1eb9db4b296cdd8cb9d0aae1c548c3cccdf7ad7e615",
           "occurrenceCount": 2,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/evidence/abyss-product/20261012-agenda-obsidian/final-source/managed-note-unlink-remove.md",
+          "path": "docs/evidence/abyss-product/20261012-agenda-nexus/final-source/managed-note-unlink-remove.md",
           "sha256": "76b63318783eca0d86d896875ec9c823ab0d1ffddf5a7d699b741dc16a2fcd4f",
           "occurrenceCount": 2,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/evidence/abyss-product/20261012-agenda-obsidian/final-source/managed-note-unlink-restart.md",
+          "path": "docs/evidence/abyss-product/20261012-agenda-nexus/final-source/managed-note-unlink-restart.md",
           "sha256": "728923a7438e62ec8a97a77ffb6ab644c028c98f56abbf5fa6a9d20b573c9b5d",
           "occurrenceCount": 2,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/evidence/abyss-product/20261012-agenda-obsidian/typed-receipt/managed-note-create.md",
+          "path": "docs/evidence/abyss-product/20261012-agenda-nexus/typed-receipt/managed-note-create.md",
           "sha256": "228c851427f1f41d65b81c8fee3a98c1226926349f6df2c5e18ed7459c7a953a",
           "occurrenceCount": 2,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/evidence/abyss-product/20261012-agenda-obsidian/typed-receipt/managed-note-edit.md",
+          "path": "docs/evidence/abyss-product/20261012-agenda-nexus/typed-receipt/managed-note-edit.md",
           "sha256": "c721b180e3351bb09adbdff62f4f8bed14dd553d8b193f00e01c495771f72e6e",
           "occurrenceCount": 2,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/evidence/abyss-product/20261012-agenda-obsidian/typed-receipt/managed-note-remove.md",
+          "path": "docs/evidence/abyss-product/20261012-agenda-nexus/typed-receipt/managed-note-remove.md",
           "sha256": "76b63318783eca0d86d896875ec9c823ab0d1ffddf5a7d699b741dc16a2fcd4f",
           "occurrenceCount": 2,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
         },
         {
-          "path": "docs/evidence/abyss-product/20261012-agenda-obsidian/typed-receipt/managed-note-restart.md",
+          "path": "docs/evidence/abyss-product/20261012-agenda-nexus/typed-receipt/managed-note-restart.md",
           "sha256": "228c851427f1f41d65b81c8fee3a98c1226926349f6df2c5e18ed7459c7a953a",
           "occurrenceCount": 2,
           "disposition": "retain immutable historical evidence; no public-brand assertion"
@@ -9929,7 +9929,7 @@
         "alis:todo markers",
         "alis_import_id",
         "alis-ok",
-        "ALIS_* Obsidian protocol",
+        "ALIS_* Nexus protocol",
         "99_Alis_Theme",
         "alis backup/lock filenames",
         "ALIS_ROOT"

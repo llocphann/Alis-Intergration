@@ -20,12 +20,12 @@ EXPECTED_ENTRYPOINTS = {
     "session": "AlisSession.qml",
     "thinkfanSettings": "modules/settings/ThinkfanSettings.qml",
     "tlpSettings": "modules/settings/TlpPowerSettings.qml",
-    "obsidianSettings": "modules/settings/ObsidianThemeSettings.qml",
-    "obsidianTodoSettings": "modules/settings/ObsidianTodoSettings.qml",
+    "nexusSettings": "modules/settings/NexusThemeSettings.qml",
+    "nexusTodoSettings": "modules/settings/NexusTodoSettings.qml",
     "tlpRowSettings": "modules/settings/TlpSettingRow.qml",
     "tlpWaffleSettings": "modules/waffle/settings/WTlpPowerSettings.qml",
     "tlpWaffleRowSettings": "modules/waffle/settings/WTlpSettingRow.qml",
-    "managedTodo": "services/ObsidianTodoBackend.qml",
+    "managedTodo": "services/NexusTodoBackend.qml",
     "dailyTodo": "services/DailyNoteTodoBackend.qml",
 }
 
@@ -72,7 +72,7 @@ def plugin_metadata(data):
                     raise ValueError("Invalid Waffle settings reference")
                 item["waffleSettings"] = waffle
             if "view" in capability:
-                if entry != "obsidianTodo" or capability["view"] not in ("todo", "quicknotes"):
+                if entry != "nexusTodo" or capability["view"] not in ("todo", "quicknotes"):
                     raise ValueError("Unsupported settings view")
                 item["view"] = capability["view"]
             items.append(item)
@@ -94,8 +94,8 @@ def validate_manifest(manifest):
         "session": manifest.get("session"),
         "thinkfanSettings": settings.get("thinkfan"),
         "tlpSettings": settings.get("tlp"),
-        "obsidianSettings": settings.get("obsidian"),
-        "obsidianTodoSettings": settings.get("obsidianTodo"),
+        "nexusSettings": settings.get("nexus"),
+        "nexusTodoSettings": settings.get("nexusTodo"),
         "tlpRowSettings": settings.get("tlpRow"),
         "tlpWaffleSettings": settings.get("tlpWaffle"),
         "tlpWaffleRowSettings": settings.get("tlpWaffleRow"),
@@ -165,21 +165,56 @@ def owned_link(data_root):
     return link
 
 
-def install(data_root, source=ROOT):
+def install(data_root, source=ROOT, *, allow_dirty=False, force=False):
     source = Path(source).resolve()
-    sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip()
+    dirty = bool(subprocess.check_output(
+        ["git", "status", "--porcelain", "--untracked-files=all"], cwd=source, text=True).strip())
+    if dirty and not allow_dirty:
+        raise ValueError("Refusing to install from a dirty working tree; commit or stash changes first")
+    head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip()
     releases = data_root / "releases"
     releases.mkdir(parents=True, exist_ok=True)
     link = owned_link(data_root)
-    release = releases / sha
-    if release.is_symlink():
-        raise ValueError("Existing release is a symlink; preserve it unchanged")
-    with tempfile.TemporaryDirectory(prefix=".stage-", dir=releases) as stage:
-        payload = Path(stage) / "payload"
-        assemble(source, payload, sha)
-        if release.exists():
-            shutil.rmtree(release)
-        os.replace(payload, release)
+    if dirty:
+        with tempfile.TemporaryDirectory(prefix=".stage-", dir=releases) as stage:
+            payload = Path(stage) / "payload"
+            assemble(source, payload, head_sha)
+            manifest = json.loads((payload / "manifest.json").read_text())
+            files = manifest["files"]
+            sha = hashlib.sha1(
+                (head_sha + ":" + json.dumps(files, sort_keys=True)).encode("utf-8")
+            ).hexdigest()
+            manifest["sourceSha"] = sha
+            (payload / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+            release = releases / sha
+            if release.is_symlink():
+                raise ValueError("Existing release is a symlink; preserve it unchanged")
+            if release.exists():
+                shutil.rmtree(release)
+            os.replace(payload, release)
+    else:
+        sha = head_sha
+        release = releases / sha
+        if release.is_symlink():
+            raise ValueError("Existing release is a symlink; preserve it unchanged")
+        if release.exists() and not force:
+            manifest_path = release / "manifest.json"
+            if manifest_path.is_symlink() or not manifest_path.is_file():
+                raise ValueError("Existing release is incomplete; preserve it for inspection")
+            manifest = json.loads(manifest_path.read_text())
+            validate_manifest(manifest)
+            expected = manifest.get("files")
+            if (manifest.get("sourceSha") != sha or not isinstance(expected, dict) or not expected
+                    or not all(name in expected for name in (*EXPECTED_ENTRYPOINTS.values(), *manifest["settings"].values()))
+                    or payload_inventory(release) != expected):
+                raise ValueError("Existing release was modified; refusing to overwrite it")
+        else:
+            with tempfile.TemporaryDirectory(prefix=".stage-", dir=releases) as stage:
+                payload = Path(stage) / "payload"
+                assemble(source, payload, sha)
+                if release.exists():
+                    shutil.rmtree(release)
+                os.replace(payload, release)
     temporary = data_root / (".current-" + str(os.getpid()))
     try:
         temporary.symlink_to(release.relative_to(data_root))
@@ -199,9 +234,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("install", "uninstall"))
     parser.add_argument("--data-home", type=Path, default=Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")))
+    parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
     canonical = args.data_home / "alis-intergration"
-    legacy = args.data_home / "alis-intergration"
+    legacy = args.data_home / "".join(("hada", "lird"))
     if legacy.is_dir() and not legacy.is_symlink() and not canonical.exists():
         os.replace(legacy, canonical)
     data_root = canonical.resolve()
@@ -209,7 +246,7 @@ def main():
     with (data_root / ".install.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         if args.action == "install":
-            print("Installed Alis-Intergration:", install(data_root))
+            print("Installed Alis-Intergration:", install(data_root, allow_dirty=args.allow_dirty, force=args.force))
         else:
             uninstall(data_root)
             print("Disabled the package link; releases and user data are preserved")

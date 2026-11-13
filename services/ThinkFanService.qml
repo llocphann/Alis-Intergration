@@ -12,6 +12,7 @@ Item {
     property bool _live: true
     Component.onDestruction: root._live = false
     property string helperPath: "/usr/libexec/alis-thinkfan"
+    property string privilegeEscalationCommand: "/usr/bin/pkexec"
     readonly property string packagedHelperPath: decodeURIComponent(String(Qt.resolvedUrl("../assets/helpers/alis-thinkfan")).replace(/^file:\/\//, ""))
 
     property bool available: false
@@ -38,6 +39,21 @@ Item {
     readonly property int _idleSafetyPollMs: 5 * 60 * 1000
     property string _queuedFanLevel: ""
     property bool _fanConfigApplyQueued: false
+    property bool sleepMonitorEnabled: true
+    property bool probeSystemSleepMeta: true
+    property int resumeFirstPassDelayMs: 1500
+    property int resumeSecondPassDelayMs: 5000
+    property bool _managedBeforeSleep: false
+    property bool _daemonRunning: false
+    property bool _daemonRunningBeforeSleep: false
+    property string _manualLevelBeforeSleep: ""
+    property bool _sleeping: false
+    property bool _resumeRecoveryPending: false
+    property bool _resumeSecondPass: false
+    property bool _reapplyManagedAfterBounce: false
+    property bool _wakeupUnitEnabled: true
+    property bool _configAllowsAutoLevel: true
+    property real _lastWatchdogWallMs: 0
 
     readonly property bool profileFanControlEnabled:
         Config.getNestedValue("powerProfiles.fanControl.enabled", false) === true
@@ -126,8 +142,103 @@ Item {
         root.statusReason = String(data.reason ?? "")
         root.stateKnown = true
         root._lastStatusRefreshAt = Date.now()
+        if (root.active || root.enabled) {
+            root._managedBeforeSleep = true
+            root._manualLevelBeforeSleep = ""
+        } else if (!root._sleeping && !root._resumeRecoveryPending) {
+            if (root.profile !== "managed")
+                root._managedBeforeSleep = false
+            const trimmedLevel = String(root.fanLevel ?? "").trim()
+            if (root.profile === "manual" && /^[1-7]$/.test(trimmedLevel))
+                root._manualLevelBeforeSleep = trimmedLevel
+            else if (root.profile === "firmware" && !root._daemonRunning)
+                root._manualLevelBeforeSleep = ""
+            root._daemonRunningBeforeSleep = root._daemonRunning
+        }
         root._scheduleConfiguredFanLevelApply()
+        root._reconcileResumeRecovery()
         return true
+    }
+
+    function _reconcileResumeRecovery(): void {
+        if (!root._resumeRecoveryPending || !root.stateKnown)
+            return
+        const finishPass = root._resumeSecondPass
+        if (((root.enabled || root._managedBeforeSleep) && !root.active
+                || (root._daemonRunningBeforeSleep && !root._daemonRunning && !root.active))
+                && root.serviceInstalled
+                && root.available) {
+            root._resumeRecoveryPending = false
+            root._resumeSecondPass = false
+            Qt.callLater(() => {
+                if (root._live && !root.busy && !root.active)
+                    root.applyProfile("managed")
+            })
+            return
+        }
+        if (finishPass
+                && root.active
+                && root.profile === "managed"
+                && root.directControlAvailable
+                && String(root.fanLevel ?? "").trim().toLowerCase() === "auto"
+                && (!root._wakeupUnitEnabled || !root._configAllowsAutoLevel)) {
+            root._resumeRecoveryPending = false
+            root._resumeSecondPass = false
+            root._reapplyManagedAfterBounce = true
+            Qt.callLater(() => {
+                if (root._live && !root.busy)
+                    root.applyProfile("firmware")
+            })
+            return
+        }
+        if (root.profileFanControlEnabled && root.profile !== "managed") {
+            root._profileFollowArmed = true
+            root._scheduleConfiguredFanLevelApply()
+        } else if (root.profile !== "managed"
+                && root.directControlAvailable
+                && root._manualLevelBeforeSleep.length > 0
+                && String(root.fanLevel ?? "").trim() !== root._manualLevelBeforeSleep) {
+            const restoreLevel = root._manualLevelBeforeSleep
+            root._resumeRecoveryPending = false
+            root._resumeSecondPass = false
+            Qt.callLater(() => {
+                if (root._live && !root.busy && root.profile !== "managed")
+                    root.applyFanLevel(restoreLevel)
+            })
+            return
+        }
+        if (finishPass) {
+            root._resumeRecoveryPending = false
+            root._resumeSecondPass = false
+        }
+    }
+
+    function handlePrepareForSleep(goingToSleep: bool): void {
+        if (goingToSleep) {
+            root._sleeping = true
+            root._managedBeforeSleep = root.active || root.enabled || root.profile === "managed"
+            root._daemonRunningBeforeSleep = root._daemonRunning
+            const trimmedLevel = String(root.fanLevel ?? "").trim()
+            if (root.profile === "manual" && /^[1-7]$/.test(trimmedLevel))
+                root._manualLevelBeforeSleep = trimmedLevel
+            resumeFirstPassTimer.stop()
+            resumeSecondPassTimer.stop()
+            root._resumeRecoveryPending = false
+            root._resumeSecondPass = false
+            return
+        }
+        root.handleSuspendResume()
+    }
+
+    function handleSuspendResume(): void {
+        if (!root._live)
+            return
+        root._sleeping = false
+        root._resumeRecoveryPending = true
+        root._resumeSecondPass = false
+        root._lastStatusRefreshAt = 0
+        resumeFirstPassTimer.restart()
+        resumeSecondPassTimer.restart()
     }
 
     function refresh(): void {
@@ -222,15 +333,22 @@ Item {
             return false
         }
 
-        if (normalized === "managed")
+        if (normalized === "managed") {
             root._queuedFanLevel = ""
+            root._managedBeforeSleep = true
+            root._manualLevelBeforeSleep = ""
+        } else if (!root._reapplyManagedAfterBounce) {
+            root._managedBeforeSleep = false
+            root._daemonRunningBeforeSleep = false
+            root._manualLevelBeforeSleep = ""
+        }
 
         root.busy = true
         root.pendingOperation = "profile:" + normalized
         root.lastApplySucceeded = false
         root.lastApplyError = ""
         applyProcess.command = [
-            "/usr/bin/pkexec", root.helperPath,
+            root.privilegeEscalationCommand, root.helperPath,
             "--apply", normalized
         ]
         applyProcess.running = true
@@ -266,13 +384,17 @@ Item {
             return false
         }
 
+        if (normalized === "auto")
+            root._manualLevelBeforeSleep = ""
+        else
+            root._manualLevelBeforeSleep = normalized
         root._queuedFanLevel = ""
         root.busy = true
         root.pendingOperation = "fan-level:" + normalized
         root.lastApplySucceeded = false
         root.lastApplyError = ""
         applyProcess.command = [
-            "/usr/bin/pkexec", root.helperPath,
+            root.privilegeEscalationCommand, root.helperPath,
             "--set-level", normalized
         ]
         applyProcess.running = true
@@ -370,16 +492,22 @@ Item {
         property bool startObserved: false
         command: [
             "/bin/sh", "-c",
-            "for p in /usr/libexec/alis-thinkfan /usr/libexec/inir-thinkfan \"$1\"; do if [ -n \"$p\" ] && [ -x \"$p\" ]; then printf 'HELPER:%s\\n' \"$p\"; exec \"$p\" --status; fi; done; exit 127",
-            "sh", root.packagedHelperPath
+            "for p in \"$1\" /usr/libexec/alis-thinkfan /usr/libexec/inir-thinkfan \"$2\"; do if [ -n \"$p\" ] && [ -x \"$p\" ]; then if [ \"$3\" = \"1\" ]; then wakeup=0; systemctl is-enabled --quiet thinkfan-wakeup.service 2>/dev/null && wakeup=1; auto_cfg=1; for c in /etc/thinkfan.yaml /etc/thinkfan.conf; do if [ -r \"$c\" ]; then grep -Eq 'level[[:space:]]+auto|\"auto\"' \"$c\" || auto_cfg=0; break; fi; done; proc=0; pgrep -x thinkfan >/dev/null 2>&1 && proc=1; printf 'META:wakeup=%s,autoCfg=%s,proc=%s\\n' \"$wakeup\" \"$auto_cfg\" \"$proc\"; fi; printf 'HELPER:%s\\n' \"$p\"; exec \"$p\" --status; fi; done; exit 127",
+            "sh", root.helperPath, root.packagedHelperPath, root.probeSystemSleepMeta ? "1" : "0"
         ]
 
         stdout: SplitParser {
             onRead: data => {
                 const line = String(data ?? "").trim()
+                if (line.startsWith("META:")) {
+                    root._wakeupUnitEnabled = line.includes("wakeup=1")
+                    root._configAllowsAutoLevel = !line.includes("autoCfg=0")
+                    root._daemonRunning = line.includes("proc=1")
+                    return
+                }
                 if (line.startsWith("HELPER:")) {
                     const resolved = line.slice(7).trim()
-                    if (resolved.length > 0)
+                    if (resolved.length > 0 && root.helperPath === "/usr/libexec/alis-thinkfan")
                         root.helperPath = resolved
                     return
                 }
@@ -470,27 +598,42 @@ Item {
         onExited: (exitCode, exitStatus) => {
             applyTimeout.stop()
             const completedOperation = root.pendingOperation
-            root.busy = false
-            root.lastApplySucceeded = exitCode === 0 && !applyProcess.timedOut
-            root.lastApplyError = applyProcess.timedOut
+            const succeeded = exitCode === 0 && !applyProcess.timedOut
+            const errCode = applyProcess.timedOut
                 ? "apply-timeout" : (exitCode === 0 ? "" : "apply-failed")
-            if (!root.lastApplySucceeded) {
+            if (!succeeded) {
                 if (applyProcess.timedOut)
                     console.warn("[ThinkFan] Timed out while applying fan-control intent")
                 else
                     console.warn("[ThinkFan] Failed to apply fan-control intent (exit code " + exitCode + ")")
             }
+            root.lastApplySucceeded = succeeded
+            root.lastApplyError = errCode
             root.pendingOperation = ""
 
-            if (root.lastApplySucceeded
-                    && completedOperation === "profile:firmware"
-                    && root.profileFanControlEnabled) {
-                root._queuedFanLevel = ""
-                Qt.callLater(() => { if (root._live) root.applyConfiguredPowerProfileFanLevel() })
-            } else if (root._queuedFanLevel.length > 0) {
-                Qt.callLater(() => { if (root._live) root._drainQueuedFanLevel() })
-            }
-            Qt.callLater(() => { if (root._live) root.refresh() })
+            Qt.callLater(() => {
+                if (!root._live)
+                    return
+                root.busy = false
+                if (completedOperation === "profile:firmware"
+                        && root._reapplyManagedAfterBounce) {
+                    root._reapplyManagedAfterBounce = false
+                    if (succeeded) {
+                        root.applyProfile("managed")
+                        return
+                    }
+                } else if (succeeded
+                        && completedOperation === "profile:firmware"
+                        && root.profileFanControlEnabled) {
+                    root._queuedFanLevel = ""
+                    root.applyConfiguredPowerProfileFanLevel()
+                    return
+                } else if (root._queuedFanLevel.length > 0) {
+                    root._drainQueuedFanLevel()
+                    return
+                }
+                root.refresh()
+            })
         }
     }
 
@@ -507,6 +650,78 @@ Item {
     }
 
     Timer {
+        id: resumeFirstPassTimer
+        interval: root.resumeFirstPassDelayMs
+        repeat: false
+        onTriggered: {
+            if (!root._live)
+                return
+            root.refresh()
+        }
+    }
+
+    Timer {
+        id: resumeSecondPassTimer
+        interval: root.resumeSecondPassDelayMs
+        repeat: false
+        onTriggered: {
+            if (!root._live)
+                return
+            root._resumeSecondPass = true
+            root._lastStatusRefreshAt = 0
+            root.refresh()
+        }
+    }
+
+    Process {
+        id: dbusSleepMonitor
+        property bool awaitingSleepArg: false
+        property bool binaryMissing: false
+        running: root._live && root.sleepMonitorEnabled && !dbusSleepMonitor.binaryMissing
+        command: [
+            "/bin/sh", "-c",
+            "command -v dbus-monitor >/dev/null 2>&1 || exit 127; exec dbus-monitor --system \"type='signal',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'\""
+        ]
+        stdout: SplitParser {
+            onRead: data => {
+                const line = String(data ?? "").trim()
+                if (line.includes("member=PrepareForSleep")) {
+                    dbusSleepMonitor.awaitingSleepArg = true
+                    return
+                }
+                if (!dbusSleepMonitor.awaitingSleepArg)
+                    return
+                if (line === "boolean true") {
+                    dbusSleepMonitor.awaitingSleepArg = false
+                    root.handlePrepareForSleep(true)
+                } else if (line === "boolean false") {
+                    dbusSleepMonitor.awaitingSleepArg = false
+                    root.handlePrepareForSleep(false)
+                }
+            }
+        }
+        onExited: (exitCode, exitStatus) => {
+            dbusSleepMonitor.awaitingSleepArg = false
+            if (exitCode === 127) {
+                dbusSleepMonitor.binaryMissing = true
+                return
+            }
+            if (root._live && root.sleepMonitorEnabled)
+                dbusSleepMonitorRestart.restart()
+        }
+    }
+
+    Timer {
+        id: dbusSleepMonitorRestart
+        interval: 5000
+        repeat: false
+        onTriggered: {
+            if (root._live && root.sleepMonitorEnabled && !dbusSleepMonitor.binaryMissing && !dbusSleepMonitor.running)
+                dbusSleepMonitor.running = true
+        }
+    }
+
+    Timer {
         id: statusRefreshTimer
         interval: (root.active || root.busy)
             ? root._activePollMs : root._idleSafetyPollMs
@@ -515,6 +730,15 @@ Item {
         // Profile-follow alone uses a sparse safety poll; PowerProfiles/Config
         // changes demand-refresh stale state immediately before applying intent.
         running: root.profileFanControlEnabled || root.active || root.busy
-        onTriggered: root.refresh()
+        onTriggered: {
+            const now = Date.now()
+            if (root._lastWatchdogWallMs > 0 && (now - root._lastWatchdogWallMs) > statusRefreshTimer.interval + 45000) {
+                root._lastWatchdogWallMs = now
+                root.handleSuspendResume()
+                return
+            }
+            root._lastWatchdogWallMs = now
+            root.refresh()
+        }
     }
 }

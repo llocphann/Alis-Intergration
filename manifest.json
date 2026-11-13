@@ -7,7 +7,7 @@
   "integrations": [
     "tlp",
     "thinkfan",
-    "obsidian",
+    "nexus",
     "spaced_repetition"
   ],
   "plugins": [
@@ -37,25 +37,25 @@
       ]
     },
     {
-      "id": "obsidian",
-      "name": "Obsidian",
-      "icon": "diamond",
+      "id": "nexus",
+      "name": "Nexus",
+      "icon": "hub",
       "capabilities": [
         {
           "id": "theming",
           "name": "Theming",
-          "settings": "obsidian"
+          "settings": "nexus"
         },
         {
           "id": "quicknotes",
           "name": "Quicknotes",
-          "settings": "obsidianTodo",
+          "settings": "nexusTodo",
           "view": "quicknotes"
         },
         {
           "id": "todo",
           "name": "Todo",
-          "settings": "obsidianTodo",
+          "settings": "nexusTodo",
           "view": "todo"
         }
       ]
@@ -75,8 +75,8 @@
   ],
   "settings": {
     "tlp": "modules/settings/TlpPowerSettings.qml",
-    "obsidian": "modules/settings/ObsidianThemeSettings.qml",
-    "obsidianTodo": "modules/settings/ObsidianTodoSettings.qml",
+    "nexus": "modules/settings/NexusThemeSettings.qml",
+    "nexusTodo": "modules/settings/NexusTodoSettings.qml",
     "tlpRow": "modules/settings/TlpSettingRow.qml",
     "tlpWaffle": "modules/waffle/settings/WTlpPowerSettings.qml",
     "tlpWaffleRow": "modules/waffle/settings/WTlpSettingRow.qml",
@@ -84,7 +84,7 @@
     "spacedRepetition": "modules/settings/DashboardSpacedRepetitionSettings.qml"
   },
   "backends": {
-    "managedTodo": "services/ObsidianTodoBackend.qml",
+    "managedTodo": "services/NexusTodoBackend.qml",
     "dailyTodo": "services/DailyNoteTodoBackend.qml"
   },
   "derivedFrom": {

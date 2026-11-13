@@ -2191,7 +2191,7 @@
             "bondEnabled": false,
             "dialogueTone": "gentle",
             "familiarity": "neutral",
-            "obsidianEnabled": false,
+            "nexusEnabled": false,
             "referenceVault": ""
         },
         "companion": {
@@ -2386,18 +2386,18 @@
         "alisIntergration": {
             "tlp": false,
             "thinkfan": false,
-            "obsidian": false
+            "nexus": false
         },
-        "obsidian": {
+        "nexus": {
             "autoTheme": false,
             "configPath": "",
             "applicationConfigPath": "",
-            "applicationPath": "obsidian"
+            "applicationPath": "nexus"
         }
     },
     "todo": {
         "backend": "internal",
-        "obsidian": {
+        "nexus": {
             "vaultPath": "",
             "sourceMode": "managed-note",
             "notePath": "Alis/Todo.md",
