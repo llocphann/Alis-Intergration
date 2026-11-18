@@ -1,3 +1,6 @@
+.pragma library
+.import "SpacedRepetitionEssential4000.js" as Essential4000
+
 // SpacedRepetitionEngine.js
 // Pure scheduling, automated syntax parsing, queue construction, and storage migration
 // for the Alis Dashboard Spaced Repetition system.
@@ -6,7 +9,10 @@
 // - Vocabulary-first (CEFR A1-C2, EN/DE gender/plural/IPA) + General Knowledge & Auto-Cloze
 // - Configurable boost multiplier, lapse retention, load balancing, and leech detection.
 
-var SCHEMA_VERSION = 4;
+var SCHEMA_VERSION = 5;
+var CURRENT_LEXICON_REVISION = (typeof Essential4000 !== "undefined" && Essential4000 && Number(Essential4000.LEXICON_REVISION) > 0)
+    ? Number(Essential4000.LEXICON_REVISION)
+    : 2;
 var DAY_MS = 86400000;
 var MINUTE_MS = 60000;
 var CEFR_ORDER = { "A1": 1, "A2": 2, "B1": 3, "B2": 4, "C1": 5, "C2": 6 };
@@ -201,9 +207,15 @@ function autoGenerateCloze(term, sentence, article) {
 function renderClozeFront(clozeText, fallbackTerm) {
     var s = normalizeClozeMarkup(clozeText);
     if (!s) return "";
+    var fbLower = String(fallbackTerm || "").trim().toLowerCase();
     if (/\{\{c\d+::/.test(s)) {
         return s.replace(/\{\{c\d+::([^:}]+)(?:::([^}]+))?\}\}/g, function(_, answer, hint) {
-            return hint ? "[ " + hint.trim() + " ]" : "[ ... ]";
+            var cleanHint = String(hint || "").trim();
+            var ansLower = String(answer || "").trim().toLowerCase();
+            if (!cleanHint || cleanHint.toLowerCase() === ansLower || (fbLower && cleanHint.toLowerCase() === fbLower)) {
+                return "[ ... ]";
+            }
+            return "[ " + cleanHint + " ]";
         });
     }
     if (fallbackTerm) {
@@ -290,6 +302,49 @@ function cleanVietnameseMeaning(raw) {
     return left + ", " + right;
 }
 
+function _lookupEssentialCardById(cardId) {
+    if (typeof Essential4000 !== "undefined" && Essential4000 && typeof Essential4000.lookupByCardId === "function") {
+        return Essential4000.lookupByCardId(cardId);
+    }
+    return null;
+}
+
+function applyEssential4000Canonical(card, canon, lexiconAnalyzer) {
+    if (!card || !canon) return card;
+    var word = String(canon.word || card.term || "").trim();
+    var meaningVi = cleanVietnameseMeaning(canon.meaningVi || "");
+    var lex = (typeof lexiconAnalyzer === "function" && word)
+        ? lexiconAnalyzer(word, "en")
+        : null;
+    var morph = (lex && Array.isArray(lex.morphology) && lex.morphology.length > 0)
+        ? lex.morphology.slice()
+        : (typeof inferMorphology === "function" ? inferMorphology(word, "en") : []);
+    card.term = word;
+    card.headword = word;
+    card.front = word;
+    card.article = "";
+    card.gender = "";
+    card.pos = canon.pos;
+    card.level = canon.level;
+    card.cefrLevel = canon.level;
+    card.levelSource = canon.levelSource;
+    card.cefrSource = canon.levelSource;
+    card.phonetic = canon.phonetic;
+    card.phonetics = canon.phonetic;
+    card.definitionEn = canon.definitionEn;
+    card.meaning = canon.definitionEn;
+    card.back = canon.definitionEn;
+    card.meaningVi = meaningVi;
+    card.example = canon.example;
+    card.clozeText = canon.clozeText;
+    card.collocations = Array.isArray(canon.collocations) ? canon.collocations.slice() : [];
+    if (morph.length > 0) {
+        card.morphology = morph;
+        card.morphologyText = formatMorphology(morph);
+    }
+    return card;
+}
+
 function normalizeCard(raw, indexFallback, nowMs, rawOptions, lexiconAnalyzer) {
     // Allow calling normalizeCard(raw, nowMs[, rawOptions]) with 2 or 3 arguments
     if (typeof indexFallback === "number" && indexFallback > 1000000000 && (nowMs === undefined || (nowMs && typeof nowMs === "object"))) {
@@ -334,7 +389,10 @@ function normalizeCard(raw, indexFallback, nowMs, rawOptions, lexiconAnalyzer) {
 
     var article = String(src.article || src.gender || (lex && lex.article) || "").trim();
     var plural = String(src.plural !== undefined && src.plural !== "" ? src.plural : ((lex && lex.plural) || "")).trim();
-    var pos = String(src.pos !== undefined && src.pos !== "" ? src.pos : ((lex && lex.pos) || "")).trim();
+    var rawSrcPos = String(src.pos !== undefined ? src.pos : "").trim();
+    var pos = (rawSrcPos !== "" && rawSrcPos.toLowerCase() !== "word")
+        ? rawSrcPos
+        : String((lex && lex.pos) || "").trim();
     var phonetic = String(src.phonetic || src.phonetics || (lex && lex.phonetic) || "").trim();
 
     // Clean bogus noun article on German non-nouns (e.g. adjectives like "nachhaltig" previously inferred as "der")
@@ -446,6 +504,17 @@ function normalizeCard(raw, indexFallback, nowMs, rawOptions, lexiconAnalyzer) {
         collocations = src.collocations.map(function(c) { return String(c || "").trim(); }).filter(Boolean);
     } else if (typeof src.collocations === "string" && src.collocations.trim()) {
         collocations = src.collocations.split(/[\n;]/).map(function(c) { return c.trim(); }).filter(Boolean);
+    }
+    if (collocations.length > 0 && category === "vocabulary") {
+        var posLower = pos.toLowerCase();
+        collocations = collocations.filter(function(col) {
+            var phrasePart = col.split(/\s+(?:—|–|-)\s+/)[0].trim().toLowerCase();
+            if (!phrasePart) return false;
+            if (/\bproperly$/.test(phrasePart)) return false;
+            if (posLower && posLower !== "verb" && posLower !== "v" && phrasePart.indexOf("to " + term.toLowerCase()) === 0) return false;
+            if ((posLower === "verb" || posLower === "v") && (phrasePart === "a " + term.toLowerCase() || phrasePart === "an " + term.toLowerCase())) return false;
+            return true;
+        });
     }
     if (collocations.length === 0 && lex && Array.isArray(lex.collocations)) {
         collocations = lex.collocations.slice();
@@ -1844,7 +1913,9 @@ function starterCards(nowMs, rawOptions, lexiconAnalyzer) {
         }
     ];
     var baseCards = seeds.map(function(s, idx) {
-        return normalizeCard(s, idx + 1, now, opts, lexiconAnalyzer);
+        var norm = normalizeCard(s, idx + 1, now, opts, lexiconAnalyzer);
+        var canon = _lookupEssentialCardById(norm.id);
+        return canon ? applyEssential4000Canonical(norm, canon, lexiconAnalyzer) : norm;
     });
     return baseCards.concat(unitVocabularyCards(now, opts, lexiconAnalyzer));
 }
@@ -3883,7 +3954,9 @@ function unitVocabularyCards(nowMs, rawOptions, lexiconAnalyzer) {
         }
 ];
     return unitSeeds.map(function(s, idx) {
-        return normalizeCard(s, 100 + idx + 1, now, opts, lexiconAnalyzer);
+        var norm = normalizeCard(s, 100 + idx + 1, now, opts, lexiconAnalyzer);
+        var canon = _lookupEssentialCardById(norm.id);
+        return canon ? applyEssential4000Canonical(norm, canon, lexiconAnalyzer) : norm;
     });
 }
 
@@ -3897,7 +3970,7 @@ function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
             nextId: 200,
             cards: starterCards(now, opts, lexiconAnalyzer),
             historyByDay: {},
-            retainedStorageFields: {}
+            retainedStorageFields: { lexiconRevision: CURRENT_LEXICON_REVISION }
         };
     }
 
@@ -3918,6 +3991,7 @@ function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
     if (typeof retained.studyMode === "string") {
         retained.studyMode = normalizeStudyMode(retained.studyMode);
     }
+    var prevLexRev = Number(retained.lexiconRevision || rawPayload.lexiconRevision) || 0;
 
     var rawCards = Array.isArray(rawPayload.cards) ? rawPayload.cards : [];
     var cards = [];
@@ -3943,7 +4017,7 @@ function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
 
     var prevSchema = Number(rawPayload.schemaVersion) || 0;
     var hasUserStarterDeck = cards.some(function(c) { return c && (c.id === "sr-seed-en-1" || /^sr-unit\d+/i.test(c.id)); }) || Boolean(rawPayload.includeUnitVocabulary);
-    if (prevSchema < SCHEMA_VERSION && hasUserStarterDeck) {
+    if (prevSchema < 4 && hasUserStarterDeck) {
         var seenTerms = {};
         for (var st = 0; st < cards.length; st++) {
             var existingTerm = String(cards[st].term || "").trim().toLowerCase();
@@ -3974,6 +4048,18 @@ function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
         }
         if (maxNumericId < 200) maxNumericId = 200;
     }
+
+    if (prevSchema < 5 || prevLexRev < CURRENT_LEXICON_REVISION) {
+        for (var ec = 0; ec < cards.length; ec++) {
+            var eCard = cards[ec];
+            if (!eCard) continue;
+            var canonEntry = _lookupEssentialCardById(eCard.id);
+            if (canonEntry) {
+                applyEssential4000Canonical(eCard, canonEntry, lexiconAnalyzer);
+            }
+        }
+    }
+    retained.lexiconRevision = CURRENT_LEXICON_REVISION;
 
     var historyByDay = {};
     if (rawPayload.historyByDay && typeof rawPayload.historyByDay === "object" && !Array.isArray(rawPayload.historyByDay)) {
@@ -4038,7 +4124,7 @@ function selectNextStudyMode(studyQueue, allCards, stateObj, randomFn) {
     }
 
     var validDefCards = 0;
-    for (var i = 0; i < cards.length; i++) {
+    for (var i = 0; i < cards.length && validDefCards < 5; i++) {
         var c = cards[i];
         if (!c || typeof c !== "object") continue;
         var f = String(c.front || c.headword || c.term || "").trim();
@@ -4047,7 +4133,7 @@ function selectNextStudyMode(studyQueue, allCards, stateObj, randomFn) {
     }
 
     var queueValidDefCards = 0;
-    for (var qi = 0; qi < queue.length; qi++) {
+    for (var qi = 0; qi < queue.length && queueValidDefCards < 5; qi++) {
         var qc = queue[qi];
         if (!qc || typeof qc !== "object") continue;
         var qf = String(qc.front || qc.headword || qc.term || "").trim();
@@ -4111,7 +4197,8 @@ function selectNextStudyMode(studyQueue, allCards, stateObj, randomFn) {
 
 function buildMatchingRound(studyQueue, allCards, randomFn) {
     var queue = Array.isArray(studyQueue) ? studyQueue : [];
-    var deckPool = Array.isArray(allCards) ? allCards.slice() : [];
+    var deckPool = Array.isArray(allCards) ? allCards : [];
+    var rng = typeof randomFn === "function" ? randomFn : Math.random;
 
     var usedIds = {};
     var usedFronts = {};
@@ -4162,68 +4249,66 @@ function buildMatchingRound(studyQueue, allCards, randomFn) {
     }
 
     var anchor = leftWords[0];
-    var sameLangAndCat = [];
-    var sameCat = [];
-    var others = [];
-    for (var j = 0; j < deckPool.length; j++) {
-        var cand = deckPool[j];
-        if (!cand || typeof cand !== "object") continue;
-        if (anchor && cand.category === anchor.category && cand.language === anchor.language) {
-            sameLangAndCat.push(cand);
-        } else if (anchor && cand.category === anchor.category) {
-            sameCat.push(cand);
-        } else {
-            others.push(cand);
-        }
-    }
-
-    var orderForPadding = function(group) {
-        var unreviewed = [];
-        var reviewed = [];
-        for (var gi = 0; gi < group.length; gi++) {
-            var gc = group[gi];
-            if (!(Number(gc.lastReviewedAt) > 0) && (Number(gc.reps) || 0) === 0) {
-                unreviewed.push(gc);
+    var sameLangAndCat = null;
+    var sameCat = null;
+    var others = null;
+    var ensurePartitioned = function() {
+        if (sameLangAndCat !== null) return;
+        sameLangAndCat = [];
+        sameCat = [];
+        others = [];
+        for (var j = 0; j < deckPool.length; j++) {
+            var cand = deckPool[j];
+            if (!cand || typeof cand !== "object") continue;
+            if (anchor && cand.category === anchor.category && cand.language === anchor.language) {
+                sameLangAndCat.push(cand);
+            } else if (anchor && cand.category === anchor.category) {
+                sameCat.push(cand);
             } else {
-                reviewed.push(gc);
+                others.push(cand);
             }
         }
-        var shuffledRev = shuffleWithRng(reviewed, randomFn);
-        shuffledRev.sort(function(a, b) {
-            return (Number(a.lastReviewedAt) || 0) - (Number(b.lastReviewedAt) || 0);
-        });
-        return shuffleWithRng(unreviewed, randomFn).concat(shuffledRev);
     };
 
-    var orderedPadCandidates = orderForPadding(sameLangAndCat)
-        .concat(orderForPadding(sameCat))
-        .concat(orderForPadding(others));
+    if (leftWords.length < 5 && deckPool.length > 0) {
+        ensurePartitioned();
+        var orderForPadding = function(group) {
+            var unreviewed = [];
+            var reviewed = [];
+            for (var gi = 0; gi < group.length; gi++) {
+                var gc = group[gi];
+                if (!(Number(gc.lastReviewedAt) > 0) && (Number(gc.reps) || 0) === 0) {
+                    unreviewed.push(gc);
+                } else {
+                    reviewed.push(gc);
+                }
+            }
+            var shuffledRev = shuffleWithRng(reviewed, randomFn);
+            shuffledRev.sort(function(a, b) {
+                return (Number(a.lastReviewedAt) || 0) - (Number(b.lastReviewedAt) || 0);
+            });
+            return shuffleWithRng(unreviewed, randomFn).concat(shuffledRev);
+        };
 
-    for (var k = 0; k < orderedPadCandidates.length && leftWords.length < 5; k++) {
-        addWordCandidate(orderedPadCandidates[k], false);
+        var orderedPadCandidates = orderForPadding(sameLangAndCat)
+            .concat(orderForPadding(sameCat))
+            .concat(orderForPadding(others));
+
+        for (var k = 0; k < orderedPadCandidates.length && leftWords.length < 5; k++) {
+            addWordCandidate(orderedPadCandidates[k], false);
+        }
     }
 
-    var orderedDeckCandidates = shuffleWithRng(sameLangAndCat, randomFn)
-        .concat(shuffleWithRng(sameCat, randomFn))
-        .concat(shuffleWithRng(others, randomFn));
-
-    var distractorPool = orderedDeckCandidates.slice();
-    if (typeof starterCards === "function") {
-        distractorPool = distractorPool.concat(shuffleWithRng(starterCards(Date.now(), defaultOptions(), null), randomFn));
-    }
-
-    var distractorDef = null;
-    for (var m = 0; m < distractorPool.length; m++) {
-        var dc = distractorPool[m];
-        if (!dc || typeof dc !== "object") continue;
+    var tryDistractorCandidate = function(dc) {
+        if (!dc || typeof dc !== "object") return null;
         var dId = String(dc.id || "");
         var dFront = String(dc.front || dc.headword || dc.term || "").trim();
         var dDef = String(dc.definitionEn || dc.back || dc.meaning || "").trim();
-        if (!dDef) continue;
+        if (!dDef) return null;
         var dfKey = dFront.toLowerCase();
         var ddKey = dDef.toLowerCase();
-        if ((dId && usedIds[dId]) || (dfKey && usedFronts[dfKey]) || usedDefs[ddKey]) continue;
-        distractorDef = {
+        if ((dId && usedIds[dId]) || (dfKey && usedFronts[dfKey]) || usedDefs[ddKey]) return null;
+        return {
             defId: "distractor-" + (dId || "extra"),
             targetCardId: "",
             pairId: "",
@@ -4233,7 +4318,37 @@ function buildMatchingRound(studyQueue, allCards, randomFn) {
             isDistractor: true,
             matched: false
         };
-        break;
+    };
+
+    var distractorDef = null;
+    if (deckPool.length > 24 && sameLangAndCat === null) {
+        for (var p1 = 0; p1 < 32 && !distractorDef; p1++) {
+            var probeA = deckPool[Math.floor(rng() * deckPool.length)];
+            if (probeA && anchor && probeA.category === anchor.category && probeA.language === anchor.language) {
+                distractorDef = tryDistractorCandidate(probeA);
+            }
+        }
+        for (var p2 = 0; p2 < 16 && !distractorDef; p2++) {
+            var probeB = deckPool[Math.floor(rng() * deckPool.length)];
+            distractorDef = tryDistractorCandidate(probeB);
+        }
+    }
+
+    if (!distractorDef && deckPool.length > 0) {
+        ensurePartitioned();
+        var orderedDeckCandidates = shuffleWithRng(sameLangAndCat, randomFn)
+            .concat(shuffleWithRng(sameCat, randomFn))
+            .concat(shuffleWithRng(others, randomFn));
+        for (var m = 0; m < orderedDeckCandidates.length && !distractorDef; m++) {
+            distractorDef = tryDistractorCandidate(orderedDeckCandidates[m]);
+        }
+    }
+
+    if (!distractorDef && typeof starterCards === "function") {
+        var fallbackPool = shuffleWithRng(starterCards(Date.now(), defaultOptions(), null), randomFn);
+        for (var fm = 0; fm < fallbackPool.length && !distractorDef; fm++) {
+            distractorDef = tryDistractorCandidate(fallbackPool[fm]);
+        }
     }
 
     if (!distractorDef) {

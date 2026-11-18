@@ -573,16 +573,46 @@ Item {
         if (!g || !Array.isArray(g.nodes) || root.nodePositions.length !== g.nodes.length)
             return -1;
         const nodes = g.nodes;
+        const nLen = nodes.length;
         const m = root._viewportMetrics();
         const zoomFactor = Math.min(1.38, Math.max(0.75, Math.pow(root.zoom, 0.32)));
+        const hitSlack = root.compact ? 5.5 : 8.5;
+        const scaleMul = m.sizeScale * zoomFactor;
+        const maxHitR = 4.4 * scaleMul + hitSlack;
+        const mulX = m.spanX * root.zoom;
+        const addX = m.originX * root.zoom + root.panX;
+        const mulY = m.spanY * root.zoom;
+        const addY = m.originY * root.zoom + root.panY;
+        const nxBuf = root._normXBuf;
+        const nyBuf = root._normYBuf;
+        const baseRadBuf = root._baseRadBuf;
+        const hasTyped = Boolean(nxBuf && nyBuf && baseRadBuf && nxBuf.length >= nLen && baseRadBuf.length >= nLen);
+        const curPath = root.currentPath;
+        const hasCurPath = !root.isLocal && curPath.length > 0;
+        const curBaseR = root.compact ? 2.15 : 3.2;
+
         let bestIdx = -1;
         let bestDist2 = 999999;
-        const hitSlack = root.compact ? 5.5 : 8.5;
-        for (let i = nodes.length - 1; i >= 0; --i) {
-            const sp = root._screenPosForNode(i, m);
-            const r = root._nodeRadius(nodes[i], m.sizeScale) * zoomFactor + hitSlack;
-            const dx = sp.x - sx;
-            const dy = sp.y - sy;
+        for (let i = nLen - 1; i >= 0; --i) {
+            const px = hasTyped
+                ? (nxBuf[i] * mulX + addX)
+                : ((m.originX + root.nodePositions[i].x * m.spanX) * root.zoom + root.panX);
+            const dx = px - sx;
+            if (dx > maxHitR || dx < -maxHitR)
+                continue;
+            const py = hasTyped
+                ? (nyBuf[i] * mulY + addY)
+                : ((m.originY + root.nodePositions[i].y * m.spanY) * root.zoom + root.panY);
+            const dy = py - sy;
+            if (dy > maxHitR || dy < -maxHitR)
+                continue;
+            let baseR;
+            if (hasTyped) {
+                baseR = (hasCurPath && nodes[i].relPath === curPath) ? curBaseR : baseRadBuf[i];
+            } else {
+                baseR = root._nodeRadius(nodes[i], 1.0);
+            }
+            const r = baseR * scaleMul + hitSlack;
             const d2 = dx * dx + dy * dy;
             if (d2 <= r * r && d2 < bestDist2) {
                 bestDist2 = d2;

@@ -92,23 +92,33 @@ ShellRoot {
    check(AlisIntergration.session===null,"default-off package started workers")
    check(findChild(integrations,"alisIntergrationNexusTodoSettings")===null,"disabled Nexus rendered owned controls")
    const installed = AlisIntergration.installedPlugins
-   check(waffleIntegrations.primaryTabs.length===installed.length+1,"Waffle plugin tabs missing")
-   check(installed.length===4 && integrations.primaryTabs.length===5,"N installed plugins must have N+1 tabs")
+   check(findChild(integrations,"integrationPrimaryTabs")===null,"top plugin sub-tabs should be replaced by Management cards + modal")
+   check(waffleIntegrations.primaryTabs.length===installed.length+1,"Waffle plugin metadata count mismatch")
+   check(installed.length===4 && integrations.primaryTabs.length===5,"N installed plugins must have N+1 entries")
    AlisIntergration.installedPlugins=[]
    check(integrations.primaryTabs.length===1 && integrations.activePlugin==="management","empty package did not fall back to Management")
    AlisIntergration.installedPlugins=installed.slice(0,1)
-   check(integrations.primaryTabs.length===2,"single plugin must have two primary tabs")
-   integrations.activePlugin=installed[0].id
+   check(integrations.primaryTabs.length===2,"single plugin must expose only 1 installed entry plus management")
+   check(AlisIntergration.isPluginInstalled(installed[0].id) && !AlisIntergration.isPluginInstalled("nexus"),"per-plugin installed check failed")
+   integrations.openPluginModal(installed[0].id)
+   check(integrations.modalOpen && integrations.modalPluginId===installed[0].id,"opening plugin card modal failed")
    AlisIntergration.installedPlugins=[]
-   check(integrations.activePlugin==="management","removed selection did not recover")
+   check(!integrations.isModalPluginInstalled && findChild(integrations,"integrationModalInstallButton")!==null,"uninstalled plugin modal must offer Install CTA")
+   check(integrations.handleEscape()===true && !integrations.modalOpen && integrations.activePlugin==="management","Escape did not close plugin modal")
    AlisIntergration.installedPlugins=installed
-   const tabOptions=findChild(findChild(integrations,"integrationPrimaryTabs"),"settingsTaskOptions")
    for(const width of [320,500,800]){
     integrations.width=width
     tryCompare(integrations,"width",width,1000);wait(50)
-    const buttons=tabOptions.children.filter(item=>item.hasOwnProperty("modelData") && item.hasOwnProperty("toggled"))
-    check(buttons.length===installed.length+1 && buttons.every(button=>button.x>=-.01 && button.x+button.width<=tabOptions.width+.1),"plugin tabs overflow width "+width)
+    const pkg=findChild(integrations,"integrationOptionalPluginsCard")
+    check(pkg!==null && pkg.width>0 && pkg.width<=integrations.width+.1,"Optional Plugins card missing or overflows width "+width)
+    for(const pid of ["nexus","spaced_repetition","tlp","thinkfan"]){
+     const card=findChild(integrations,"integrationPluginCard_"+pid)
+     check(card!==null && card.width>0,"plugin card "+pid+" missing at width "+width)
+     const rightEdge=card.mapToItem(integrations,card.width,0).x
+     check(rightEdge<=integrations.width+.5,"plugin card "+pid+" visual edge "+rightEdge+" overflows width "+width)
+    }
    }
+   integrations.width=1100;tryCompare(integrations,"width",1100,1000)
    capture("management")
    const preferences=JSON.stringify(Config.options)
    check(classicRow.implicitHeight===0 && waffleRow.implicitHeight===0,"disabled rows started an editor")

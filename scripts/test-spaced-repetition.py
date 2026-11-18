@@ -21,13 +21,27 @@ const fs = require("fs");
 const vm = require("vm");
 const assert = require("assert");
 
-const lexiconCode = fs.readFileSync("services/SpacedRepetitionLexicon.js", "utf8")
+const essentialCode = fs.readFileSync("services/SpacedRepetitionEssential4000.js", "utf8")
     .replace(/^\.pragma\s+library\s*$/m, "");
+const promptsCode = fs.readFileSync("services/SpacedRepetitionPrompts.js", "utf8")
+    .replace(/^\.pragma\s+library\s*$/m, "");
+const lexiconCode = fs.readFileSync("services/SpacedRepetitionLexicon.js", "utf8")
+    .replace(/^\.pragma\s+library\s*$/m, "")
+    .replace(/^\.import\s+"SpacedRepetitionEssential4000\.js"\s+as\s+Essential4000\s*$/m, "");
 const engineCode = fs.readFileSync("services/SpacedRepetitionEngine.js", "utf8")
     .replace(/^\.pragma\s+library\s*$/m, "")
+    .replace(/^\.import\s+"SpacedRepetitionEssential4000\.js"\s+as\s+Essential4000\s*$/m, "")
     .replace(/^\.import\s+"SpacedRepetitionLexicon\.js"\s+as\s+Lexicon\s*$/m, "");
 
-const sandbox = { console, Math, Date, JSON, Array, Object, String, Number, Boolean, RegExp };
+const essentialSandbox = { console, Math, Date, JSON, Array, Object, String, Number, Boolean, RegExp };
+vm.createContext(essentialSandbox);
+vm.runInContext(essentialCode, essentialSandbox, { filename: "SpacedRepetitionEssential4000.js" });
+
+const promptsSandbox = { console, Math, Date, JSON, Array, Object, String, Number, Boolean, RegExp };
+vm.createContext(promptsSandbox);
+vm.runInContext(promptsCode, promptsSandbox, { filename: "SpacedRepetitionPrompts.js" });
+
+const sandbox = { console, Math, Date, JSON, Array, Object, String, Number, Boolean, RegExp, Essential4000: essentialSandbox, Prompts: promptsSandbox };
 vm.createContext(sandbox);
 vm.runInContext(lexiconCode, sandbox, { filename: "SpacedRepetitionLexicon.js" });
 sandbox.Lexicon = sandbox;
@@ -134,6 +148,165 @@ assert.strictEqual(JSON.stringify(nextMorningQueue.map(c => c.id)), JSON.stringi
 const day2Queue = sandbox.buildStudyQueue([cardGood], { options: baseOpts }, day2MorningMs);
 assert.strictEqual(JSON.stringify(day2Queue.map(c => c.id)), JSON.stringify(["c-good"]));
 
+// 5. Schema v5 Essential 4000 lexical repair + lossless user schedule preservation + idempotency
+assert.strictEqual(sandbox.SCHEMA_VERSION, 5, "Expected SCHEMA_VERSION === 5");
+const v4Corrupted = {
+    schemaVersion: 4,
+    nextId: 5000,
+    historyByDay: { "2026-11-14": { reviewed: 5, passed: 5, newStudied: 2, reviewsDone: 3 } },
+    cards: [
+        {
+            id: "sr-b04-u29-20",
+            category: "vocabulary",
+            deck: "English Vocabulary",
+            language: "en",
+            term: "transportation",
+            pos: "verb",
+            level: "C1",
+            meaning: "Transportation is any type of vehicle that can carry people or things.",
+            meaningVi: "vận chuyển",
+            collocations: [
+                "to transportation - vận chuyển",
+                "transportation properly - vận chuyển đúng cách"
+            ],
+            clozeText: "I don’t have a car, so my normal {{c1::transportation::verb — vận chuyển}} is the train.",
+            state: "young",
+            reps: 1,
+            interval: 3,
+            ease: 265,
+            lapses: 0,
+            dueAt: 1794900000000,
+            dueDate: "2026-11-17",
+            lastReviewedAt: 1794600000000
+        }
+    ]
+};
+const upgradedV5 = sandbox.migrateStorage(v4Corrupted, nowMs, baseOpts, sandbox.analyzeTerm);
+assert.strictEqual(upgradedV5.schemaVersion, 5);
+const fixedTransport = upgradedV5.cards.find(c => c.id === "sr-b04-u29-20");
+assert.ok(fixedTransport, "Expected upgraded sr-b04-u29-20");
+assert.strictEqual(fixedTransport.pos, "noun", `Expected transportation pos=noun, got ${fixedTransport.pos}`);
+assert.strictEqual(fixedTransport.level, "A2", `Expected transportation level=A2, got ${fixedTransport.level}`);
+assert.ok(String(fixedTransport.meaningVi || "").includes("phương tiện giao thông"), `Unexpected meaningVi: ${fixedTransport.meaningVi}`);
+assert.ok(Array.isArray(fixedTransport.collocations) && fixedTransport.collocations.some(c => /public transportation/i.test(c)),
+    `Expected real collocation public transportation, got ${JSON.stringify(fixedTransport.collocations)}`);
+assert.ok(!fixedTransport.collocations.some(c => /^to transportation/i.test(c)),
+    "Fake collocation 'to transportation' must be removed");
+assert.ok(fixedTransport.clozeText.includes("{{c1::transportation::noun"), `Unexpected clozeText: ${fixedTransport.clozeText}`);
+assert.strictEqual(fixedTransport.reps, 1);
+assert.strictEqual(fixedTransport.interval, 3);
+assert.strictEqual(fixedTransport.ease, 265);
+assert.strictEqual(fixedTransport.dueDate, "2026-11-17");
+assert.strictEqual(fixedTransport.state, "young");
+assert.strictEqual(fixedTransport.lastReviewedAt, 1794600000000);
+assert.strictEqual(upgradedV5.historyByDay["2026-11-14"].reviewed, 5);
+
+// Idempotency: subsequent reloads at schemaVersion=5 + lexiconRevision=2 preserve manual user edits
+const editedAtV5 = Object.assign({}, upgradedV5, {
+    cards: [Object.assign({}, fixedTransport, { notes: "user custom note", meaningVi: "user edited meaning" })]
+});
+const reloadedV5 = sandbox.migrateStorage(editedAtV5, nowMs, baseOpts, sandbox.analyzeTerm);
+assert.strictEqual(reloadedV5.cards[0].notes, "user custom note");
+assert.strictEqual(reloadedV5.cards[0].meaningVi, "user edited meaning");
+
+// 6. Existing user already on schemaVersion=5 (pre-lexiconRevision=2) gets circular-definition & broken-cloze repairs without losing review history
+const preRev2UserV5 = {
+    schemaVersion: 5,
+    nextId: 5100,
+    historyByDay: { "2026-11-17": { reviewed: 12, passed: 11, newStudied: 5, reviewsDone: 7 } },
+    cards: [
+        {
+            id: "sr-b01-u01-10",
+            category: "vocabulary",
+            deck: "English Vocabulary",
+            language: "en",
+            term: "hide",
+            pos: "verb",
+            level: "A2",
+            meaning: "To hide is to try not to let others see you.",
+            definitionEn: "To hide is to try not to let others see you.",
+            meaningVi: "trốn",
+            clozeText: "The other children will {{c1::hide::verb — trốn}} while you count to a hundred.",
+            state: "young",
+            reps: 3,
+            lapses: 1,
+            interval: 7,
+            ease: 245,
+            dueAt: 1795000000000,
+            dueDate: "2026-11-18",
+            lastReviewedAt: 1794400000000,
+            notes: "irregular hid/hidden"
+        },
+        {
+            id: "sr-b02-u10-09",
+            category: "vocabulary",
+            deck: "English Vocabulary",
+            language: "en",
+            term: "impression",
+            pos: "noun",
+            level: "B1",
+            meaning: "the way of thinking about someone or something",
+            definitionEn: "the way of thinking about someone or something",
+            meaningVi: "ấn tượng",
+            clozeText: "Most people think that most monsters are {{c1::mean::noun — ấn tượng}}.",
+            state: "mature",
+            reps: 6,
+            lapses: 0,
+            interval: 28,
+            ease: 280,
+            dueAt: 1796800000000,
+            dueDate: "2026-12-09",
+            lastReviewedAt: 1794300000000
+        },
+        {
+            id: "sr-b03-u01-14",
+            category: "vocabulary",
+            deck: "English Vocabulary",
+            language: "en",
+            term: "magic",
+            pos: "noun",
+            level: "A2",
+            meaning: "the power to make impossible things happen",
+            definitionEn: "the power to make impossible things happen",
+            meaningVi: "phép thuật",
+            clozeText: "The {{c1::magic::noun — phép thuật}}ian made a rabbit appear.",
+            state: "new",
+            reps: 0,
+            lapses: 0,
+            interval: 0,
+            ease: 250,
+            dueAt: 1794000000000,
+            dueDate: "2026-11-08",
+            lastReviewedAt: 0
+        }
+    ]
+};
+const upgradedRev2 = sandbox.migrateStorage(preRev2UserV5, nowMs, baseOpts, sandbox.analyzeTerm);
+assert.strictEqual(upgradedRev2.retainedStorageFields.lexiconRevision, 2);
+const repairedHide = upgradedRev2.cards.find(c => c.id === "sr-b01-u01-10");
+assert.strictEqual(sandbox.Prompts.containsAnswerForm(repairedHide.definitionEn, { term: "hide" }), false);
+assert.strictEqual(repairedHide.reps, 3);
+assert.strictEqual(repairedHide.lapses, 1);
+assert.strictEqual(repairedHide.interval, 7);
+assert.strictEqual(repairedHide.ease, 245);
+assert.strictEqual(repairedHide.notes, "irregular hid/hidden");
+const repairedImp = upgradedRev2.cards.find(c => c.id === "sr-b02-u10-09");
+assert.ok(repairedImp.clozeText.includes("{{c1::impression::noun"), `Expected impression cloze target repaired, got: ${repairedImp.clozeText}`);
+assert.strictEqual(repairedImp.reps, 6);
+assert.strictEqual(repairedImp.interval, 28);
+const repairedMagic = upgradedRev2.cards.find(c => c.id === "sr-b03-u01-14");
+assert.ok(!repairedMagic.clozeText.includes("}}ian"), `Mid-word cloze slice must be repaired, got: ${repairedMagic.clozeText}`);
+
+// 7. Verify 0 pre-answer leaks across all 3,603 Essential 4000 cards (definitions + cloze fronts)
+for (const cid of Object.keys(sandbox.Essential4000.CARDS_BY_ID)) {
+    const entry = sandbox.Essential4000.lookupByCardId(cid);
+    const probe = { id: cid, term: entry.word, front: entry.word, headword: entry.word, clozeText: entry.clozeText };
+    const maskedDef = sandbox.Prompts.maskAnswer(entry.definitionEn, probe, false);
+    assert.strictEqual(sandbox.Prompts.containsAnswerForm(maskedDef, probe), false, `Leak in ${cid}: ${maskedDef}`);
+    const front = sandbox.Prompts.maskAnswer(sandbox.renderClozeFront(entry.clozeText, entry.word), probe, false);
+    assert.strictEqual(sandbox.Prompts.containsAnswerForm(front, probe), false, `Cloze leak in ${cid}: ${front}`);
+}
+
 console.log("ALIS_INTERGRATION_SR_ENGINE_PASS");
 """
     res = subprocess.run(["node", "-e", node_script], cwd=ROOT, capture_output=True, text=True, check=False)
@@ -165,6 +338,8 @@ def verify_qml_contracts() -> None:
         'property bool _suppressMatchingQueueSync: false',
         'function _shouldResetMatchingRoundFromQueue(): bool',
         'function onStudyQueueChanged(): void',
+        'function maskedClozeMeaningCue(card): string',
+        'maskedClozeMeaningCue(root.backend.currentCard)',
         'readonly property bool isClozeMode: root.backend.studyMode === "cloze"',
         'readonly property bool studyDigitShortcutsActive:',
         'readonly property bool clozeNumericTypingActive:',

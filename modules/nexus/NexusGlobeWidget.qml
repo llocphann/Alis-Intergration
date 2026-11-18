@@ -319,6 +319,22 @@ Item {
         };
     }
 
+    // Reusable typed-array ring clip scratch buffers (eliminates ~50,000 JS object allocations/sec during 25 FPS spin)
+    property var _ringClipSx: new Float64Array(512)
+    property var _ringClipSy: new Float64Array(512)
+    property var _ringClipAng: new Float64Array(512)
+    property var _ringClipHor: new Uint8Array(512)
+
+    function _ensureRingScratchCapacity(minCap: int): void {
+        if (root._ringClipSx && root._ringClipSx.length >= minCap)
+            return;
+        const cap = Math.max(512, minCap * 2);
+        root._ringClipSx = new Float64Array(cap);
+        root._ringClipSy = new Float64Array(cap);
+        root._ringClipAng = new Float64Array(cap);
+        root._ringClipHor = new Uint8Array(cap);
+    }
+
     // Clip precompiled closed polygon ring to the z >= 0 front hemisphere with fast bounding-sphere back-hemisphere culling
     function drawCompiledRing3D(ctx, compiledRing, cx: real, cy: real, R: real, sinLon0: real, cosLon0: real, sinLat0: real, cosLat0: real, vx: real, vy: real, vz: real) {
         if (!compiledRing)
@@ -330,45 +346,101 @@ Item {
         const n = ring.length;
         if (n < 3)
             return false;
-        const clipped = [];
-        let prev = root._projectUnit3D(ring[n - 1], cx, cy, R, sinLon0, cosLon0, sinLat0, cosLat0);
+        root._ensureRingScratchCapacity(n * 2 + 4);
+        const clipSx = root._ringClipSx;
+        const clipSy = root._ringClipSy;
+        const clipAng = root._ringClipAng;
+        const clipHor = root._ringClipHor;
+        let clipLen = 0;
+
+        const lastU = ring[n - 1];
+        let prevX = lastU[0] * cosLon0 - lastU[2] * sinLon0;
+        const lastRz = lastU[2] * cosLon0 + lastU[0] * sinLon0;
+        let prevY = cosLat0 * lastU[1] - sinLat0 * lastRz;
+        let prevZ = sinLat0 * lastU[1] + cosLat0 * lastRz;
+        let prevVis = prevZ >= 0.0;
+
         for (let i = 0; i < n; ++i) {
-            const curr = root._projectUnit3D(ring[i], cx, cy, R, sinLon0, cosLon0, sinLat0, cosLat0);
-            if (prev.visible && curr.visible) {
-                clipped.push(curr);
-            } else if (prev.visible && !curr.visible) {
-                clipped.push(root.interpHorizon(prev, curr, cx, cy, R));
-            } else if (!prev.visible && curr.visible) {
-                clipped.push(root.interpHorizon(prev, curr, cx, cy, R));
-                clipped.push(curr);
+            const u = ring[i];
+            const ux = u[0];
+            const uy = u[1];
+            const uz = u[2];
+            const currX = ux * cosLon0 - uz * sinLon0;
+            const rz = uz * cosLon0 + ux * sinLon0;
+            const currY = cosLat0 * uy - sinLat0 * rz;
+            const currZ = sinLat0 * uy + cosLat0 * rz;
+            const currVis = currZ >= 0.0;
+
+            if (prevVis && currVis) {
+                clipSx[clipLen] = cx + currX * R;
+                clipSy[clipLen] = cy - currY * R;
+                clipAng[clipLen] = 0.0;
+                clipHor[clipLen] = 0;
+                clipLen += 1;
+            } else if (prevVis && !currVis) {
+                const dz = prevZ - currZ;
+                const t = Math.abs(dz) < 1e-6 ? 0.5 : (prevZ / dz);
+                const ix = prevX + (currX - prevX) * t;
+                const iy = prevY + (currY - prevY) * t;
+                const len = Math.hypot(ix, iy) || 1.0;
+                const nx = ix / len;
+                const ny = iy / len;
+                clipSx[clipLen] = cx + nx * R;
+                clipSy[clipLen] = cy - ny * R;
+                clipAng[clipLen] = Math.atan2(-ny, nx);
+                clipHor[clipLen] = 1;
+                clipLen += 1;
+            } else if (!prevVis && currVis) {
+                const dz = prevZ - currZ;
+                const t = Math.abs(dz) < 1e-6 ? 0.5 : (prevZ / dz);
+                const ix = prevX + (currX - prevX) * t;
+                const iy = prevY + (currY - prevY) * t;
+                const len = Math.hypot(ix, iy) || 1.0;
+                const nx = ix / len;
+                const ny = iy / len;
+                clipSx[clipLen] = cx + nx * R;
+                clipSy[clipLen] = cy - ny * R;
+                clipAng[clipLen] = Math.atan2(-ny, nx);
+                clipHor[clipLen] = 1;
+                clipLen += 1;
+
+                clipSx[clipLen] = cx + currX * R;
+                clipSy[clipLen] = cy - currY * R;
+                clipAng[clipLen] = 0.0;
+                clipHor[clipLen] = 0;
+                clipLen += 1;
             }
-            prev = curr;
+            prevX = currX;
+            prevY = currY;
+            prevZ = currZ;
+            prevVis = currVis;
         }
-        if (clipped.length < 3)
+        if (clipLen < 3)
             return false;
 
-        ctx.moveTo(clipped[0].sx, clipped[0].sy);
-        for (let i = 1; i <= clipped.length; ++i) {
-            const pPrev = clipped[i - 1];
-            const pCurr = clipped[i % clipped.length];
-            if (pPrev.onHorizon && pCurr.onHorizon) {
-                let dAng = pCurr.angle - pPrev.angle;
+        ctx.moveTo(clipSx[0], clipSy[0]);
+        for (let i = 1; i <= clipLen; ++i) {
+            const prevIdx = i - 1;
+            const currIdx = i === clipLen ? 0 : i;
+            if (clipHor[prevIdx] === 1 && clipHor[currIdx] === 1) {
+                const pPrevAng = clipAng[prevIdx];
+                let dAng = clipAng[currIdx] - pPrevAng;
                 while (dAng > Math.PI) dAng -= Math.PI * 2.0;
                 while (dAng < -Math.PI) dAng += Math.PI * 2.0;
                 const steps = Math.max(4, Math.ceil(Math.abs(dAng) / 0.14));
                 for (let s = 1; s <= steps; ++s) {
-                    const ang = pPrev.angle + (dAng * s) / steps;
+                    const ang = pPrevAng + (dAng * s) / steps;
                     ctx.lineTo(cx + Math.cos(ang) * R, cy + Math.sin(ang) * R);
                 }
             } else {
-                ctx.lineTo(pCurr.sx, pCurr.sy);
+                ctx.lineTo(clipSx[currIdx], clipSy[currIdx]);
             }
         }
         ctx.closePath();
         return true;
     }
 
-    // Clip precompiled polyline to z >= 0 front hemisphere with fast bounding-sphere culling
+    // Clip precompiled polyline to z >= 0 front hemisphere with fast bounding-sphere culling (zero object allocations)
     function strokeCompiledLine3D(ctx, compiledLine, cx: real, cy: real, R: real, sinLon0: real, cosLon0: real, sinLat0: real, cosLat0: real, vx: real, vy: real, vz: real, closeLoop: bool) {
         if (!compiledLine)
             return;
@@ -380,34 +452,63 @@ Item {
         if (n < 2)
             return;
         const total = closeLoop ? n + 1 : n;
-        let prev = root._projectUnit3D(line[0], cx, cy, R, sinLon0, cosLon0, sinLat0, cosLat0);
+        const u0 = line[0];
+        let prevX = u0[0] * cosLon0 - u0[2] * sinLon0;
+        const rz0 = u0[2] * cosLon0 + u0[0] * sinLon0;
+        let prevY = cosLat0 * u0[1] - sinLat0 * rz0;
+        let prevZ = sinLat0 * u0[1] + cosLat0 * rz0;
+        let prevVis = prevZ >= 0.0;
+        let prevSx = cx + prevX * R;
+        let prevSy = cy - prevY * R;
         let inSeg = false;
-        if (prev.visible) {
-            ctx.moveTo(prev.sx, prev.sy);
+        if (prevVis) {
+            ctx.moveTo(prevSx, prevSy);
             inSeg = true;
         }
         for (let i = 1; i < total; ++i) {
-            const pt = line[i % n];
-            const curr = root._projectUnit3D(pt, cx, cy, R, sinLon0, cosLon0, sinLat0, cosLat0);
-            if (prev.visible && curr.visible) {
+            const pt = line[i === n ? 0 : i];
+            const ux = pt[0];
+            const uy = pt[1];
+            const uz = pt[2];
+            const currX = ux * cosLon0 - uz * sinLon0;
+            const rz = uz * cosLon0 + ux * sinLon0;
+            const currY = cosLat0 * uy - sinLat0 * rz;
+            const currZ = sinLat0 * uy + cosLat0 * rz;
+            const currVis = currZ >= 0.0;
+            const currSx = cx + currX * R;
+            const currSy = cy - currY * R;
+            if (prevVis && currVis) {
                 if (!inSeg) {
-                    ctx.moveTo(prev.sx, prev.sy);
+                    ctx.moveTo(prevSx, prevSy);
                     inSeg = true;
                 }
-                ctx.lineTo(curr.sx, curr.sy);
-            } else if (prev.visible && !curr.visible) {
-                const h = root.interpHorizon(prev, curr, cx, cy, R);
+                ctx.lineTo(currSx, currSy);
+            } else if (prevVis && !currVis) {
+                const dz = prevZ - currZ;
+                const t = Math.abs(dz) < 1e-6 ? 0.5 : (prevZ / dz);
+                const ix = prevX + (currX - prevX) * t;
+                const iy = prevY + (currY - prevY) * t;
+                const len = Math.hypot(ix, iy) || 1.0;
                 if (!inSeg)
-                    ctx.moveTo(prev.sx, prev.sy);
-                ctx.lineTo(h.sx, h.sy);
+                    ctx.moveTo(prevSx, prevSy);
+                ctx.lineTo(cx + (ix / len) * R, cy - (iy / len) * R);
                 inSeg = false;
-            } else if (!prev.visible && curr.visible) {
-                const h = root.interpHorizon(prev, curr, cx, cy, R);
-                ctx.moveTo(h.sx, h.sy);
-                ctx.lineTo(curr.sx, curr.sy);
+            } else if (!prevVis && currVis) {
+                const dz = prevZ - currZ;
+                const t = Math.abs(dz) < 1e-6 ? 0.5 : (prevZ / dz);
+                const ix = prevX + (currX - prevX) * t;
+                const iy = prevY + (currY - prevY) * t;
+                const len = Math.hypot(ix, iy) || 1.0;
+                ctx.moveTo(cx + (ix / len) * R, cy - (iy / len) * R);
+                ctx.lineTo(currSx, currSy);
                 inSeg = true;
             }
-            prev = curr;
+            prevX = currX;
+            prevY = currY;
+            prevZ = currZ;
+            prevVis = currVis;
+            prevSx = currSx;
+            prevSy = currSy;
         }
     }
 
@@ -417,7 +518,7 @@ Item {
         objectName: "nexusGlobeSpinTimer"
         interval: 40
         repeat: true
-        running: root.visible && root.active && root.autoRotate && !globeMouse.pressed && Boolean(root.nexus ? root.nexus.isOpen : true) && root.hostSettled && Boolean(root.workspace ? root.workspace.surfaceActive : true) && !Boolean(GlobalStates.regionSelectorOpen) && !Boolean(GlobalStates.annotationEditorOpen)
+        running: root.visible && root.active && root.autoRotate && !globeMouse.pressed && Boolean(root.nexus ? root.nexus.isOpen : true) && root.hostSettled && Boolean(root.workspace ? root.workspace.surfaceActive : true) && !Boolean(GlobalStates.screenLocked) && !Boolean(GlobalStates.regionSelectorOpen) && !Boolean(GlobalStates.annotationEditorOpen) && (root.Window.window?.visible ?? true)
         onTriggered: {
             const now = Date.now();
             if (now < root.pauseUntilMs)

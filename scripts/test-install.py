@@ -29,6 +29,13 @@ with tempfile.TemporaryDirectory(prefix="alis-intergration-install-") as name:
     assert (release / "manifest.json").read_bytes() == before
     manifest = json.loads(before)
     assert all(installer.digest(release / path) == digest for path, digest in manifest["files"].items())
+    for required_et in (
+        "modules/dashboard/DashboardExercisesTracker.qml",
+        "services/ExercisesTracker.qml",
+        "services/ExercisesTrackerEngine.js",
+        "scripts/integrations/exercises_tracker.py",
+    ):
+        assert required_et in manifest["files"], f"missing {required_et} in assembled release manifest"
 
     def expect_reinstall_rejected(reason):
         try:
@@ -86,6 +93,41 @@ with tempfile.TemporaryDirectory(prefix="alis-intergration-install-") as name:
             pass
     assert foreign.exists()
     (data / "current").unlink()
+
+    # Independent per-plugin install/remove and legacy backward compatibility (on clean source).
+    plugin_data = private / "plugin-data"
+    rel_single, enabled = installer.install_plugin(plugin_data, "nexus", source)
+    assert rel_single.is_dir() and enabled == ["nexus"]
+    selection = json.loads((plugin_data / "installed-plugins.json").read_text())
+    assert selection == {"schemaVersion": 1, "plugins": ["nexus"]}
+    _, enabled = installer.install_plugin(plugin_data, "spaced_repetition", source)
+    assert enabled == ["nexus", "spaced_repetition"]
+    enabled = installer.remove_plugin(plugin_data, "nexus")
+    assert enabled == ["spaced_repetition"]
+    assert (plugin_data / "current").exists()
+    installer.uninstall(plugin_data)
+    assert not (plugin_data / "current").exists() and not (plugin_data / "installed-plugins.json").exists()
+
+    # Legacy current symlink without installed-plugins.json treats all 4 as installed;
+    # removing one plugin migrates the remaining 3 into installed-plugins.json.
+    legacy_data = private / "legacy-data"
+    installer.install(legacy_data, source)
+    assert not (legacy_data / "installed-plugins.json").exists()
+    remaining = installer.remove_plugin(legacy_data, "thinkfan")
+    assert remaining == ["tlp", "nexus", "spaced_repetition"]
+
+    # Reject symlinked installed-plugins.json and unknown plugin ids.
+    (legacy_data / "installed-plugins.json").unlink()
+    (legacy_data / "installed-plugins.json").symlink_to(foreign)
+    for bad in (lambda: installer.install_plugin(legacy_data, "nexus", source),
+                lambda: installer.remove_plugin(legacy_data, "nexus"),
+                lambda: installer.install_plugin(plugin_data, "unknown-plugin", source)):
+        try:
+            bad()
+            raise AssertionError("unsafe or unknown plugin action accepted")
+        except ValueError:
+            pass
+
     (release / "AlisSession.qml").write_text("modified")
     try:
         installer.install(data, source)
@@ -118,4 +160,4 @@ with tempfile.TemporaryDirectory(prefix="alis-intergration-install-") as name:
         assert policy.find('.//allow_active').text == "yes"
     assert (stage / "custom/share/alis/tlp-settings-schema.json").is_file()
     assert not (stage / "etc").exists() and not (stage / "custom/etc").exists()
-print("ALIS_INTERGRATION_INSTALL_PASS exact source, immutable release, owned link, idempotence, prefix/DESTDIR, no profiles")
+print("ALIS_INTERGRATION_INSTALL_PASS exact source, immutable release, owned link, idempotence, prefix/DESTDIR, per-plugin, no profiles")

@@ -120,15 +120,25 @@ def parse_cambridge_english_html(page_html: str) -> dict:
 
 def normalize_pos_code(raw_pos: str) -> str:
     p = str(raw_pos or "").strip().lower()
-    if p in ("adjective", "adj"):
-        return "adj"
+    if p in ("adjective", "adj", "a"):
+        return "adjective"
     if p in ("adverb", "adv"):
-        return "adv"
+        return "adverb"
     if p in ("noun", "n"):
         return "noun"
     if p in ("verb", "v"):
         return "verb"
-    return p
+    if p in ("preposition", "prep"):
+        return "preposition"
+    if p in ("conjunction", "conj"):
+        return "conjunction"
+    if p in ("pronoun", "pron"):
+        return "pronoun"
+    if p in ("determiner", "det"):
+        return "determiner"
+    if p in ("", "word"):
+        return "noun"
+    return p if p in ("noun", "verb", "adjective", "adverb", "preposition", "conjunction", "pronoun", "determiner") else "noun"
 
 
 def parse_oxford_english_html(page_html: str) -> dict:
@@ -2955,6 +2965,75 @@ def parse_wiktionary_etymology(wikitext: str, lang_or_word: str = "en", lang_cod
     return out
 
 
+_ESSENTIAL_4000_WORD_MAP: dict[str, dict] | None = None
+
+
+def _load_essential_4000_map() -> dict[str, dict]:
+    global _ESSENTIAL_4000_WORD_MAP
+    if _ESSENTIAL_4000_WORD_MAP is not None:
+        return _ESSENTIAL_4000_WORD_MAP
+    _ESSENTIAL_4000_WORD_MAP = {}
+    candidates = [
+        Path(__file__).resolve().parents[2] / "services" / "SpacedRepetitionEssential4000.js",
+        Path(__file__).resolve().parents[1] / "services" / "SpacedRepetitionEssential4000.js",
+    ]
+    js_path = next((p for p in candidates if p.is_file()), None)
+    if not js_path:
+        return _ESSENTIAL_4000_WORD_MAP
+    try:
+        text = js_path.read_text(encoding="utf-8")
+        m_pos = re.search(r"var POS_NAMES = (\[.*?\]);", text)
+        m_src = re.search(r"var LEVEL_SOURCES = (\[.*?\]);", text)
+        m_cards = re.search(r"var CARDS_BY_ID = (\{.*?\n\});", text, re.S)
+        if not (m_pos and m_src and m_cards):
+            return _ESSENTIAL_4000_WORD_MAP
+        pos_names = json.loads(m_pos.group(1))
+        level_sources = json.loads(m_src.group(1))
+        cards = json.loads(m_cards.group(1))
+        for cid, row in cards.items():
+            w_key = str(row[0] or "").strip().lower()
+            if not w_key or (w_key in _ESSENTIAL_4000_WORD_MAP and cid.startswith("sr-unit")):
+                continue
+            _ESSENTIAL_4000_WORD_MAP[w_key] = {
+                "pos": pos_names[row[1]] if 0 <= row[1] < len(pos_names) else "noun",
+                "level": row[2],
+                "levelSource": level_sources[row[3]] if 0 <= row[3] < len(level_sources) else "Oxford 3000 / Cambridge EVP",
+                "phonetic": row[4],
+                "meaning": row[5],
+                "definitionEn": row[5],
+                "meaningVi": row[6],
+                "example": row[7],
+                "collocations": row[9] if isinstance(row[9], list) else [],
+            }
+    except Exception:
+        pass
+    return _ESSENTIAL_4000_WORD_MAP
+
+
+def infer_offline_pos(word: str, lang: str, article: str = "") -> str:
+    w = word.strip()
+    low = w.lower()
+    if not w:
+        return "noun"
+    if lang == "de":
+        if article in ("der", "die", "das") or w[:1].isupper():
+            return "noun"
+        if low.endswith(("lich", "ig", "isch", "bar", "sam", "los", "haft", "voll")):
+            return "adjective"
+        if low.endswith(("en", "ern", "eln", "ieren")):
+            return "verb"
+        return "noun"
+    if low.endswith(("tion", "sion", "ment", "ness", "ity", "ance", "ence", "ship", "hood", "ism")):
+        return "noun"
+    if low.endswith("ly") and len(low) > 4 and low not in ("family", "supply", "reply", "apply", "rely", "ally", "rally", "bully"):
+        return "adverb"
+    if low.endswith(("ous", "ful", "less", "able", "ible", "ive", "ic", "al", "ant", "ent")):
+        return "adjective"
+    if low.endswith(("ize", "ise", "ify", "ate", "en")):
+        return "verb"
+    return "noun"
+
+
 def infer_offline_metadata(word: str, lang: str) -> dict:
     raw = word.strip()
     article = ""
@@ -2978,9 +3057,16 @@ def infer_offline_metadata(word: str, lang: str) -> dict:
     plural = ""
     verified = False
 
+    phonetic = ""
+    meaning = ""
+    meaning_vi = ""
+    example = ""
+    collocations: list[str] = []
+
     if lang == "de":
         if key in OFFLINE_DE_LEXICON:
-            level, level_source, pos, lex_art, plural = OFFLINE_DE_LEXICON[key]
+            level, level_source, raw_pos, lex_art, plural = OFFLINE_DE_LEXICON[key]
+            pos = normalize_pos_code(raw_pos)
             verified = True
             if not article and lex_art:
                 article = lex_art
@@ -2996,16 +3082,39 @@ def infer_offline_metadata(word: str, lang: str) -> dict:
                 elif lower.endswith(("ismus", "ling")):
                     article = "der"
                     pos = "noun"
+            if not pos:
+                pos = infer_offline_pos(clean_lemma, "de", article)
             n = len(clean_lemma)
             level = "A1" if n <= 4 else ("A2" if n <= 6 else ("B1" if n <= 9 else ("B2" if n <= 12 else ("C1" if n <= 15 else "C2"))))
             level_source = "DWDS / Goethe Heuristic"
     else:
-        if key in OFFLINE_EN_LEXICON:
-            level, level_source, pos = OFFLINE_EN_LEXICON[key]
+        e4k_map = _load_essential_4000_map()
+        e4k_entry = e4k_map.get(key)
+        if not e4k_entry and key.endswith("s") and len(key) > 3:
+            e4k_entry = e4k_map.get(key[:-1]) or (e4k_map.get(key[:-2]) if key.endswith("es") else None)
+        if e4k_entry:
+            level = e4k_entry["level"]
+            level_source = e4k_entry["levelSource"]
+            pos = normalize_pos_code(e4k_entry["pos"])
+            phonetic = e4k_entry["phonetic"]
+            meaning = e4k_entry["meaning"]
+            meaning_vi = e4k_entry["meaningVi"]
+            example = e4k_entry["example"]
+            collocations = list(e4k_entry["collocations"])
+            verified = True
+        elif key in OFFLINE_EN_LEXICON:
+            level, level_source, raw_pos = OFFLINE_EN_LEXICON[key]
+            pos = normalize_pos_code(raw_pos)
             verified = True
         else:
+            pos = infer_offline_pos(clean_lemma, "en")
             n = len(key)
-            level = "A1" if n <= 4 else ("A2" if n <= 6 else ("B1" if n <= 8 else ("B2" if n <= 10 else ("C1" if n <= 12 else "C2"))))
+            if key.endswith(("aneous", "itious", "isability")):
+                level = "C2" if n >= 14 else "C1"
+            elif key.endswith(("tion", "sion", "ment", "ness", "ity", "ance", "ence", "ive", "ous", "able", "ible")):
+                level = "B2" if n >= 11 else "B1"
+            else:
+                level = "A1" if n <= 4 else ("A2" if n <= 6 else ("B1" if n <= 9 else ("B2" if n <= 12 else "C1")))
             level_source = "CEFR Lexical Heuristic"
 
     display_term = f"{article} {clean}" if article else clean
@@ -3022,15 +3131,18 @@ def infer_offline_metadata(word: str, lang: str) -> dict:
         "cefrLevel": level,
         "levelSource": level_source,
         "cefrSource": level_source,
-        "pos": pos,
-        "phonetic": "",
-        "phonetics": "",
+        "pos": normalize_pos_code(pos),
+        "phonetic": phonetic,
+        "phonetics": phonetic,
         "article": article,
         "gender": article,
         "plural": plural,
-        "meaning": "",
-        "definition": "",
-        "example": "",
+        "meaning": meaning,
+        "definition": meaning,
+        "definitionEn": meaning,
+        "meaningVi": meaning_vi,
+        "example": example,
+        "collocations": collocations,
         "synonyms": [],
         "antonyms": [],
         "morphology": morph_items,
@@ -3056,6 +3168,7 @@ def enrich_with_aliases(data: dict) -> dict:
     out["cefrLevel"] = level
     out["levelSource"] = source
     out["cefrSource"] = source
+    out["pos"] = normalize_pos_code(str(out.get("pos") or ""))
     out["article"] = article
     out["gender"] = article
     out["phonetic"] = phonetic

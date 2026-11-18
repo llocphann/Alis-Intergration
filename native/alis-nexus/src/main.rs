@@ -1875,6 +1875,206 @@ pub fn format_daily_note_rel_path(folder: &str, format_pattern: &str, year: i32,
     }
 }
 
+#[inline]
+fn contains_ascii_case_insensitive(haystack: &str, needle_lower: &str) -> bool {
+    let hb = haystack.as_bytes();
+    let nb = needle_lower.as_bytes();
+    if nb.is_empty() {
+        return true;
+    }
+    if hb.len() < nb.len() {
+        return false;
+    }
+    let first = nb[0];
+    let first_upper = first.to_ascii_uppercase();
+    let limit = hb.len() - nb.len();
+    let mut i = 0usize;
+    while i <= limit {
+        let c = hb[i];
+        if c == first || c == first_upper {
+            let mut matched = true;
+            for j in 1..nb.len() {
+                if hb[i + j].to_ascii_lowercase() != nb[j] {
+                    matched = false;
+                    break;
+                }
+            }
+            if matched {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+#[inline]
+fn starts_with_ascii_case_insensitive(haystack: &str, prefix_lower: &str) -> bool {
+    let hb = haystack.as_bytes();
+    let pb = prefix_lower.as_bytes();
+    if hb.len() < pb.len() {
+        return false;
+    }
+    for i in 0..pb.len() {
+        if hb[i].to_ascii_lowercase() != pb[i] {
+            return false;
+        }
+    }
+    true
+}
+
+struct UncachedMarkdownJob {
+    slot_idx: usize,
+    full_path: PathBuf,
+    rel_path: String,
+    stem: String,
+    folder: String,
+    top_folder: String,
+    mtime_secs: u64,
+    mtime_nanos: u32,
+    size_bytes: u64,
+}
+
+fn parse_markdown_note_file(
+    full_path: &Path,
+    rel_path: &str,
+    stem: &str,
+    folder: &str,
+    top_folder: &str,
+    mtime_secs: u64,
+    retain_lines: bool,
+) -> Option<ParsedNoteSummary> {
+    let content = fs::read_to_string(full_path).ok()?;
+    let lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+    let has_templater_syntax = lines
+        .iter()
+        .take(25)
+        .any(|l| l.contains("<%") && l.contains("%>"));
+    let (props, mut fm_tags, aliases, body_start) = parse_frontmatter(&lines);
+    let is_fin_ledger = !contains_ascii_case_insensitive(rel_path, "22_finance/records/")
+        && (contains_ascii_case_insensitive(rel_path, "finance")
+            || props
+                .get("categories")
+                .map(|c| contains_ascii_case_insensitive(c, "finance"))
+                .unwrap_or(false));
+    let finance_table_lines: Vec<String> = if is_fin_ledger {
+        lines
+            .iter()
+            .filter(|l| {
+                let t = l.trim();
+                t.starts_with("##") || (t.starts_with('|') && t.ends_with('|'))
+            })
+            .cloned()
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let mut outgoing = Vec::new();
+    let mut open_tasks = 0usize;
+    let mut done_tasks = 0usize;
+    let mut first_heading = String::new();
+    let mut snippet = String::new();
+    let mut in_fence = false;
+
+    for line in lines.iter().take(body_start) {
+        let t = line.trim();
+        if t.contains("[[") {
+            for (target, _) in extract_wikilinks_from_line(t) {
+                outgoing.push((target, 1, t.chars().take(160).collect()));
+            }
+        }
+    }
+
+    for (idx, line) in lines.iter().enumerate().skip(body_start) {
+        let t = line.trim();
+        if t.starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence || t.is_empty() {
+            continue;
+        }
+        if first_heading.is_empty() && t.starts_with("# ") {
+            let candidate = t[2..].trim();
+            if !candidate.is_empty()
+                && !matches!(candidate, "Day Planner" | "Daily Schedule" | "Daily Log")
+                && !candidate.contains("<%")
+                && !candidate.ends_with('-')
+            {
+                first_heading = candidate.to_string();
+            }
+        } else if snippet.is_empty()
+            && !t.starts_with('#')
+            && !t.starts_with("---")
+            && !t.starts_with("> [!")
+            && !t.starts_with(">> [!")
+        {
+            snippet = t.trim_start_matches('>').trim().chars().take(140).collect();
+        }
+        if t.contains("[[") {
+            for (target, _) in extract_wikilinks_from_line(t) {
+                outgoing.push((target, idx + 1, t.chars().take(160).collect()));
+            }
+        }
+        if t.contains('#') {
+            for tag in extract_tags_from_line(t) {
+                if !fm_tags.contains(&tag) {
+                    fm_tags.push(tag);
+                }
+            }
+        }
+        let lb = t.as_bytes();
+        if matches!(lb.first(), Some(b'-' | b'*' | b'+' | b'T' | b'D')) {
+            if let Some((_, todo_st, _)) = parse_list_or_task_line(line) {
+                if !todo_st.is_empty() {
+                    if todo_st == "DONE" {
+                        done_tasks += 1;
+                    } else {
+                        open_tasks += 1;
+                    }
+                }
+            }
+        }
+    }
+    if snippet.is_empty() {
+        if let Some(plot) = props.get("plot").or_else(|| props.get("description")) {
+            snippet = plot.chars().take(140).collect();
+        }
+    }
+    let title = props
+        .get("title")
+        .or_else(|| props.get("name"))
+        .cloned()
+        .filter(|s| !s.is_empty() && !s.contains("<%"))
+        .or_else(|| (!first_heading.is_empty()).then_some(first_heading))
+        .unwrap_or_else(|| stem.to_string());
+    let journal_date = detect_journal_date_from_path(rel_path, stem);
+    let is_journal = journal_date.is_some()
+        || contains_ascii_case_insensitive(rel_path, "journal")
+        || props.get("type").map(|v| v.eq_ignore_ascii_case("journal")).unwrap_or(false);
+
+    Some(ParsedNoteSummary {
+        rel_path: rel_path.to_string(),
+        stem: stem.to_string(),
+        title,
+        folder: folder.to_string(),
+        top_folder: top_folder.to_string(),
+        mtime_secs,
+        frontmatter: props,
+        tags: fm_tags,
+        aliases,
+        outgoing_links: outgoing,
+        open_tasks,
+        done_tasks,
+        is_journal,
+        journal_date,
+        snippet,
+        has_templater_syntax,
+        finance_table_lines,
+        lines: if retain_lines { lines } else { Vec::new() },
+    })
+}
+
 fn scan_directory_recursive(
     vault_canon: &Path,
     dir: &Path,
@@ -1894,11 +2094,12 @@ fn scan_directory_recursive(
     )
 }
 
-fn scan_directory_recursive_with_cache(
+fn walk_directory_collect_jobs(
     vault_canon: &Path,
     dir: &Path,
     flat_files: &mut Vec<FlatFileEntry>,
-    notes: &mut Vec<ParsedNoteSummary>,
+    note_slots: &mut Vec<Option<ParsedNoteSummary>>,
+    uncached_jobs: &mut Vec<UncachedMarkdownJob>,
     prev_cache: Option<&HashMap<String, CachedMarkdownEntry>>,
     mut next_cache: Option<&mut BTreeMap<String, CachedMarkdownEntry>>,
     cache_stats: &mut (usize, usize),
@@ -1935,15 +2136,15 @@ fn scan_directory_recursive_with_cache(
             }
             let full_path = entry.path();
             if ft.is_dir() {
-                // Skip nested git repositories / submodules inside the vault (e.g. 10_Projects/Alis)
                 if full_path != vault_canon && full_path.join(".git").exists() {
                     continue;
                 }
-                let child_node = scan_directory_recursive_with_cache(
+                let child_node = walk_directory_collect_jobs(
                     vault_canon,
                     &full_path,
                     flat_files,
-                    notes,
+                    note_slots,
+                    uncached_jobs,
                     prev_cache,
                     next_cache.as_deref_mut(),
                     cache_stats,
@@ -2024,7 +2225,7 @@ fn scan_directory_recursive_with_cache(
                                         },
                                     );
                                 }
-                                notes.push(reused);
+                                note_slots.push(Some(reused));
                                 files.push(TreeNode {
                                     name: fname,
                                     rel_path,
@@ -2045,142 +2246,19 @@ fn scan_directory_recursive_with_cache(
                         }
                     }
 
-                    if let Ok(content) = fs::read_to_string(&full_path) {
-                        cache_stats.1 += 1;
-                        let lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
-                        let has_templater_syntax = lines
-                            .iter()
-                            .take(25)
-                            .any(|l| l.contains("<%") && l.contains("%>"));
-                        let (props, mut fm_tags, aliases, body_start) = parse_frontmatter(&lines);
-                        let is_fin_ledger = !rel_path.to_ascii_lowercase().contains("22_finance/records/")
-                            && (rel_path.to_ascii_lowercase().contains("finance")
-                                || props
-                                    .get("categories")
-                                    .map(|c| c.to_ascii_lowercase().contains("finance"))
-                                    .unwrap_or(false));
-                        let finance_table_lines: Vec<String> = if is_fin_ledger {
-                            lines
-                                .iter()
-                                .filter(|l| {
-                                    let t = l.trim();
-                                    t.starts_with("##") || (t.starts_with('|') && t.ends_with('|'))
-                                })
-                                .cloned()
-                                .collect()
-                        } else {
-                            Vec::new()
-                        };
-                        let mut outgoing = Vec::new();
-                        let mut open_tasks = 0usize;
-                        let mut done_tasks = 0usize;
-                        let mut first_heading = String::new();
-                        let mut snippet = String::new();
-                        let mut in_fence = false;
-
-                        for line in lines.iter().take(body_start) {
-                            let t = line.trim();
-                            for (target, _) in extract_wikilinks_from_line(t) {
-                                outgoing.push((target, 1, t.chars().take(160).collect()));
-                            }
-                        }
-
-                        for (idx, line) in lines.iter().enumerate().skip(body_start) {
-                            let t = line.trim();
-                            if t.starts_with("```") {
-                                in_fence = !in_fence;
-                                continue;
-                            }
-                            if in_fence || t.is_empty() {
-                                continue;
-                            }
-                            if first_heading.is_empty() && t.starts_with("# ") {
-                                let candidate = t[2..].trim();
-                                if !candidate.is_empty()
-                                    && !matches!(candidate, "Day Planner" | "Daily Schedule" | "Daily Log")
-                                    && !candidate.contains("<%")
-                                    && !candidate.ends_with('-')
-                                {
-                                    first_heading = candidate.to_string();
-                                }
-                            } else if snippet.is_empty()
-                                && !t.starts_with('#')
-                                && !t.starts_with("---")
-                                && !t.starts_with("> [!")
-                                && !t.starts_with(">> [!")
-                            {
-                                snippet = t.trim_start_matches('>').trim().chars().take(140).collect();
-                            }
-                            for (target, _) in extract_wikilinks_from_line(t) {
-                                outgoing.push((target, idx + 1, t.chars().take(160).collect()));
-                            }
-                            for tag in extract_tags_from_line(t) {
-                                if !fm_tags.contains(&tag) {
-                                    fm_tags.push(tag);
-                                }
-                            }
-                            if let Some((_, todo_st, _)) = parse_list_or_task_line(line) {
-                                if !todo_st.is_empty() {
-                                    if todo_st == "DONE" {
-                                        done_tasks += 1;
-                                    } else {
-                                        open_tasks += 1;
-                                    }
-                                }
-                            }
-                        }
-                        if snippet.is_empty() {
-                            if let Some(plot) = props.get("plot").or_else(|| props.get("description")) {
-                                snippet = plot.chars().take(140).collect();
-                            }
-                        }
-                        let title = props
-                            .get("title")
-                            .or_else(|| props.get("name"))
-                            .cloned()
-                            .filter(|s| !s.is_empty() && !s.contains("<%"))
-                            .or_else(|| (!first_heading.is_empty()).then_some(first_heading))
-                            .unwrap_or_else(|| stem.clone());
-                        let journal_date = detect_journal_date_from_path(&rel_path, &stem);
-                        let is_journal = journal_date.is_some()
-                            || rel_path.to_ascii_lowercase().contains("journal")
-                            || props.get("type").map(|v| v.eq_ignore_ascii_case("journal")).unwrap_or(false);
-
-                        let summary = ParsedNoteSummary {
-                            rel_path: rel_path.clone(),
-                            stem,
-                            title,
-                            folder,
-                            top_folder,
-                            mtime_secs,
-                            frontmatter: props,
-                            tags: fm_tags,
-                            aliases,
-                            outgoing_links: outgoing,
-                            open_tasks,
-                            done_tasks,
-                            is_journal,
-                            journal_date,
-                            snippet,
-                            has_templater_syntax,
-                            finance_table_lines,
-                            lines: if retain_lines { lines } else { Vec::new() },
-                        };
-                        if let Some(nc) = next_cache.as_deref_mut() {
-                            let mut cached_summary = summary.clone();
-                            cached_summary.lines.clear();
-                            nc.insert(
-                                rel_path.clone(),
-                                CachedMarkdownEntry {
-                                    mtime_secs,
-                                    mtime_nanos,
-                                    size_bytes,
-                                    summary: cached_summary,
-                                },
-                            );
-                        }
-                        notes.push(summary);
-                    }
+                    let slot_idx = note_slots.len();
+                    note_slots.push(None);
+                    uncached_jobs.push(UncachedMarkdownJob {
+                        slot_idx,
+                        full_path,
+                        rel_path: rel_path.clone(),
+                        stem,
+                        folder,
+                        top_folder,
+                        mtime_secs,
+                        mtime_nanos,
+                        size_bytes,
+                    });
                 }
 
                 files.push(TreeNode {
@@ -2205,7 +2283,6 @@ fn scan_directory_recursive_with_cache(
     let mut children = subdirs;
     children.extend(files);
     let note_count: usize = children.iter().map(|c| c.note_count).sum();
-
     let (prefix_code, color_hex, text_color_hex, default_icon) = folder_prefix_style(&rel_dir, &dir_name);
 
     TreeNode {
@@ -2223,6 +2300,111 @@ fn scan_directory_recursive_with_cache(
         icon_name: default_icon,
         children,
     }
+}
+
+fn scan_directory_recursive_with_cache(
+    vault_canon: &Path,
+    dir: &Path,
+    flat_files: &mut Vec<FlatFileEntry>,
+    notes: &mut Vec<ParsedNoteSummary>,
+    prev_cache: Option<&HashMap<String, CachedMarkdownEntry>>,
+    mut next_cache: Option<&mut BTreeMap<String, CachedMarkdownEntry>>,
+    cache_stats: &mut (usize, usize),
+    retain_lines: bool,
+) -> TreeNode {
+    let mut note_slots: Vec<Option<ParsedNoteSummary>> = Vec::new();
+    let mut uncached_jobs: Vec<UncachedMarkdownJob> = Vec::new();
+    let tree = walk_directory_collect_jobs(
+        vault_canon,
+        dir,
+        flat_files,
+        &mut note_slots,
+        &mut uncached_jobs,
+        prev_cache,
+        next_cache.as_deref_mut(),
+        cache_stats,
+        retain_lines,
+    );
+
+    if !uncached_jobs.is_empty() {
+        let worker_count = std::thread::available_parallelism()
+            .map(|n| n.get().clamp(1, 8))
+            .unwrap_or(4);
+        let parsed_results: Vec<Option<ParsedNoteSummary>> = if uncached_jobs.len() < 8 || worker_count <= 1 {
+            uncached_jobs
+                .iter()
+                .map(|job| {
+                    parse_markdown_note_file(
+                        &job.full_path,
+                        &job.rel_path,
+                        &job.stem,
+                        &job.folder,
+                        &job.top_folder,
+                        job.mtime_secs,
+                        retain_lines,
+                    )
+                })
+                .collect()
+        } else {
+            let chunk_size = uncached_jobs.len().div_ceil(worker_count);
+            std::thread::scope(|s| {
+                let handles: Vec<_> = uncached_jobs
+                    .chunks(chunk_size)
+                    .map(|chunk| {
+                        s.spawn(move || {
+                            chunk
+                                .iter()
+                                .map(|job| {
+                                    parse_markdown_note_file(
+                                        &job.full_path,
+                                        &job.rel_path,
+                                        &job.stem,
+                                        &job.folder,
+                                        &job.top_folder,
+                                        job.mtime_secs,
+                                        retain_lines,
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                    })
+                    .collect();
+                let mut merged = Vec::with_capacity(uncached_jobs.len());
+                for h in handles {
+                    if let Ok(part) = h.join() {
+                        merged.extend(part);
+                    }
+                }
+                merged
+            })
+        };
+
+        for (job, parsed_opt) in uncached_jobs.into_iter().zip(parsed_results.into_iter()) {
+            if let Some(summary) = parsed_opt {
+                cache_stats.1 += 1;
+                if let Some(nc) = next_cache.as_deref_mut() {
+                    let mut cached_summary = summary.clone();
+                    cached_summary.lines.clear();
+                    nc.insert(
+                        job.rel_path,
+                        CachedMarkdownEntry {
+                            mtime_secs: job.mtime_secs,
+                            mtime_nanos: job.mtime_nanos,
+                            size_bytes: job.size_bytes,
+                            summary: cached_summary,
+                        },
+                    );
+                }
+                note_slots[job.slot_idx] = Some(summary);
+            }
+        }
+    }
+
+    notes.reserve(note_slots.len());
+    for slot in note_slots.into_iter().flatten() {
+        notes.push(slot);
+    }
+    tree
 }
 
 pub fn folder_prefix_style(rel_path: &str, name: &str) -> (String, String, String, String) {
@@ -2367,7 +2549,42 @@ fn strip_wikilink_brackets(raw: &str) -> String {
     out
 }
 
-fn resolve_vault_asset_url(vault_canon: &Path, raw_val: &str, flat_files: &[FlatFileEntry]) -> String {
+struct AssetLookupIndex {
+    by_rel_lower: HashMap<String, (usize, String)>,
+    by_name_lower: HashMap<String, (usize, String)>,
+    by_stem_lower: HashMap<String, (usize, String)>,
+}
+
+impl AssetLookupIndex {
+    fn from_flat_files(flat_files: &[FlatFileEntry]) -> Self {
+        let cap = flat_files.len();
+        let mut by_rel_lower = HashMap::with_capacity(cap);
+        let mut by_name_lower = HashMap::with_capacity(cap);
+        let mut by_stem_lower = HashMap::with_capacity(cap);
+        for (idx, entry) in flat_files.iter().enumerate() {
+            by_rel_lower
+                .entry(entry.rel_path.to_ascii_lowercase())
+                .or_insert_with(|| (idx, entry.rel_path.clone()));
+            by_name_lower
+                .entry(entry.name.to_ascii_lowercase())
+                .or_insert_with(|| (idx, entry.rel_path.clone()));
+            by_stem_lower
+                .entry(entry.stem.to_ascii_lowercase())
+                .or_insert_with(|| (idx, entry.rel_path.clone()));
+        }
+        Self {
+            by_rel_lower,
+            by_name_lower,
+            by_stem_lower,
+        }
+    }
+}
+
+fn resolve_vault_asset_url_with_index(
+    vault_canon: &Path,
+    raw_val: &str,
+    asset_index: &AssetLookupIndex,
+) -> String {
     let trimmed = raw_val
         .trim()
         .trim_matches('"')
@@ -2406,15 +2623,23 @@ fn resolve_vault_asset_url(vault_canon: &Path, raw_val: &str, flat_files: &[Flat
     }
     let target_lower = clean_rel.to_ascii_lowercase();
     let target_fname = clean_rel.rsplit('/').next().unwrap_or(clean_rel).to_ascii_lowercase();
-    for entry in flat_files {
-        if entry.rel_path.to_ascii_lowercase() == target_lower
-            || entry.name.to_ascii_lowercase() == target_fname
-            || entry.stem.to_ascii_lowercase() == target_fname
-        {
-            let resolved = vault_canon.join(&entry.rel_path);
-            if resolved.is_file() {
-                return format!("file://{}", resolved.to_string_lossy());
-            }
+    let mut best: Option<&(usize, String)> = None;
+    for cand in [
+        asset_index.by_rel_lower.get(&target_lower),
+        asset_index.by_name_lower.get(&target_fname),
+        asset_index.by_stem_lower.get(&target_fname),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if best.is_none_or(|prev| cand.0 < prev.0) {
+            best = Some(cand);
+        }
+    }
+    if let Some((_, rel_path)) = best {
+        let resolved = vault_canon.join(rel_path);
+        if resolved.is_file() {
+            return format!("file://{}", resolved.to_string_lossy());
         }
     }
     String::new()
@@ -2440,18 +2665,15 @@ fn onion_category_name(code: &str) -> &'static str {
     }
 }
 
-fn classify_note_kind_and_dossier(
-    vault_canon: &Path,
+fn classify_note_kind(
     rel_path: &str,
     stem: &str,
     title: &str,
     frontmatter: &BTreeMap<String, String>,
     tags: &[String],
-    snippet: &str,
-    flat_files: &[FlatFileEntry],
-) -> (String, Value) {
+) -> &'static str {
     let lower_path = rel_path.to_ascii_lowercase();
-    let cats_raw = frontmatter.get("categories").cloned().unwrap_or_default();
+    let cats_raw = frontmatter.get("categories").map(|s| s.as_str()).unwrap_or("");
     let type_raw = frontmatter.get("type").cloned().unwrap_or_default().to_ascii_lowercase();
     let record_type_raw = frontmatter
         .get("recordtype")
@@ -2474,7 +2696,7 @@ fn classify_note_kind_and_dossier(
         .map(|s| s.trim())
         .any(|s| matches!(s, "permanent" | "literature" | "fleeting"));
 
-    let note_kind = if lower_path.contains("91_templates")
+    if lower_path.contains("91_templates")
         || lower_path.contains("/templates/")
         || title.contains("<%")
     {
@@ -2606,8 +2828,19 @@ fn classify_note_kind_and_dossier(
         "journal"
     } else {
         "standard"
-    };
+    }
+}
 
+fn build_note_dossier_with_index(
+    vault_canon: &Path,
+    note_kind: &str,
+    rel_path: &str,
+    title: &str,
+    frontmatter: &BTreeMap<String, String>,
+    snippet: &str,
+    asset_index: &AssetLookupIndex,
+) -> Value {
+    let lower_path = rel_path.to_ascii_lowercase();
     let get_clean = |k: &str| -> String {
         frontmatter
             .get(k)
@@ -2630,27 +2863,27 @@ fn classify_note_kind_and_dossier(
         .or_else(|| frontmatter.get("preview"))
         .or_else(|| frontmatter.get("image"))
         .or_else(|| frontmatter.get("thumbnail"))
-        .cloned()
-        .unwrap_or_default();
+        .map(|s| s.as_str())
+        .unwrap_or("");
     let backdrop_raw = frontmatter
         .get("backdrop")
         .or_else(|| frontmatter.get("banner"))
-        .cloned()
-        .unwrap_or_default();
-    let barcode_raw = frontmatter.get("barcode").cloned().unwrap_or_default();
+        .map(|s| s.as_str())
+        .unwrap_or("");
+    let barcode_raw = frontmatter.get("barcode").map(|s| s.as_str()).unwrap_or("");
     let featured_raw = frontmatter
         .get("featured_image")
         .or_else(|| frontmatter.get("animation"))
         .or_else(|| frontmatter.get("images"))
         .or_else(|| frontmatter.get("photo"))
         .or_else(|| frontmatter.get("gif"))
-        .cloned()
-        .unwrap_or_default();
+        .map(|s| s.as_str())
+        .unwrap_or("");
 
-    let poster_url = resolve_vault_asset_url(vault_canon, &poster_raw, flat_files);
-    let backdrop_url = resolve_vault_asset_url(vault_canon, &backdrop_raw, flat_files);
-    let barcode_url = resolve_vault_asset_url(vault_canon, &barcode_raw, flat_files);
-    let featured_url = resolve_vault_asset_url(vault_canon, &featured_raw, flat_files);
+    let poster_url = resolve_vault_asset_url_with_index(vault_canon, poster_raw, asset_index);
+    let backdrop_url = resolve_vault_asset_url_with_index(vault_canon, backdrop_raw, asset_index);
+    let barcode_url = resolve_vault_asset_url_with_index(vault_canon, barcode_raw, asset_index);
+    let featured_url = resolve_vault_asset_url_with_index(vault_canon, featured_raw, asset_index);
 
     let parent_code = Path::new(rel_path)
         .parent()
@@ -2895,7 +3128,7 @@ fn classify_note_kind_and_dossier(
         "lon": lon,
     });
 
-    (note_kind.to_string(), dossier)
+    dossier
 }
 
 fn is_template_note_summary(note: &ParsedNoteSummary) -> bool {
@@ -3394,6 +3627,12 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
         }
     };
 
+    let group_index_map: HashMap<&str, usize> = groups
+        .iter()
+        .enumerate()
+        .map(|(i, g)| (g.as_str(), i))
+        .collect();
+
     let nodes_json: Vec<Value> = graph_notes
         .iter()
         .enumerate()
@@ -3403,7 +3642,7 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
             } else {
                 note.top_folder.as_str()
             };
-            let g_idx = groups.iter().position(|g| g == g_name).unwrap_or(0);
+            let g_idx = group_index_map.get(g_name).copied().unwrap_or(0);
             let deg = in_deg[idx] + out_deg[idx];
             let color_hex = graph_group_color(g_name, note.is_journal);
             json!({
@@ -4090,27 +4329,27 @@ fn ui_sidecar_cache_path(cache_path_str: &str) -> String {
     }
 }
 
+#[derive(Deserialize)]
+struct ScanCacheEnvelope {
+    #[serde(rename = "_scanSignature")]
+    scan_signature: Option<String>,
+    #[serde(rename = "_cachedEntries", default)]
+    cached_entries: HashMap<String, CachedMarkdownEntry>,
+}
+
 fn load_cached_markdown_entries_and_sig(
     cache_file_opt: Option<&str>,
 ) -> (HashMap<String, CachedMarkdownEntry>, Option<String>) {
     let Some(cache_path_str) = cache_file_opt.map(normalize_cache_path).filter(|s| !s.is_empty()) else {
         return (HashMap::new(), None);
     };
-    let Ok(raw) = fs::read_to_string(cache_path_str) else {
+    let Ok(bytes) = fs::read(cache_path_str) else {
         return (HashMap::new(), None);
     };
-    let Ok(val) = serde_json::from_str::<Value>(&raw) else {
+    let Ok(env) = serde_json::from_slice::<ScanCacheEnvelope>(&bytes) else {
         return (HashMap::new(), None);
     };
-    let sig = val
-        .get("_scanSignature")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let entries = val
-        .get("_cachedEntries")
-        .and_then(|v| serde_json::from_value::<HashMap<String, CachedMarkdownEntry>>(v.clone()).ok())
-        .unwrap_or_default();
-    (entries, sig)
+    (env.cached_entries, env.scan_signature)
 }
 
 fn fnv1a_update_bytes(hash: &mut u64, bytes: &[u8]) {
@@ -4340,7 +4579,7 @@ pub fn cmd_scan_for_date_with_cache_opts(
         .min()
         .unwrap_or(now_secs);
 
-    // Read optional 90_System/93_Configuration/settings.md for vault metadata & schedule paths
+    // Read optional 90_System/93_Configuration/settings.md once for vault metadata & schedule paths
     let mut cfg_username = String::new();
     let mut cfg_vault_name = String::new();
     let mut cfg_start_date = String::new();
@@ -4348,6 +4587,7 @@ pub fn cmd_scan_for_date_with_cache_opts(
     let mut cfg_schedule_heading = "Daily Schedule".to_string();
     let mut cfg_exercise_heading = "Calisthenics".to_string();
     let mut cfg_cardio_heading = "Cardio".to_string();
+    let mut cfg_weather_loc = "Can Tho, VN".to_string();
 
     let settings_md_path = vault_canon.join("90_System/93_Configuration/settings.md");
     if let Ok(settings_raw) = fs::read_to_string(&settings_md_path) {
@@ -4373,6 +4613,9 @@ pub fn cmd_scan_for_date_with_cache_opts(
         }
         if let Some(ch) = s_props.get("cardio_heading").filter(|s| !s.trim().is_empty()) {
             cfg_cardio_heading = ch.trim().to_string();
+        }
+        if let Some(wl) = s_props.get("weather_location").filter(|s| !s.trim().is_empty()) {
+            cfg_weather_loc = wl.trim().to_string();
         }
     }
 
@@ -4424,7 +4667,9 @@ pub fn cmd_scan_for_date_with_cache_opts(
     let code_count = flat_files.iter().filter(|f| f.category == "code").count();
     let external_count = flat_files.iter().filter(|f| f.category == "external").count();
 
-    // Build custom collections across all vault domains
+    let asset_index = AssetLookupIndex::from_flat_files(&flat_files);
+
+    // Build custom collections across all vault domains (building full dossier JSON only for collection notes)
     let mut col_movies = Vec::new();
     let mut col_tvseries = Vec::new();
     let mut col_games = Vec::new();
@@ -4440,51 +4685,50 @@ pub fn cmd_scan_for_date_with_cache_opts(
     let mut col_contacts = Vec::new();
 
     for note in &notes {
-        let (kind, dossier) = classify_note_kind_and_dossier(
-            &vault_canon,
+        let kind = classify_note_kind(
             &note.rel_path,
             &note.stem,
             &note.title,
             &note.frontmatter,
             &note.tags,
-            &note.snippet,
-            &flat_files,
         );
-        match kind.as_str() {
-            "movie" => col_movies.push(dossier),
-            "tvseries" => col_tvseries.push(dossier),
-            "game" => col_games.push(dossier),
-            "website" => col_websites.push(dossier),
-            "cornell" => col_cornell.push(dossier),
-            "zettelkasten" => col_zettelkasten.push(dossier),
-            "place" => col_places.push(dossier),
-            "book" => col_books.push(dossier),
-            "recipe" => col_recipes.push(dossier),
-            "exercise" => col_exercises.push(dossier),
-            "clipping" => col_clippings.push(dossier),
-            "finance" => col_finance.push(dossier),
-            "contact" => col_contacts.push(dossier),
+        let build_dossier = || {
+            build_note_dossier_with_index(
+                &vault_canon,
+                kind,
+                &note.rel_path,
+                &note.title,
+                &note.frontmatter,
+                &note.snippet,
+                &asset_index,
+            )
+        };
+        match kind {
+            "movie" => col_movies.push(build_dossier()),
+            "tvseries" => col_tvseries.push(build_dossier()),
+            "game" => col_games.push(build_dossier()),
+            "website" => col_websites.push(build_dossier()),
+            "cornell" => col_cornell.push(build_dossier()),
+            "zettelkasten" => col_zettelkasten.push(build_dossier()),
+            "place" => col_places.push(build_dossier()),
+            "book" => col_books.push(build_dossier()),
+            "recipe" => col_recipes.push(build_dossier()),
+            "exercise" => col_exercises.push(build_dossier()),
+            "clipping" => col_clippings.push(build_dossier()),
+            "finance" => col_finance.push(build_dossier()),
+            "contact" => col_contacts.push(build_dossier()),
             _ => {}
         }
     }
 
     let finance_summary = compute_vault_finance_summary(&notes);
 
-    let mut cfg_weather_loc = "Can Tho, VN".to_string();
-    if let Ok(settings_raw) = fs::read_to_string(&settings_md_path) {
-        let s_lines: Vec<String> = settings_raw.lines().map(|s| s.to_string()).collect();
-        let (s_props, _, _, _) = parse_frontmatter(&s_lines);
-        if let Some(wl) = s_props.get("weather_location").filter(|s| !s.trim().is_empty()) {
-            cfg_weather_loc = wl.trim().to_string();
-        }
-    }
-
     let homepage_photo_url = [
         "797722956_17919373971425474_540898127545340166_n.jpg",
         "90_System/95_Attachments/b93849c34966ce3a9c5af52b02521bf3.jpg",
     ]
     .iter()
-    .map(|cand| resolve_vault_asset_url(&vault_canon, cand, &flat_files))
+    .map(|cand| resolve_vault_asset_url_with_index(&vault_canon, cand, &asset_index))
     .find(|u| !u.is_empty())
     .unwrap_or_default();
 
@@ -4494,7 +4738,7 @@ pub fn cmd_scan_for_date_with_cache_opts(
         "90_System/95_Attachments/b93849c34966ce3a9c5af52b02521bf3.jpg",
     ]
     .iter()
-    .map(|cand| resolve_vault_asset_url(&vault_canon, cand, &flat_files))
+    .map(|cand| resolve_vault_asset_url_with_index(&vault_canon, cand, &asset_index))
     .find(|u| !u.is_empty())
     .unwrap_or_default();
 
@@ -4635,7 +4879,7 @@ pub fn cmd_scan_for_date_with_cache_opts(
         }));
     }
 
-    let payload = json!({
+    let mut payload = json!({
         "ok": true,
         "vaultPath": vault_canon.to_string_lossy(),
         "vaultName": vault_name,
@@ -4698,14 +4942,17 @@ pub fn cmd_scan_for_date_with_cache_opts(
         if !ui_cache_path.is_empty() {
             let _ = write_json_cache_atomically(&ui_cache_path, &payload);
         }
-        let mut cache_payload = payload.clone();
-        if let Some(obj) = cache_payload.as_object_mut() {
+        if let Some(obj) = payload.as_object_mut() {
             obj.insert("_scanSignature".to_string(), Value::String(scan_signature));
             if let Ok(entries_json) = serde_json::to_value(&next_cache) {
                 obj.insert("_cachedEntries".to_string(), entries_json);
             }
         }
-        let _ = write_json_cache_atomically(cache_path_str, &cache_payload);
+        let _ = write_json_cache_atomically(cache_path_str, &payload);
+        if let Some(obj) = payload.as_object_mut() {
+            obj.remove("_scanSignature");
+            obj.remove("_cachedEntries");
+        }
     }
     Ok(payload)
 }
@@ -4821,10 +5068,11 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
             let _ = scan_directory_recursive(&vault_canon, &vault_canon, &mut flat_files, &mut notes);
             let lookup = build_note_lookup(&notes);
 
-            // Resolve inline image blocks to file:// URLs
+            // Resolve inline image blocks and dossier assets via O(1) AssetLookupIndex
+            let asset_index = AssetLookupIndex::from_flat_files(&flat_files);
             for b in &mut blocks {
                 if b.kind == "image" {
-                    b.lang = resolve_vault_asset_url(&vault_canon, &b.text, &flat_files);
+                    b.lang = resolve_vault_asset_url_with_index(&vault_canon, &b.text, &asset_index);
                 }
             }
 
@@ -4833,15 +5081,15 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
                 .find(|b| b.kind == "paragraph" || b.kind == "callout")
                 .map(|b| b.text.as_str())
                 .unwrap_or("");
-            let (note_kind, dossier) = classify_note_kind_and_dossier(
+            let note_kind = classify_note_kind(&rel_norm, &stem, &title, &frontmatter, &tags).to_string();
+            let dossier = build_note_dossier_with_index(
                 &vault_canon,
+                &note_kind,
                 &rel_norm,
-                &stem,
                 &title,
                 &frontmatter,
-                &tags,
                 first_snippet,
-                &flat_files,
+                &asset_index,
             );
 
             // If a frontmatter-driven note (Movie, TV Series, Place, etc.) has 0 body blocks, synthesize overview blocks
@@ -6324,17 +6572,25 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
                 }
             }
 
-            let search_terms: Vec<String> = {
-                let mut v = vec![stem.to_ascii_lowercase()];
+            let stem_lower = stem.to_ascii_lowercase();
+            let title_lower = title.to_ascii_lowercase();
+            let search_terms: Vec<(String, String)> = {
+                let mut v = vec![stem_lower.clone()];
                 if !title.eq_ignore_ascii_case(&stem) && title.len() >= 3 {
-                    v.push(title.to_ascii_lowercase());
+                    v.push(title_lower.clone());
                 }
                 for a in &aliases {
                     if a.len() >= 3 {
                         v.push(a.to_ascii_lowercase());
                     }
                 }
-                v.into_iter().filter(|s| s.len() >= 2).collect()
+                v.into_iter()
+                    .filter(|s| s.len() >= 2)
+                    .map(|term| {
+                        let bracketed = format!("[[{}", term);
+                        (term, bracketed)
+                    })
+                    .collect()
             };
 
             for (idx, other) in notes.iter().enumerate() {
@@ -6346,8 +6602,8 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
                     let key = target_raw.trim().trim_end_matches(".md").to_ascii_lowercase();
                     let matches_self = Some(idx) != current_idx
                         && (lookup.get(&key).copied() == current_idx
-                            || key == stem.to_ascii_lowercase()
-                            || key == title.to_ascii_lowercase());
+                            || key == stem_lower
+                            || key == title_lower);
                     if matches_self {
                         neighbors_1hop.insert(idx);
                         linked_lines.insert(*line_no);
@@ -6360,7 +6616,7 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
                     }
                 }
 
-                // Check unlinked mentions in other note's lines (capped to 25 total for speed)
+                // Check unlinked mentions in other note's lines (capped to 25 total, zero per-line String allocation)
                 if unlinked_mentions.len() < 25 && !search_terms.is_empty() {
                     for (line_idx, raw_line) in other.lines.iter().enumerate() {
                         let line_1based = line_idx + 1;
@@ -6371,11 +6627,9 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
                         if t.is_empty() || t.starts_with("---") || t.starts_with("```") {
                             continue;
                         }
-                        let lower_line = t.to_ascii_lowercase();
-                        for term in &search_terms {
-                            if term.len() >= 3 && lower_line.contains(term) {
-                                // Ensure it's not already inside [[...]]
-                                if !lower_line.contains(&format!("[[{}", term)) {
+                        for (term, bracketed_term) in &search_terms {
+                            if term.len() >= 3 && contains_ascii_case_insensitive(t, term) {
+                                if !contains_ascii_case_insensitive(t, bracketed_term) {
                                     unlinked_mentions.push(json!({
                                         "relPath": other.rel_path,
                                         "title": other.title,
@@ -7089,21 +7343,94 @@ pub fn cmd_daily(
     cmd_daily_with_check_in(vault_str, date_opt, folder_opt, format_opt, None, None)
 }
 
+fn collect_calendar_journal_tasks_recursive(
+    vault_canon: &Path,
+    dir: &Path,
+    journal_by_date: &mut HashMap<String, (String, usize, usize)>,
+) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut collected: Vec<_> = entries.flatten().collect();
+    collected.sort_by_key(|e| e.file_name());
+    for entry in collected {
+        let fname = entry.file_name().to_string_lossy().to_string();
+        if should_skip_entry(&fname) {
+            continue;
+        }
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_symlink() {
+            continue;
+        }
+        let full_path = entry.path();
+        if ft.is_dir() {
+            if full_path != vault_canon && full_path.join(".git").exists() {
+                continue;
+            }
+            collect_calendar_journal_tasks_recursive(vault_canon, &full_path, journal_by_date);
+        } else if ft.is_file() {
+            let ext = full_path
+                .extension()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if classify_extension(&ext).0 != FileCategory::Markdown {
+                continue;
+            }
+            let rel_path = full_path
+                .strip_prefix(vault_canon)
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
+            let stem = full_path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| fname.clone());
+            let Some(date_iso) = detect_journal_date_from_path(&rel_path, &stem) else {
+                continue;
+            };
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.len() > 4 * 1024 * 1024 {
+                continue;
+            }
+            let Ok(content) = fs::read_to_string(&full_path) else { continue };
+            let lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+            let (_, _, _, body_start) = parse_frontmatter(&lines);
+            let mut open_tasks = 0usize;
+            let mut done_tasks = 0usize;
+            let mut in_fence = false;
+            for line in lines.iter().skip(body_start) {
+                let t = line.trim();
+                if t.starts_with("```") {
+                    in_fence = !in_fence;
+                    continue;
+                }
+                if in_fence || t.is_empty() {
+                    continue;
+                }
+                let lb = t.as_bytes();
+                if matches!(lb.first(), Some(b'-' | b'*' | b'+' | b'T' | b'D')) {
+                    if let Some((_, todo_st, _)) = parse_list_or_task_line(line) {
+                        if !todo_st.is_empty() {
+                            if todo_st == "DONE" {
+                                done_tasks += 1;
+                            } else {
+                                open_tasks += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            journal_by_date.insert(date_iso, (rel_path, open_tasks, done_tasks));
+        }
+    }
+}
+
 pub fn cmd_calendar(vault_str: &str, year: i32, month: u32) -> Result<Value, String> {
     if !(1..=12).contains(&month) {
         return Err("Month must be between 1 and 12".to_string());
     }
     let vault_canon = resolve_vault_root(vault_str)?;
-    let mut flat_files = Vec::new();
-    let mut notes = Vec::new();
-    let _ = scan_directory_recursive(&vault_canon, &vault_canon, &mut flat_files, &mut notes);
-
     let mut journal_by_date: HashMap<String, (String, usize, usize)> = HashMap::new();
-    for note in &notes {
-        if let Some(ref d) = note.journal_date {
-            journal_by_date.insert(d.clone(), (note.rel_path.clone(), note.open_tasks, note.done_tasks));
-        }
-    }
+    collect_calendar_journal_tasks_recursive(&vault_canon, &vault_canon, &mut journal_by_date);
 
     let first_wd = weekday_monday_zero(year, month, 1); // 0 = Mon .. 6 = Sun
     let dim = days_in_month(year, month);
@@ -7303,56 +7630,93 @@ pub fn cmd_search(vault_str: &str, query: &str) -> Result<Value, String> {
     let mut notes = Vec::new();
     let _ = scan_directory_recursive(&vault_canon, &vault_canon, &mut flat_files, &mut notes);
 
-    let mut results = Vec::new();
-    for note in &notes {
+    let clean_q_tag = q.trim_start_matches('#');
+    let score_note = |(orig_idx, note): (usize, &ParsedNoteSummary)| -> Option<(i64, usize, Value)> {
         let mut score = 0i64;
         let mut matched_line = 1usize;
-        let mut matched_snippet = note.snippet.clone();
+        let mut matched_snippet: Option<String> = None;
 
-        if note.title.to_ascii_lowercase().contains(&q) {
+        if contains_ascii_case_insensitive(&note.title, &q) {
             score += 500;
-            if note.title.to_ascii_lowercase().starts_with(&q) {
+            if starts_with_ascii_case_insensitive(&note.title, &q) {
                 score += 300;
             }
         }
-        if note.rel_path.to_ascii_lowercase().contains(&q) {
+        if contains_ascii_case_insensitive(&note.rel_path, &q) {
             score += 200;
         }
-        let clean_q_tag = q.trim_start_matches('#');
-        if note.tags.iter().any(|t| t.to_ascii_lowercase().contains(clean_q_tag)) {
+        if !clean_q_tag.is_empty()
+            && note
+                .tags
+                .iter()
+                .any(|t| contains_ascii_case_insensitive(t, clean_q_tag))
+        {
             score += 400;
         }
         for (idx, line) in note.lines.iter().enumerate() {
-            if line.to_ascii_lowercase().contains(&q) {
-                if score < 100 {
+            if contains_ascii_case_insensitive(line, &q) {
+                if score < 100 || matched_line == 1 {
                     matched_line = idx + 1;
-                    matched_snippet = line.trim().chars().take(160).collect();
-                } else if matched_line == 1 {
-                    matched_line = idx + 1;
-                    matched_snippet = line.trim().chars().take(160).collect();
+                    matched_snippet = Some(line.trim().chars().take(160).collect());
                 }
                 score += 50;
             }
         }
         if score > 0 {
-            results.push((
+            let final_snippet = matched_snippet.unwrap_or_else(|| note.snippet.clone());
+            Some((
                 score,
+                orig_idx,
                 json!({
                     "relPath": note.rel_path,
                     "title": note.title,
                     "folder": note.folder,
                     "category": "markdown",
                     "line": matched_line,
-                    "snippet": matched_snippet,
+                    "snippet": final_snippet,
                     "tags": note.tags,
                     "score": score,
                 }),
-            ));
+            ))
+        } else {
+            None
         }
-    }
+    };
 
-    results.sort_by(|a, b| b.0.cmp(&a.0));
-    let top: Vec<Value> = results.into_iter().take(50).map(|(_, v)| v).collect();
+    let worker_count = std::thread::available_parallelism()
+        .map(|n| n.get().clamp(1, 8))
+        .unwrap_or(4);
+    let mut results: Vec<(i64, usize, Value)> = if notes.len() < 32 || worker_count <= 1 {
+        notes.iter().enumerate().filter_map(score_note).collect()
+    } else {
+        let chunk_size = notes.len().div_ceil(worker_count);
+        std::thread::scope(|s| {
+            let handles: Vec<_> = notes
+                .chunks(chunk_size)
+                .enumerate()
+                .map(|(chunk_idx, chunk)| {
+                    let base = chunk_idx * chunk_size;
+                    s.spawn(move || {
+                        chunk
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(i, note)| score_note((base + i, note)))
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+            let mut merged = Vec::new();
+            for h in handles {
+                if let Ok(part) = h.join() {
+                    merged.extend(part);
+                }
+            }
+            merged
+        })
+    };
+
+    results.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    let top: Vec<Value> = results.into_iter().take(50).map(|(_, _, v)| v).collect();
     Ok(json!({
         "ok": true,
         "query": query,

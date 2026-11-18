@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
+import "../../services/SpacedRepetitionPrompts.js" as Prompts
 import qs
 import qs.services
 import qs.services as HostServices
@@ -23,6 +24,27 @@ Item {
         ?? HostServices.SpacedRepetition
         ?? null
 
+    property bool _captureLoaded: false
+    property bool _libraryLoaded: false
+    property bool _matchingViewLoaded: false
+    property bool _singleCardViewLoaded: false
+    property bool _clozeViewLoaded: false
+    property bool _mcViewLoaded: false
+    property bool _revealedViewLoaded: false
+    property var clozeInputField: null
+    property var matchingLinesCanvas: null
+    property var librarySearchField: null
+    property var composerFrontField: null
+    property var composerBackField: null
+    property var composerExampleField: null
+    property var composerDeckField: null
+    property var composerPhoneticsField: null
+    property var composerPosField: null
+    property var composerCefrField: null
+    property var composerSynonymsField: null
+    property var composerAntonymsField: null
+    property var bulkInputArea: null
+
     // Sub-navigation: "study" | "capture" | "library"
     property string subTab: "study"
     property alias activeSubTab: root.subTab
@@ -38,6 +60,7 @@ Item {
     // Study session UI state
     property bool answerRevealed: false
     onAnswerRevealedChanged: {
+        root.syncLazyLoaderFlags()
         if (root.backend && root.backend.cardRevealed !== root.answerRevealed)
             root.backend.cardRevealed = root.answerRevealed
         if (root.answerRevealed && clozeInputField && (clozeInputField.focus || clozeInputField.activeFocus))
@@ -48,6 +71,27 @@ Item {
     readonly property bool isMatchingMode: root.backend.studyMode === "matching"
     readonly property bool isMultipleChoiceMode: root.backend.studyMode === "mc"
     readonly property bool isClozeMode: root.backend.studyMode === "cloze"
+    onIsMatchingModeChanged: root.syncLazyLoaderFlags()
+    onIsMultipleChoiceModeChanged: root.syncLazyLoaderFlags()
+    onIsClozeModeChanged: root.syncLazyLoaderFlags()
+
+    function syncLazyLoaderFlags(): void {
+        if (root.subTab === "capture")
+            root._captureLoaded = true
+        else if (root.subTab === "library")
+            root._libraryLoaded = true
+        if (root.isMatchingMode) {
+            root._matchingViewLoaded = true
+        } else {
+            root._singleCardViewLoaded = true
+            if (root.isClozeMode)
+                root._clozeViewLoaded = true
+            if (root.isMultipleChoiceMode)
+                root._mcViewLoaded = true
+            if (root.answerRevealed)
+                root._revealedViewLoaded = true
+        }
+    }
     readonly property bool showStudyArenaCard: root.backend.hasActiveCard
         || (root.isMatchingMode && (root._matchingRoundActive || root.matchingRoundComplete) && root.matchingLeftWords.length > 0)
     property var multipleChoiceOptions: []
@@ -63,9 +107,38 @@ Item {
     property int matchingMatchedCount: 0
     property bool _matchingRoundActive: false
     property bool _suppressMatchingQueueSync: false
+    property bool _submittingReview: false
+    property string _activeStudyCardId: ""
     property string typedClozeAttempt: ""
     property string clozeCheckState: "" // "" | "exact" | "close" | "miss"
     property string statusBannerText: ""
+
+    readonly property bool backendSessionActive: root.presentationActive && root.visible
+    readonly property bool studyInteractionInProgress: root.backendSessionActive
+        && root.subTab === "study"
+        && (root.answerRevealed
+            || root.pendingChoiceIndex >= 0
+            || root.typedClozeAttempt.length > 0
+            || (root.isMatchingMode && root.matchingMatchedCount > 0 && !root.matchingRoundComplete))
+
+    function syncBackendActivityFlags(): void {
+        if (!root.backend) return
+        if (root.backend.presentationActive !== undefined && root.backend.presentationActive !== root.backendSessionActive)
+            root.backend.presentationActive = root.backendSessionActive
+        if (root.backend.interactionLocked !== undefined && root.backend.interactionLocked !== root.studyInteractionInProgress)
+            root.backend.interactionLocked = root.studyInteractionInProgress
+    }
+
+    onBackendChanged: root.syncBackendActivityFlags()
+    onBackendSessionActiveChanged: {
+        root.syncBackendActivityFlags()
+        if (!root.backendSessionActive) {
+            autoLookupTimer.stop()
+            matchingMismatchTimer.stop()
+            matchingLinesRepaintTimer.stop()
+        }
+    }
+    onStudyInteractionInProgressChanged: root.syncBackendActivityFlags()
 
     Timer {
         id: matchingMismatchTimer
@@ -244,25 +317,27 @@ Item {
         : alisEverywhere ? Appearance.alis.colTextSecondary
         : Appearance.colors.colSubtext
 
-    readonly property var draftPreview: root.backend.analyzeDraft({
-        front: root.composerFront,
-        example: root.composerExampleUserEdited ? root.composerExample : "",
-        category: root.composerCategory,
-        language: root.composerLanguage || (root.backend.options?.defaultLanguage ?? "en"),
-        deck: root.composerDeck,
-        phonetics: root.composerPhonetics,
-        pos: root.composerPos,
-        gender: root.composerGender,
-        plural: root.composerPlural,
-        cefrLevel: root.composerCefrOverride,
-        lookupSnapshot: root.backend.lastLookupResult,
-        synonyms: root.composerSynonyms.trim().length > 0
-            ? root.composerSynonyms.split(",").map(s => s.trim()).filter(Boolean)
-            : null,
-        antonyms: root.composerAntonyms.trim().length > 0
-            ? root.composerAntonyms.split(",").map(s => s.trim()).filter(Boolean)
-            : null
-    })
+    readonly property var draftPreview: root.subTab === "capture"
+        ? root.backend.analyzeDraft({
+            front: root.composerFront,
+            example: root.composerExampleUserEdited ? root.composerExample : "",
+            category: root.composerCategory,
+            language: root.composerLanguage || (root.backend.options?.defaultLanguage ?? "en"),
+            deck: root.composerDeck,
+            phonetics: root.composerPhonetics,
+            pos: root.composerPos,
+            gender: root.composerGender,
+            plural: root.composerPlural,
+            cefrLevel: root.composerCefrOverride,
+            lookupSnapshot: root.backend.lastLookupResult,
+            synonyms: root.composerSynonyms.trim().length > 0
+                ? root.composerSynonyms.split(",").map(s => s.trim()).filter(Boolean)
+                : null,
+            antonyms: root.composerAntonyms.trim().length > 0
+                ? root.composerAntonyms.split(",").map(s => s.trim()).filter(Boolean)
+                : null
+        })
+        : null
     readonly property string draftAutoCefr: String(root.draftPreview?.cefrLevel ?? "")
     onDraftPreviewChanged: root.applyAutoSuggestionsFromDraft()
 
@@ -276,6 +351,8 @@ Item {
         : []
 
     readonly property var filteredLibraryCards: {
+        if (root.subTab !== "library")
+            return []
         const list = Array.from(root.backend.cards ?? [])
         const q = String(root.librarySearch || root.backend.searchQuery || "").trim().toLowerCase()
         const cat = String(root.backend.selectedCategory ?? "all").toLowerCase()
@@ -318,6 +395,15 @@ Item {
             .replace(/>/g, "&gt;")
     }
 
+    function maskedStudyText(raw, card, revealed = false): string {
+        return Prompts.maskAnswer(raw, card, revealed)
+    }
+
+    function maskedClozeMeaningCue(card): string {
+        const raw = String(card?.back || card?.definitionEn || card?.meaning || "")
+        return root.maskedStudyText(raw, card, root.answerRevealed)
+    }
+
     function formatContextExampleRich(card, revealed): string {
         if (!card) return ""
         const rawCloze = String(card.clozeText || card.example || "").trim()
@@ -325,27 +411,40 @@ Item {
         const highlightColor = "#38bdf8"
         const maskColor = "#94a3b8"
         if (/\{\{c\d+::/.test(rawCloze)) {
-            const escaped = root.escapeHtml(rawCloze)
-            return escaped.replace(/\{\{c\d+::([^:}]+)(?:::([^}]+))?\}\}/g, (_, answer, hint) => {
-                if (revealed)
+            if (revealed) {
+                const escaped = root.escapeHtml(rawCloze)
+                return escaped.replace(/\{\{c\d+::([^:}]+)(?:::([^}]+))?\}\}/g, (_, answer) => {
                     return `<b><font color="${highlightColor}"><u>${answer.trim()}</u></font></b>`
-                let safeHint = hint ? hint.trim() : ""
-                if (safeHint.includes("—"))
-                    safeHint = safeHint.split("—")[0].trim()
-                else if (safeHint.includes(" - "))
-                    safeHint = safeHint.split(" - ")[0].trim()
-                const label = safeHint ? `[ ${safeHint} ]` : "[ ... ]"
-                return `<b><font color="${maskColor}">${label}</font></b>`
-            })
+                })
+            }
+            const parts = rawCloze.split(/(\{\{c\d+::[^}]+\}\})/g)
+            return parts.map(part => {
+                const m = part.match(/^\{\{c\d+::([^:}]+)(?:::([^}]+))?\}\}$/)
+                if (m) {
+                    let safeHint = m[2] ? m[2].trim() : ""
+                    if (safeHint.includes("—"))
+                        safeHint = safeHint.split("—")[0].trim()
+                    else if (safeHint.includes(" - "))
+                        safeHint = safeHint.split(" - ")[0].trim()
+                    if (safeHint && Prompts.containsAnswerForm(safeHint, card))
+                        safeHint = ""
+                    const label = safeHint ? `[ ${root.escapeHtml(safeHint)} ]` : "[ ... ]"
+                    return `<b><font color="${maskColor}">${label}</font></b>`
+                }
+                const maskedSeg = Prompts.maskAnswer(part, card, false)
+                return root.escapeHtml(maskedSeg).replace(/\[\.\.\.\]/g, `<b><font color="${maskColor}">[ ... ]</font></b>`)
+            }).join("")
+        }
+        if (!revealed) {
+            const maskedPlain = Prompts.maskAnswer(String(card.example || rawCloze), card, false)
+            return root.escapeHtml(maskedPlain).replace(/\[\.\.\.\]/g, `<b><font color="${maskColor}">[ ... ]</font></b>`)
         }
         const plain = root.escapeHtml(card.example || rawCloze)
         const term = String(card.headword || card.term || card.front || "").replace(/^(der|die|das|sich)\s+/i, "").trim()
         if (!term.length) return plain
         const escTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
         const re = new RegExp(`(\\b${escTerm}[a-zA-ZäöüÄÖÜß]{0,3}\\b)`, "gi")
-        if (revealed)
-            return plain.replace(re, `<b><font color="${highlightColor}"><u>$1</u></font></b>`)
-        return plain.replace(re, `<b><font color="${maskColor}">[ ... ]</font></b>`)
+        return plain.replace(re, `<b><font color="${highlightColor}"><u>$1</u></font></b>`)
     }
 
     function parseCollocation(raw): var {
@@ -591,26 +690,18 @@ Item {
             root.selectedChoiceIndex = -1
             return
         }
-        const allCards = Array.from(root.backend?.cards ?? [])
+        const allCards = root.backend?.cards ?? []
+        const deckLen = Number(allCards.length) || 0
+        const normPos = rawP => {
+            const s = String(rawP ?? "").trim().toLowerCase()
+            if (s === "adj") return "adjective"
+            if (s === "adv") return "adverb"
+            return s
+        }
         const targetId = String(target.id ?? "")
+        const targetPos = normPos(target.pos)
         const usedFronts = [String(target.front || target.term || "").trim().toLowerCase()]
         const usedDefs = [String(target.definitionEn || target.back || "").trim().toLowerCase()]
-
-        const sameLangAndCat = []
-        const sameCat = []
-        const others = []
-        for (const c of allCards) {
-            if (!c || String(c.id ?? "") === targetId) continue
-            const f = String(c.front || c.term || "").trim()
-            const d = String(c.definitionEn || c.back || "").trim()
-            if (!f.length || !d.length) continue
-            if (c.category === target.category && c.language === target.language)
-                sameLangAndCat.push(c)
-            else if (c.category === target.category)
-                sameCat.push(c)
-            else
-                others.push(c)
-        }
 
         const shuffle = arr => {
             const copy = arr.slice()
@@ -624,21 +715,84 @@ Item {
         }
 
         const distractors = []
-        const fallbackDistractors = [
-            { id: "fallback-1", front: "ubiquitous", headword: "ubiquitous", pos: "adj", cefrLevel: "C1", definitionEn: "present, appearing, or found everywhere", meaningVi: "phổ biến khắp nơi" },
-            { id: "fallback-2", front: "ephemeral", headword: "ephemeral", pos: "adj", cefrLevel: "C1", definitionEn: "lasting for a very short time", meaningVi: "phù du, chóng tàn" },
-            { id: "fallback-3", front: "resilient", headword: "resilient", pos: "adj", cefrLevel: "B2", definitionEn: "able to recover quickly from difficult conditions", meaningVi: "kiên cường, phục hồi nhanh" },
-            { id: "fallback-4", front: "alleviate", headword: "alleviate", pos: "verb", cefrLevel: "C1", definitionEn: "to make suffering or a problem less severe", meaningVi: "làm dịu bớt, giảm nhẹ" }
-        ]
-        const candidatePool = [...shuffle(sameLangAndCat), ...shuffle(sameCat), ...shuffle(others), ...shuffle(fallbackDistractors)]
-        for (const cand of candidatePool) {
-            if (distractors.length >= 3) break
-            const fKey = String(cand.front || cand.term || "").trim().toLowerCase()
-            const dKey = String(cand.definitionEn || cand.back || "").trim().toLowerCase()
-            if (usedFronts.includes(fKey) || usedDefs.includes(dKey)) continue
+        const tryAddDistractor = cand => {
+            if (!cand || distractors.length >= 3) return false
+            const cid = String(cand.id ?? "")
+            if (cid === targetId) return false
+            const f = String(cand.front || cand.term || "").trim()
+            const d = String(cand.definitionEn || cand.back || "").trim()
+            if (!f.length || !d.length) return false
+            const fKey = f.toLowerCase()
+            const dKey = d.toLowerCase()
+            if (usedFronts.includes(fKey) || usedDefs.includes(dKey)) return false
+            if (Prompts.containsAnswerForm(f, target) || Prompts.containsAnswerForm(d, target)) return false
             usedFronts.push(fKey)
             usedDefs.push(dKey)
             distractors.push(root.toMultipleChoiceOption(cand, targetId))
+            return true
+        }
+
+        if (deckLen > 32) {
+            if (targetPos.length > 0) {
+                for (let p = 0; p < 64 && distractors.length < 3; p++) {
+                    const cand = allCards[Math.floor(Math.random() * deckLen)]
+                    if (cand
+                            && cand.category === target.category
+                            && cand.language === target.language
+                            && normPos(cand.pos) === targetPos) {
+                        tryAddDistractor(cand)
+                    }
+                }
+            }
+            for (let p = 0; p < 48 && distractors.length < 3; p++) {
+                const cand = allCards[Math.floor(Math.random() * deckLen)]
+                if (cand && cand.category === target.category && cand.language === target.language)
+                    tryAddDistractor(cand)
+            }
+            for (let p = 0; p < 24 && distractors.length < 3; p++) {
+                tryAddDistractor(allCards[Math.floor(Math.random() * deckLen)])
+            }
+        }
+
+        if (distractors.length < 3) {
+            const samePosLangCat = []
+            const sameLangAndCat = []
+            const sameCat = []
+            const others = []
+            for (let i = 0; i < deckLen; i++) {
+                const c = allCards[i]
+                if (!c || String(c.id ?? "") === targetId) continue
+                const f = String(c.front || c.term || "").trim()
+                const d = String(c.definitionEn || c.back || "").trim()
+                if (!f.length || !d.length) continue
+                if (c.category === target.category && c.language === target.language) {
+                    if (targetPos.length > 0 && normPos(c.pos) === targetPos)
+                        samePosLangCat.push(c)
+                    else
+                        sameLangAndCat.push(c)
+                } else if (c.category === target.category) {
+                    sameCat.push(c)
+                } else {
+                    others.push(c)
+                }
+            }
+            const fallbackDistractors = [
+                { id: "fallback-1", front: "ubiquitous", headword: "ubiquitous", pos: "adj", cefrLevel: "C1", definitionEn: "present, appearing, or found everywhere", meaningVi: "phổ biến khắp nơi" },
+                { id: "fallback-2", front: "ephemeral", headword: "ephemeral", pos: "adj", cefrLevel: "C1", definitionEn: "lasting for a very short time", meaningVi: "phù du, chóng tàn" },
+                { id: "fallback-3", front: "resilient", headword: "resilient", pos: "adj", cefrLevel: "B2", definitionEn: "able to recover quickly from difficult conditions", meaningVi: "kiên cường, phục hồi nhanh" },
+                { id: "fallback-4", front: "alleviate", headword: "alleviate", pos: "verb", cefrLevel: "C1", definitionEn: "to make suffering or a problem less severe", meaningVi: "làm dịu bớt, giảm nhẹ" }
+            ]
+            const candidatePool = [
+                ...shuffle(samePosLangCat),
+                ...shuffle(sameLangAndCat),
+                ...shuffle(sameCat),
+                ...shuffle(others),
+                ...shuffle(fallbackDistractors)
+            ]
+            for (const cand of candidatePool) {
+                if (distractors.length >= 3) break
+                tryAddDistractor(cand)
+            }
         }
 
         const combined = shuffle([root.toMultipleChoiceOption(target, targetId), ...distractors].filter(Boolean))
@@ -682,14 +836,16 @@ Item {
     function resetCardInteraction(forceRebuildMatching = false): void {
         if (clozeInputField && (clozeInputField.focus || clozeInputField.activeFocus))
             clozeInputField.focus = false
+        root._activeStudyCardId = String(root.backend?.currentCard?.id ?? "")
         root.answerRevealed = false
         root.pendingChoiceIndex = -1
         root.selectedChoiceIndex = -1
         root.typedClozeAttempt = ""
-        if (clozeInputField.text !== "")
+        if (clozeInputField && clozeInputField.text !== "")
             clozeInputField.text = ""
         root.clozeCheckState = ""
-        root.rebuildMultipleChoiceOptions()
+        if (root.isMultipleChoiceMode || root.isClozeMode)
+            root.rebuildMultipleChoiceOptions()
         if (root.isMatchingMode && (forceRebuildMatching || (!root._matchingRoundActive && !root.matchingRoundComplete))) {
             root.rebuildMatchingRound()
         }
@@ -702,7 +858,7 @@ Item {
         if (!card) return
         if (clozeInputField && (clozeInputField.focus || clozeInputField.activeFocus))
             clozeInputField.focus = false
-        const rawActual = (root.typedClozeAttempt || clozeInputField.text || "").trim().toLowerCase()
+        const rawActual = (root.typedClozeAttempt || clozeInputField?.text || "").trim().toLowerCase()
         const actualStripped = rawActual.replace(/^(der|die|das|sich)\s+/i, "").trim()
         if (!rawActual.length) {
             root.clozeCheckState = ""
@@ -742,20 +898,23 @@ Item {
 
     function submitReviewRating(rating): void {
         if (!root.backend.hasActiveCard) return
+        root._submittingReview = true
+        root._activeStudyCardId = ""
         root.backend.submitRating(rating)
+        root._submittingReview = false
         root.resetCardInteraction()
     }
 
     function syncComposerFieldsFromState(): void {
-        if (composerFrontField.text !== root.composerFront) composerFrontField.text = root.composerFront
-        if (composerBackField.text !== root.composerBack) composerBackField.text = root.composerBack
-        if (composerExampleField.text !== root.composerExample) composerExampleField.text = root.composerExample
-        if (composerDeckField.text !== root.composerDeck) composerDeckField.text = root.composerDeck
-        if (composerPhoneticsField.text !== root.composerPhonetics) composerPhoneticsField.text = root.composerPhonetics
-        if (composerPosField.text !== root.composerPos) composerPosField.text = root.composerPos
-        if (composerCefrField.text !== root.composerCefrOverride) composerCefrField.text = root.composerCefrOverride
-        if (composerSynonymsField.text !== root.composerSynonyms) composerSynonymsField.text = root.composerSynonyms
-        if (composerAntonymsField.text !== root.composerAntonyms) composerAntonymsField.text = root.composerAntonyms
+        if (composerFrontField && composerFrontField.text !== root.composerFront) composerFrontField.text = root.composerFront
+        if (composerBackField && composerBackField.text !== root.composerBack) composerBackField.text = root.composerBack
+        if (composerExampleField && composerExampleField.text !== root.composerExample) composerExampleField.text = root.composerExample
+        if (composerDeckField && composerDeckField.text !== root.composerDeck) composerDeckField.text = root.composerDeck
+        if (composerPhoneticsField && composerPhoneticsField.text !== root.composerPhonetics) composerPhoneticsField.text = root.composerPhonetics
+        if (composerPosField && composerPosField.text !== root.composerPos) composerPosField.text = root.composerPos
+        if (composerCefrField && composerCefrField.text !== root.composerCefrOverride) composerCefrField.text = root.composerCefrOverride
+        if (composerSynonymsField && composerSynonymsField.text !== root.composerSynonyms) composerSynonymsField.text = root.composerSynonyms
+        if (composerAntonymsField && composerAntonymsField.text !== root.composerAntonyms) composerAntonymsField.text = root.composerAntonyms
     }
 
     function applyAutoSuggestionsFromDraft(): void {
@@ -867,7 +1026,7 @@ Item {
         if (count > 0) {
             root.statusBannerText = Translation.tr("Imported %1 cards with automatic CEFR & cloze syntax").arg(count)
             root.bulkInputText = ""
-            if (bulkInputArea.text !== "")
+            if (bulkInputArea && bulkInputArea.text !== "")
                 bulkInputArea.text = ""
         }
     }
@@ -881,7 +1040,7 @@ Item {
             "What is the spacing effect in cognitive psychology? :: Long-term retention improves when study sessions are spaced apart rather than massed."
         ].join("\n")
         root.bulkInputText = sample
-        if (bulkInputArea.text !== sample)
+        if (bulkInputArea && bulkInputArea.text !== sample)
             bulkInputArea.text = sample
     }
 
@@ -901,20 +1060,22 @@ Item {
         return false
     }
 
-    readonly property bool nonClozeTextInputFocused: sidebarQuickInput.activeFocus
-        || composerFrontField.activeFocus
-        || composerBackField.activeFocus
-        || composerExampleField.activeFocus
-        || composerDeckField.activeFocus
-        || composerPhoneticsField.activeFocus
-        || composerPosField.activeFocus
-        || composerCefrField.activeFocus
-        || composerSynonymsField.activeFocus
-        || composerAntonymsField.activeFocus
-        || bulkInputArea.activeFocus
-        || librarySearchField.activeFocus
-    readonly property bool textInputFocused: (clozeInputField.activeFocus && !clozeInputField.readOnly)
-        || root.nonClozeTextInputFocused
+    readonly property bool nonClozeTextInputFocused: Boolean(
+        (sidebarQuickInput?.visible && sidebarQuickInput?.activeFocus)
+        || (root.subTab === "capture" && (
+            composerFrontField?.activeFocus
+            || composerBackField?.activeFocus
+            || composerExampleField?.activeFocus
+            || composerDeckField?.activeFocus
+            || composerPhoneticsField?.activeFocus
+            || composerPosField?.activeFocus
+            || composerCefrField?.activeFocus
+            || composerSynonymsField?.activeFocus
+            || composerAntonymsField?.activeFocus
+            || bulkInputArea?.activeFocus))
+        || (root.subTab === "library" && librarySearchField?.activeFocus))
+    readonly property bool textInputFocused: Boolean((clozeInputField && clozeInputField.activeFocus && !clozeInputField.readOnly)
+        || root.nonClozeTextInputFocused)
     readonly property bool windowNonClozeTextInputFocused: {
         const item = root.Window.activeFocusItem
         if (!item || item === clozeInputField) return false
@@ -926,12 +1087,13 @@ Item {
         return Boolean(item && item.visible && item.enabled && item.readOnly === false
             && item.cursorPosition !== undefined)
     }
-    readonly property bool clozeNumericTypingActive: root.isClozeMode
+    readonly property bool clozeNumericTypingActive: Boolean(root.isClozeMode
         && !root.answerRevealed
+        && clozeInputField
         && clozeInputField.activeFocus
         && !clozeInputField.readOnly
         && clozeInputField.text.trim().length > 0
-        && /\d/.test(String(root.backend.currentCard?.front || root.backend.currentCard?.term || root.backend.currentCard?.clozeText || ""))
+        && /\d/.test(String(root.backend.currentCard?.front || root.backend.currentCard?.term || root.backend.currentCard?.clozeText || "")))
     readonly property bool studyShortcutsActive: root.presentationActive
         && root.visible
         && root.subTab === "study"
@@ -946,7 +1108,27 @@ Item {
     property double _lastShortcutMs: 0
     property string _lastShortcutAction: ""
 
+    function clearInactiveSubTabFocus(): void {
+        if (root.subTab !== "library" && librarySearchField && (librarySearchField.focus || librarySearchField.activeFocus))
+            librarySearchField.focus = false
+        if (root.subTab !== "capture") {
+            const captureFields = [
+                composerFrontField, composerBackField, composerExampleField,
+                composerDeckField, composerPhoneticsField, composerPosField,
+                composerCefrField, composerSynonymsField, composerAntonymsField,
+                bulkInputArea
+            ]
+            for (const f of captureFields) {
+                if (f && (f.focus || f.activeFocus))
+                    f.focus = false
+            }
+        }
+        if (root.subTab !== "study" && clozeInputField && (clozeInputField.focus || clozeInputField.activeFocus))
+            clozeInputField.focus = false
+    }
+
     function focusPrimarySurface(): void {
+        root.clearInactiveSubTabFocus()
         if ((!root.isClozeMode || root.answerRevealed) && clozeInputField && (clozeInputField.focus || clozeInputField.activeFocus))
             clozeInputField.focus = false
         if (!root.textInputFocused)
@@ -1073,6 +1255,10 @@ Item {
             }
             return false
         }
+        if (action === "noop-mc-letter" && root.isMultipleChoiceMode) {
+            root.focusPrimarySurface()
+            return true
+        }
         if (action === "mode") {
             root._lastShortcutMs = now
             root._lastShortcutAction = action
@@ -1113,6 +1299,8 @@ Item {
     }
 
     onSubTabChanged: {
+        root.clearInactiveSubTabFocus()
+        root.syncLazyLoaderFlags()
         root.storeBrowserState()
         if (root.presentationActive)
             root.focusPrimarySurface()
@@ -1144,7 +1332,20 @@ Item {
                 }
                 if (root._matchingRoundActive || root.matchingRoundComplete)
                     return
+            } else {
+                const nextCardId = String(root.backend?.currentCard?.id ?? "")
+                if (nextCardId.length > 0
+                        && nextCardId === root._activeStudyCardId
+                        && (!root.isMultipleChoiceMode || root.multipleChoiceOptions.length > 0)) {
+                    return
+                }
             }
+            root.resetCardInteraction()
+        }
+        function onCardReviewed(): void {
+            if (root._suppressMatchingQueueSync || root._submittingReview)
+                return
+            root._activeStudyCardId = ""
             root.resetCardInteraction()
         }
         function onStudyQueueChanged(): void {
@@ -1165,7 +1366,10 @@ Item {
         function onCardsChanged(): void {
             if (root._suppressMatchingQueueSync)
                 return
-            if (root.multipleChoiceOptions.length < 4 || root.multipleChoiceOptions.some(o => String(o?.id ?? "").startsWith("fallback-")))
+            if ((root.isMultipleChoiceMode || root.isClozeMode)
+                    && !root.answerRevealed
+                    && root.pendingChoiceIndex < 0
+                    && (root.multipleChoiceOptions.length < 4 || root.multipleChoiceOptions.some(o => String(o?.id ?? "").startsWith("fallback-"))))
                 root.rebuildMultipleChoiceOptions()
             if (root.isMatchingMode && !root._matchingRoundActive && !root.matchingRoundComplete && root.matchingLeftWords.length === 0)
                 root.rebuildMatchingRound()
@@ -1179,7 +1383,8 @@ Item {
                 clozeInputField.focus = false
             root._matchingRoundActive = false
             root.matchingRoundComplete = false
-            root.rebuildMultipleChoiceOptions()
+            if (root.isMultipleChoiceMode || root.isClozeMode)
+                root.rebuildMultipleChoiceOptions()
             if (root.isMatchingMode)
                 root.rebuildMatchingRound()
             if (root.presentationActive && root.visible && root.subTab === "study")
@@ -1212,10 +1417,14 @@ Item {
     }
 
     Component.onCompleted: {
+        root.syncBackendActivityFlags()
         if (root.backend && typeof root.backend.refreshClock === "function")
             root.backend.refreshClock()
         root.restoreBrowserState()
-        root.rebuildMultipleChoiceOptions()
+        root.syncLazyLoaderFlags()
+        root._activeStudyCardId = String(root.backend?.currentCard?.id ?? "")
+        if (root.isMultipleChoiceMode || root.isClozeMode)
+            root.rebuildMultipleChoiceOptions()
         if (root.isMatchingMode)
             root.rebuildMatchingRound()
     }
@@ -1295,6 +1504,10 @@ Item {
         } else if (!root.answerRevealed && root.isMultipleChoiceMode && (event.key === Qt.Key_4 || event.key === Qt.Key_D)) {
             if (root.triggerStudyShortcut("pick-3"))
                 event.accepted = true
+        } else if (root.answerRevealed && root.isMultipleChoiceMode
+                && (event.key === Qt.Key_A || event.key === Qt.Key_B || event.key === Qt.Key_C || event.key === Qt.Key_D)) {
+            if (root.triggerStudyShortcut("noop-mc-letter"))
+                event.accepted = true
         } else if (root.answerRevealed && event.key === Qt.Key_0) {
             if (root.triggerStudyShortcut("again"))
                 event.accepted = true
@@ -1370,32 +1583,32 @@ Item {
         onActivated: root.triggerStudyShortcut("match-left-4")
     }
     Shortcut {
-        sequences: ["A"]
+        sequences: ["A", "Shift+A"]
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: root.studyShortcutsActive && root.showStudyArenaCard && ((!root.answerRevealed && root.isMultipleChoiceMode) || (root.isMatchingMode && !root.matchingRoundComplete))
-        onActivated: root.triggerStudyShortcut(root.isMatchingMode ? "match-right-0" : "pick-0")
+        enabled: root.studyShortcutsActive && root.showStudyArenaCard && (root.isMultipleChoiceMode || (root.isMatchingMode && !root.matchingRoundComplete))
+        onActivated: root.triggerStudyShortcut(root.isMatchingMode ? "match-right-0" : (root.answerRevealed ? "noop-mc-letter" : "pick-0"))
     }
     Shortcut {
-        sequences: ["B"]
+        sequences: ["B", "Shift+B"]
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: root.studyShortcutsActive && root.showStudyArenaCard && ((!root.answerRevealed && root.isMultipleChoiceMode) || (root.isMatchingMode && !root.matchingRoundComplete))
-        onActivated: root.triggerStudyShortcut(root.isMatchingMode ? "match-right-1" : "pick-1")
+        enabled: root.studyShortcutsActive && root.showStudyArenaCard && (root.isMultipleChoiceMode || (root.isMatchingMode && !root.matchingRoundComplete))
+        onActivated: root.triggerStudyShortcut(root.isMatchingMode ? "match-right-1" : (root.answerRevealed ? "noop-mc-letter" : "pick-1"))
     }
     Shortcut {
-        sequences: ["C"]
+        sequences: ["C", "Shift+C"]
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: root.studyShortcutsActive && root.showStudyArenaCard && ((!root.answerRevealed && root.isMultipleChoiceMode) || (root.isMatchingMode && !root.matchingRoundComplete))
-        onActivated: root.triggerStudyShortcut(root.isMatchingMode ? "match-right-2" : "pick-2")
+        enabled: root.studyShortcutsActive && root.showStudyArenaCard && (root.isMultipleChoiceMode || (root.isMatchingMode && !root.matchingRoundComplete))
+        onActivated: root.triggerStudyShortcut(root.isMatchingMode ? "match-right-2" : (root.answerRevealed ? "noop-mc-letter" : "pick-2"))
     }
     Shortcut {
-        sequences: ["D"]
+        sequences: ["D", "Shift+D"]
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: root.studyShortcutsActive && root.showStudyArenaCard && ((!root.answerRevealed && root.isMultipleChoiceMode) || (root.isMatchingMode && !root.matchingRoundComplete))
-        onActivated: root.triggerStudyShortcut(root.isMatchingMode ? "match-right-3" : "pick-3")
+        enabled: root.studyShortcutsActive && root.showStudyArenaCard && (root.isMultipleChoiceMode || (root.isMatchingMode && !root.matchingRoundComplete))
+        onActivated: root.triggerStudyShortcut(root.isMatchingMode ? "match-right-3" : (root.answerRevealed ? "noop-mc-letter" : "pick-3"))
     }
     Shortcut {
         sequences: ["E"]
@@ -1428,6 +1641,7 @@ Item {
 
     component FilterChip: RippleButton {
         id: chip
+        focusPolicy: Qt.NoFocus
         releaseAction: () => {
             if (root.subTab === "study")
                 Qt.callLater(() => root.focusPrimarySurface())
@@ -1988,6 +2202,13 @@ Item {
                         border.width: 0
                         clip: true
 
+                        TapHandler {
+                            onTapped: {
+                                if (root.subTab === "study" && !root.textInputFocused)
+                                    root.focusPrimarySurface()
+                            }
+                        }
+
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: 20
@@ -2125,13 +2346,17 @@ Item {
                             // =========================================================
                             // MATCHING MODE BOARD (2 Columns: 5 Words Left, 6 Definitions Right)
                             // =========================================================
-                            ColumnLayout {
-                                id: srMatchingBoard
-                                objectName: "srMatchingBoard"
-                                visible: root.isMatchingMode
+                            Loader {
+                                id: matchingBoardLoader
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                spacing: 10
+                                active: root._matchingViewLoaded
+                                visible: root.isMatchingMode
+                                sourceComponent: Component {
+                                    ColumnLayout {
+                                        id: srMatchingBoard
+                                        objectName: "srMatchingBoard"
+                                        spacing: 10
 
                                 // Matching Header & Progress
                                 RowLayout {
@@ -2215,6 +2440,7 @@ Item {
                                                 model: root.matchingLeftWords
                                                 delegate: RippleButton {
                                                     id: matchWordBtn
+                                                    focusPolicy: Qt.NoFocus
                                                     required property var modelData
                                                     required property int index
                                                     objectName: "srMatchingLeftWord-" + index
@@ -2409,6 +2635,7 @@ Item {
                                                 model: root.matchingRightDefs
                                                 delegate: RippleButton {
                                                     id: matchDefBtn
+                                                    focusPolicy: Qt.NoFocus
                                                     required property var modelData
                                                     required property int index
                                                     objectName: "srMatchingRightDef-" + index
@@ -2496,7 +2723,7 @@ Item {
                                                                     objectName: "srMatchingRightDefText-" + matchDefBtn.index
                                                                     Layout.fillWidth: true
                                                                     wrapMode: Text.WordWrap
-                                                                    text: matchDefBtn.modelData.definitionEn ?? ""
+                                                                    text: root.maskedStudyText(matchDefBtn.modelData.definitionEn, matchDefBtn.modelData, matchDefBtn.modelData.matched || root.matchingRoundComplete)
                                                                     font.pixelSize: Appearance.font.pixelSize.small
                                                                     font.weight: Font.Medium
                                                                     color: root.colText
@@ -2506,7 +2733,7 @@ Item {
                                                                     visible: Boolean(matchDefBtn.modelData.meaningVi)
                                                                     Layout.fillWidth: true
                                                                     wrapMode: Text.WordWrap
-                                                                    text: matchDefBtn.modelData.meaningVi ?? ""
+                                                                    text: root.maskedStudyText(matchDefBtn.modelData.meaningVi, matchDefBtn.modelData, matchDefBtn.modelData.matched || root.matchingRoundComplete)
                                                                     font.pixelSize: Appearance.font.pixelSize.smallest
                                                                     color: root.colSubtext
                                                                 }
@@ -2549,6 +2776,7 @@ Item {
                                         anchors.fill: parent
                                         z: 5
                                         antialiasing: true
+                                        Component.onCompleted: root.matchingLinesCanvas = matchingLinesCanvas
 
                                         readonly property int matchedLinesCount: root.matchingMatchedCount
                                         readonly property bool hasMismatchLine: root.mismatchLeftIndex >= 0 && root.mismatchRightIndex >= 0
@@ -2728,6 +2956,7 @@ Item {
 
                                     RippleButton {
                                         objectName: "srMatchingContinueButton"
+                                        focusPolicy: Qt.NoFocus
                                         implicitWidth: Math.max(170, matchContinueRow.implicitWidth + 28)
                                         implicitHeight: 38
                                         buttonRadius: Appearance.rounding.full
@@ -2758,13 +2987,24 @@ Item {
                                     }
                                 }
                             }
+                                }
+                            }
 
                             // Prompt Section (Single-Card Modes: Multiple Choice, Cloze Reading, Flashcard)
+                            Loader {
+                                id: singleCardViewLoader
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                active: root._singleCardViewLoaded
+                                visible: !root.isMatchingMode
+                                sourceComponent: Component {
+                                    ColumnLayout {
+                                        spacing: 14
+
                             ColumnLayout {
                                 id: promptSectionLayout
                                 Layout.fillWidth: true
                                 Layout.topMargin: 4
-                                visible: !root.isMatchingMode
                                 spacing: 8
 
                                 // Mode prompt subtitle
@@ -2812,7 +3052,7 @@ Item {
                                             const card = root.backend.currentCard
                                             if (!card) return ""
                                             if (root.backend.studyMode === "cloze")
-                                                return root.backend.renderClozeFront(card)
+                                                return root.maskedStudyText(root.backend.renderClozeFront(card), card)
                                             return card.headword || card.front || ""
                                         }
                                         font.pixelSize: (root.backend.studyMode === "flashcard" || root.backend.studyMode === "mc") ? 26 : 20
@@ -2897,15 +3137,19 @@ Item {
                                 }
 
                                 // Meaning cue + Type-to-check input + Quick 1-4 / 0 word choices in Cloze mode
-                                ColumnLayout {
+                                Loader {
+                                    id: clozeSectionLoader
                                     Layout.fillWidth: true
+                                    active: root._clozeViewLoaded
                                     visible: root.backend.studyMode === "cloze"
-                                    spacing: 8
+                                    sourceComponent: Component {
+                                        ColumnLayout {
+                                            spacing: 8
 
                                     StyledText {
                                         Layout.fillWidth: true
                                         wrapMode: Text.WordWrap
-                                        text: Translation.tr("Meaning cue: %1").arg(root.backend.currentCard?.back ?? "")
+                                        text: Translation.tr("Meaning cue: %1").arg(root.maskedClozeMeaningCue(root.backend.currentCard))
                                         font.pixelSize: Appearance.font.pixelSize.small
                                         color: root.colSubtext
                                     }
@@ -2918,6 +3162,7 @@ Item {
                                             id: clozeInputField
                                             objectName: "srClozeInput"
                                             Layout.fillWidth: true
+                                            Component.onCompleted: root.clozeInputField = clozeInputField
                                             readOnly: root.answerRevealed
                                             placeholderText: Translation.tr("Type the missing word or press 1–4 to pick (0 to reveal)...")
                                             text: root.typedClozeAttempt
@@ -2985,6 +3230,7 @@ Item {
                                             model: root.multipleChoiceOptions
                                             delegate: RippleButton {
                                                 id: clozeChoiceChip
+                                                focusPolicy: Qt.NoFocus
                                                 required property var modelData
                                                 required property int index
                                                 objectName: "srClozeOption-" + index
@@ -3031,6 +3277,7 @@ Item {
 
                                         RippleButton {
                                             objectName: "srClozeRevealShortcutChip"
+                                            focusPolicy: Qt.NoFocus
                                             visible: !root.answerRevealed
                                             implicitHeight: 28
                                             implicitWidth: clozeZeroRow.implicitWidth + 18
@@ -3071,15 +3318,21 @@ Item {
                                             : root.clozeCheckState === "close" ? "#f59e0b" : "#ef4444"
                                     }
                                 }
+                                    }
+                                }
                             }
 
                             // 4-Option Multiple Choice Grid (remains visible before & after selection)
-                            GridLayout {
-                                id: mcOptionsGrid
-                                objectName: "srMultipleChoiceGrid"
-                                visible: root.isMultipleChoiceMode
+                            Loader {
+                                id: mcGridLoader
                                 Layout.fillWidth: true
-                                columns: root.width >= 680 ? 2 : 1
+                                active: root._mcViewLoaded
+                                visible: root.isMultipleChoiceMode
+                                sourceComponent: Component {
+                                    GridLayout {
+                                        id: mcOptionsGrid
+                                        objectName: "srMultipleChoiceGrid"
+                                        columns: root.width >= 680 ? 2 : 1
                                 uniformCellWidths: true
                                 columnSpacing: 12
                                 rowSpacing: 8
@@ -3088,6 +3341,7 @@ Item {
                                     model: root.multipleChoiceOptions
                                     delegate: RippleButton {
                                         id: mcOptionBtn
+                                        focusPolicy: Qt.NoFocus
                                         required property var modelData
                                         required property int index
                                         objectName: "srMcOption-" + index
@@ -3186,11 +3440,12 @@ Item {
 
                                                     // Definition row (in MC mode before reveal, sits inline with letter badge)
                                                     StyledText {
+                                                        objectName: "srMcOptionDefinition-" + mcOptionBtn.index
                                                         visible: root.backend.studyMode === "mc" && !root.answerRevealed
                                                         Layout.fillWidth: true
                                                         Layout.alignment: Qt.AlignVCenter
                                                         wrapMode: Text.WordWrap
-                                                        text: mcOptionBtn.modelData.definitionEn ?? ""
+                                                        text: root.maskedStudyText(mcOptionBtn.modelData.definitionEn, mcOptionBtn.modelData, root.answerRevealed)
                                                         font.pixelSize: Appearance.font.pixelSize.small
                                                         font.weight: Font.Medium
                                                         color: root.colText
@@ -3276,7 +3531,7 @@ Item {
                                                             visible: mcOptionBtn.detailsExpanded
                                                             Layout.fillWidth: true
                                                             wrapMode: Text.WordWrap
-                                                            text: mcOptionBtn.modelData.definitionEn ?? ""
+                                                            text: root.maskedStudyText(mcOptionBtn.modelData.definitionEn, mcOptionBtn.modelData, root.answerRevealed)
                                                             font.pixelSize: Appearance.font.pixelSize.smaller
                                                             color: Qt.alpha(root.colText, 0.90)
                                                         }
@@ -3298,6 +3553,8 @@ Item {
                                     }
                                 }
                             }
+                                }
+                            }
 
                             Item {
                                 Layout.fillWidth: true
@@ -3313,6 +3570,7 @@ Item {
 
                                 RippleButton {
                                     objectName: "srRevealButton"
+                                    focusPolicy: Qt.NoFocus
                                     anchors.centerIn: parent
                                     implicitWidth: Math.max(220, revealRow.implicitWidth + 36)
                                     implicitHeight: 42
@@ -3347,11 +3605,15 @@ Item {
                             }
 
                             // Revealed Answer Panel
-                            ColumnLayout {
+                            Loader {
+                                id: revealedPanelLoader
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
+                                active: root._revealedViewLoaded
                                 visible: root.answerRevealed && !root.isMatchingMode
-                                spacing: 10
+                                sourceComponent: Component {
+                                    ColumnLayout {
+                                        spacing: 10
 
                                 Rectangle {
                                     Layout.fillWidth: true
@@ -3664,6 +3926,7 @@ Item {
                                         delegate: RippleButton {
                                             required property var modelData
                                             objectName: modelData.obj
+                                            focusPolicy: Qt.NoFocus
                                             Layout.fillWidth: true
                                             implicitHeight: 44
                                             buttonRadius: Appearance.rounding.small
@@ -3692,6 +3955,11 @@ Item {
                                             }
                                         }
                                     }
+                                }
+                            }
+                                    }
+                                }
+                            }
                                 }
                             }
                         }
@@ -4364,7 +4632,7 @@ Item {
                                                 objectName: "srHeatmapFlickable"
                                                 Layout.fillWidth: true
                                                 implicitHeight: 82
-                                                contentWidth: srWeeksRow.implicitWidth
+                                                contentWidth: Math.max(1, (root.currentHeatmapData?.weeks?.length ?? 0) * 10 + 10)
                                                 contentHeight: 82
                                                 clip: true
                                                 boundsBehavior: Flickable.StopAtBounds
@@ -4494,45 +4762,69 @@ Item {
                                                     }
                                                 }
 
-                                                Row {
-                                                    id: srWeeksRow
-                                                    spacing: 2
+                                                Canvas {
+                                                    id: srHeatmapCanvas
+                                                    width: Math.max(1, (root.currentHeatmapData?.weeks?.length ?? 0) * 10 + 10)
+                                                    height: 82
+                                                    renderStrategy: Canvas.Cooperative
 
-                                                    Repeater {
-                                                        model: root.currentHeatmapData?.weeks ?? []
-                                                        delegate: Column {
-                                                            required property var modelData
-                                                            spacing: 2
+                                                    readonly property var heatmapData: root.currentHeatmapData
+                                                    readonly property color todayBorderColor: Appearance.colors.colPrimary
+                                                    readonly property color labelColor: root.colSubtext
+                                                    readonly property color futureColor: root._heatFutureColor
+                                                    readonly property color emptyColor: root._heatEmptyColor
+                                                    readonly property color level1Color: root._heatLevel1Color
+                                                    readonly property color level2Color: root._heatLevel2Color
+                                                    readonly property color level3Color: root._heatLevel3Color
+                                                    readonly property color level4Color: root._heatLevel4Color
 
-                                                            Item {
-                                                                width: 8
-                                                                height: 11
-                                                                StyledText {
-                                                                    text: modelData.monthLabel ?? ""
-                                                                    font.pixelSize: 7
-                                                                    color: root.colSubtext
-                                                                    visible: text.length > 0
-                                                                }
+                                                    onHeatmapDataChanged: if (available) requestPaint()
+                                                    onAvailableChanged: if (available) requestPaint()
+                                                    onTodayBorderColorChanged: if (available) requestPaint()
+                                                    onLabelColorChanged: if (available) requestPaint()
+                                                    onFutureColorChanged: if (available) requestPaint()
+                                                    onEmptyColorChanged: if (available) requestPaint()
+                                                    onLevel1ColorChanged: if (available) requestPaint()
+                                                    onLevel2ColorChanged: if (available) requestPaint()
+                                                    onLevel3ColorChanged: if (available) requestPaint()
+                                                    onLevel4ColorChanged: if (available) requestPaint()
+
+                                                    onPaint: {
+                                                        const ctx = getContext("2d")
+                                                        ctx.clearRect(0, 0, width, height)
+                                                        const weeks = heatmapData?.weeks ?? []
+                                                        if (!weeks.length)
+                                                            return
+                                                        ctx.font = `7px ${Appearance.font.family.main}`
+                                                        ctx.textBaseline = "top"
+                                                        for (let w = 0; w < weeks.length; w++) {
+                                                            const wk = weeks[w]
+                                                            if (!wk) continue
+                                                            const x = w * 10
+                                                            const monthLabel = String(wk.monthLabel ?? "")
+                                                            if (monthLabel.length > 0) {
+                                                                ctx.fillStyle = labelColor
+                                                                ctx.fillText(monthLabel, x, 0)
                                                             }
-
-                                                            Repeater {
-                                                                model: modelData.days ?? []
-                                                                delegate: Rectangle {
-                                                                    required property var modelData
-                                                                    width: 8
-                                                                    height: 8
-                                                                    radius: 2
-                                                                    color: root.heatmapCellColor(modelData)
-                                                                    border.width: modelData.isToday ? 1 : 0
-                                                                    border.color: Appearance.colors.colPrimary
+                                                            const days = wk.days ?? []
+                                                            for (let d = 0; d < days.length; d++) {
+                                                                const cell = days[d]
+                                                                if (!cell || !cell.inYear)
+                                                                    continue
+                                                                const y = 13 + d * 10
+                                                                ctx.fillStyle = root.heatmapCellColor(cell)
+                                                                ctx.beginPath()
+                                                                ctx.roundedRect(x, y, 8, 8, 2, 2)
+                                                                ctx.fill()
+                                                                if (cell.isToday) {
+                                                                    ctx.strokeStyle = todayBorderColor
+                                                                    ctx.lineWidth = 1
+                                                                    ctx.beginPath()
+                                                                    ctx.roundedRect(x + 0.5, y + 0.5, 7, 7, 2, 2)
+                                                                    ctx.stroke()
                                                                 }
                                                             }
                                                         }
-                                                    }
-
-                                                    Item {
-                                                        width: 10
-                                                        height: 1
                                                     }
                                                 }
                                             }
@@ -5089,10 +5381,15 @@ Item {
             // =================================================================
             // SUB-TAB 2: AUTO-SYNTAX & SMART COMPOSER
             // =================================================================
-            RowLayout {
+            Loader {
+                id: capturePaneLoader
                 anchors.fill: parent
+                active: root._captureLoaded
                 visible: root.subTab === "capture"
-                spacing: 12
+                onLoaded: root.syncComposerFieldsFromState()
+                sourceComponent: Component {
+                    RowLayout {
+                        spacing: 12
 
                 // Left Column: Structured Smart Vocabulary & Knowledge Composer
                 Rectangle {
@@ -5203,6 +5500,7 @@ Item {
                                 id: composerFrontField
                                 objectName: "srComposerFront"
                                 Layout.fillWidth: true
+                                Component.onCompleted: root.composerFrontField = composerFrontField
                                 placeholderText: root.composerCategory === "vocabulary"
                                     ? Translation.tr("Headword (e.g. ubiquitous, die Sehenswürdigkeit, Nachhaltigkeit)...")
                                     : Translation.tr("Question or Cloze Prompt (no :: or == markup needed)...")
@@ -5367,6 +5665,7 @@ Item {
                                 id: composerBackField
                                 objectName: "srComposerBack"
                                 Layout.fillWidth: true
+                                Component.onCompleted: root.composerBackField = composerBackField
                                 placeholderText: Translation.tr("Meaning, translation, or concise answer (auto-suggested when recognized)...")
                                 text: root.composerBack
                                 onTextEdited: {
@@ -5382,6 +5681,7 @@ Item {
                                 id: composerExampleField
                                 objectName: "srComposerExample"
                                 Layout.fillWidth: true
+                                Component.onCompleted: root.composerExampleField = composerExampleField
                                 placeholderText: Translation.tr("Example sentence (auto-suggested & linked for Cloze mode)...")
                                 text: root.composerExample
                                 onTextEdited: {
@@ -5411,6 +5711,7 @@ Item {
                                     StyledTextField {
                                         id: composerDeckField
                                         Layout.fillWidth: true
+                                        Component.onCompleted: root.composerDeckField = composerDeckField
                                         placeholderText: Translation.tr("Deck name (Default)")
                                         text: root.composerDeck
                                         onTextEdited: root.composerDeck = text
@@ -5419,6 +5720,7 @@ Item {
                                     StyledTextField {
                                         id: composerPhoneticsField
                                         Layout.fillWidth: true
+                                        Component.onCompleted: root.composerPhoneticsField = composerPhoneticsField
                                         placeholderText: Translation.tr("IPA override (/.../)")
                                         text: root.composerPhonetics
                                         onTextEdited: root.composerPhonetics = text
@@ -5427,6 +5729,7 @@ Item {
                                     StyledTextField {
                                         id: composerPosField
                                         Layout.preferredWidth: 110
+                                        Component.onCompleted: root.composerPosField = composerPosField
                                         placeholderText: Translation.tr("Part of Speech")
                                         text: root.composerPos
                                         onTextEdited: root.composerPos = text
@@ -5435,6 +5738,7 @@ Item {
                                     StyledTextField {
                                         id: composerCefrField
                                         Layout.preferredWidth: 90
+                                        Component.onCompleted: root.composerCefrField = composerCefrField
                                         placeholderText: Translation.tr("CEFR (A1-C2)")
                                         text: root.composerCefrOverride
                                         onTextEdited: root.composerCefrOverride = text
@@ -5449,6 +5753,7 @@ Item {
                                     StyledTextField {
                                         id: composerSynonymsField
                                         Layout.fillWidth: true
+                                        Component.onCompleted: root.composerSynonymsField = composerSynonymsField
                                         placeholderText: Translation.tr("Synonyms override (comma-separated)")
                                         text: root.composerSynonyms
                                         onTextEdited: root.composerSynonyms = text
@@ -5458,6 +5763,7 @@ Item {
                                     StyledTextField {
                                         id: composerAntonymsField
                                         Layout.fillWidth: true
+                                        Component.onCompleted: root.composerAntonymsField = composerAntonymsField
                                         placeholderText: Translation.tr("Antonyms override (comma-separated)")
                                         text: root.composerAntonyms
                                         onTextEdited: root.composerAntonyms = text
@@ -5692,6 +5998,7 @@ Item {
                                 TextArea {
                                     id: bulkInputArea
                                     objectName: "srBulkInputArea"
+                                    Component.onCompleted: root.bulkInputArea = bulkInputArea
                                     text: root.bulkInputText
                                     onTextChanged: if (root.bulkInputText !== text) root.bulkInputText = text
                                     placeholderText: "resilient - able to recover quickly // Children are often remarkably resilient.\ndie Erkenntnis - insight, realization // Eine wichtige wissenschaftliche Erkenntnis."
@@ -5788,30 +6095,37 @@ Item {
                     }
                 }
             }
+                }
+            }
 
             // =================================================================
             // SUB-TAB 3: LIBRARY & DECK BROWSER
             // =================================================================
-            Rectangle {
+            Loader {
+                id: libraryPaneLoader
                 anchors.fill: parent
+                active: root._libraryLoaded
                 visible: root.subTab === "library"
-                radius: Appearance.rounding.small
-                color: root.colSurface
-                border.width: 0
+                sourceComponent: Component {
+                    Rectangle {
+                        radius: Appearance.rounding.small
+                        color: root.colSurface
+                        border.width: 0
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 14
-                    spacing: 10
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 14
+                            spacing: 10
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
 
-                        StyledTextField {
-                            id: librarySearchField
-                            objectName: "srLibrarySearch"
-                            Layout.fillWidth: true
+                                StyledTextField {
+                                    id: librarySearchField
+                                    objectName: "srLibrarySearch"
+                                    Layout.fillWidth: true
+                                    Component.onCompleted: root.librarySearchField = librarySearchField
                             placeholderText: Translation.tr("Search vocabulary, meanings, examples, roots, or CEFR level...")
                             text: root.librarySearch
                             onTextEdited: root.librarySearch = text
@@ -6065,6 +6379,8 @@ Item {
                             }
                         }
                     }
+                }
+            }
                 }
             }
         }

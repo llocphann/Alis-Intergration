@@ -224,19 +224,121 @@ def install(data_root, source=ROOT, *, allow_dirty=False, force=False):
     return release
 
 
+def installed_plugins_path(data_root):
+    return Path(data_root) / "installed-plugins.json"
+
+
+def _manifest_plugin_ids(data_root, source=None):
+    manifest_path = None
+    link = owned_link(data_root)
+    if link.exists() and (link / "manifest.json").is_file():
+        manifest_path = link / "manifest.json"
+    elif source is not None and (Path(source) / "manifest.json").is_file():
+        manifest_path = Path(source) / "manifest.json"
+    if manifest_path is None:
+        return ["tlp", "thinkfan", "nexus", "spaced_repetition"]
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    return [plugin["id"] for plugin in plugin_metadata(data)]
+
+
+def load_installed_plugins(data_root, valid_ids=None):
+    target = installed_plugins_path(data_root)
+    if target.is_symlink():
+        raise ValueError("Refusing symlinked installed-plugins.json")
+    if not target.exists():
+        return None, False
+    doc = json.loads(target.read_text(encoding="utf-8"))
+    if not isinstance(doc, dict) or doc.get("schemaVersion") != 1 or not isinstance(doc.get("plugins"), list):
+        raise ValueError("Invalid installed-plugins.json schema")
+    allowed = set(valid_ids) if valid_ids is not None else None
+    seen = []
+    for item in doc["plugins"]:
+        if isinstance(item, str) and item and (allowed is None or item in allowed) and item not in seen:
+            seen.append(item)
+    return seen, True
+
+
+def save_installed_plugins(data_root, plugin_ids):
+    data_root = Path(data_root)
+    data_root.mkdir(parents=True, exist_ok=True)
+    target = installed_plugins_path(data_root)
+    if target.is_symlink():
+        raise ValueError("Refusing symlinked installed-plugins.json")
+    unique = []
+    for item in plugin_ids:
+        if isinstance(item, str) and item and item not in unique:
+            unique.append(item)
+    payload = json.dumps({"schemaVersion": 1, "plugins": unique}, indent=2) + "\n"
+    fd, tmp_path = tempfile.mkstemp(prefix=".installed-plugins-", suffix=".tmp", dir=data_root)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+        os.chmod(tmp_path, 0o644)
+        os.replace(tmp_path, target)
+    except Exception:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
+    return unique
+
+
+def install_plugin(data_root, plugin_id, source=Path(__file__).resolve().parents[1], *, allow_dirty=False, force=False):
+    valid_ids = _manifest_plugin_ids(data_root, source)
+    if plugin_id not in valid_ids:
+        raise ValueError(f"Unknown plugin id: {plugin_id}")
+    link = owned_link(data_root)
+    had_package = link.exists() or link.is_symlink()
+    release = install(data_root, source=source, allow_dirty=allow_dirty, force=force)
+    valid_ids = _manifest_plugin_ids(data_root, release)
+    current_ids, explicit = load_installed_plugins(data_root, valid_ids)
+    if explicit:
+        updated = list(current_ids)
+    elif had_package:
+        updated = list(valid_ids)
+    else:
+        updated = []
+    if plugin_id not in updated:
+        updated.append(plugin_id)
+    save_installed_plugins(data_root, updated)
+    return release, updated
+
+
+def remove_plugin(data_root, plugin_id):
+    valid_ids = _manifest_plugin_ids(data_root)
+    if plugin_id not in valid_ids:
+        raise ValueError(f"Unknown plugin id: {plugin_id}")
+    link = owned_link(data_root)
+    had_package = link.exists()
+    current_ids, explicit = load_installed_plugins(data_root, valid_ids)
+    if explicit:
+        updated = [item for item in current_ids if item != plugin_id]
+    elif had_package:
+        updated = [item for item in valid_ids if item != plugin_id]
+    else:
+        return []
+    return save_installed_plugins(data_root, updated)
+
+
 def uninstall(data_root):
     link = owned_link(data_root)
     if link.is_symlink():
         link.unlink()
+    selection = installed_plugins_path(data_root)
+    if selection.is_file() and not selection.is_symlink():
+        selection.unlink()
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("install", "uninstall"))
+    parser.add_argument("action", choices=("install", "uninstall", "install-plugin", "remove-plugin"))
+    parser.add_argument("plugin", nargs="?", default=None)
+    parser.add_argument("--plugin", dest="plugin_flag", default=None)
     parser.add_argument("--data-home", type=Path, default=Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")))
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
+    target_plugin = args.plugin_flag or args.plugin
+    if args.action in ("install-plugin", "remove-plugin") and not target_plugin:
+        raise ValueError(f"{args.action} requires a plugin id")
     canonical = args.data_home / "alis-intergration"
     legacy = args.data_home / "".join(("hada", "lird"))
     if legacy.is_dir() and not legacy.is_symlink() and not canonical.exists():
@@ -247,6 +349,12 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX)
         if args.action == "install":
             print("Installed Alis-Intergration:", install(data_root, allow_dirty=args.allow_dirty, force=args.force))
+        elif args.action == "install-plugin":
+            release, enabled = install_plugin(data_root, target_plugin, allow_dirty=args.allow_dirty, force=args.force)
+            print(f"Installed Alis-Intergration plugin {target_plugin}: {release} (plugins={','.join(enabled)})")
+        elif args.action == "remove-plugin":
+            enabled = remove_plugin(data_root, target_plugin)
+            print(f"Removed Alis-Intergration plugin {target_plugin} (plugins={','.join(enabled)})")
         else:
             uninstall(data_root)
             print("Disabled the package link; releases and user data are preserved")

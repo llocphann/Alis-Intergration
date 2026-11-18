@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Effects
 import Quickshell
+import Quickshell.Io
 import qs
 import qs.services as HostServices
 import qs.modules.common
@@ -449,6 +450,171 @@ FocusScope {
         }
     }
 
+    // ── Exercises Tracker <-> Nexus live bridge (service handle + read-only state.json fallback) ──
+    property string exercisesTrackerStatePath: (Directories.stateUserPath ?? "") + "/exercises-tracker/state.json"
+    property var _exercisesFallbackState: null
+    property int _exercisesBridgeRevision: 0
+
+    readonly property var exercisesTrackerService: HostServices.AlisIntergration?.exercisesTracker
+        ?? HostServices.AlisIntergration?.session?.exercisesTracker
+        ?? null
+    readonly property bool exercisesTrackerEnabled: Boolean(HostServices.AlisIntergration?.exercisesTrackerEnabled)
+        || Boolean(root.exercisesTrackerService?.ready)
+        || Boolean(root._exercisesFallbackState)
+
+    FileView {
+        id: exercisesStateFallbackFile
+        path: (!Boolean(root.exercisesTrackerService?.ready) && root.exercisesTrackerStatePath.length > 0)
+            ? root.exercisesTrackerStatePath
+            : ""
+        watchChanges: root.surfaceActive && !Boolean(root.exercisesTrackerService?.ready)
+        printErrors: false
+        onLoaded: {
+            try {
+                const raw = exercisesStateFallbackFile.text();
+                root._exercisesFallbackState = raw && raw.trim().length > 0 ? JSON.parse(raw) : null;
+            } catch (e) {
+                root._exercisesFallbackState = null;
+            }
+            root._exercisesBridgeRevision += 1;
+        }
+        onFileChanged: exercisesStateFallbackFile.reload()
+        onLoadFailed: {
+            root._exercisesFallbackState = null;
+        }
+    }
+
+    Connections {
+        target: root.exercisesTrackerService
+        ignoreUnknownSignals: true
+        function onStateUpdated() {
+            root._exercisesBridgeRevision += 1;
+        }
+        function onRevisionChanged() {
+            root._exercisesBridgeRevision += 1;
+        }
+    }
+
+    readonly property var exercisesTrackerSummary: {
+        void root._exercisesBridgeRevision;
+        const svc = root.exercisesTrackerService;
+        if (svc && svc.ready && svc.todaySummary)
+            return svc.todaySummary;
+        const fb = root._exercisesFallbackState;
+        if (fb && typeof fb === "object") {
+            if (fb.summary && typeof fb.summary === "object")
+                return fb.summary;
+            const todayIso = Qt.formatDate(new Date(), "yyyy-MM-dd");
+            const dayRec = fb.days ? fb.days[todayIso] : null;
+            const exList = Array.isArray(dayRec?.exercises) ? dayRec.exercises : [];
+            let doneCount = 0;
+            let volKg = 0;
+            for (let i = 0; i < exList.length; ++i) {
+                const ex = exList[i];
+                if (ex && ex.completed)
+                    doneCount += 1;
+                const sets = Number(ex?.completedSets ?? (ex?.completed ? ex?.sets : 0)) || 0;
+                const reps = parseFloat(String(ex?.reps ?? "0")) || 0;
+                const w = Number(ex?.weight ?? 0) || 0;
+                if (sets > 0 && reps > 0 && w > 0)
+                    volKg += sets * reps * w;
+            }
+            const checkins = Array.isArray(fb.bodyCheckins) ? fb.bodyCheckins : [];
+            const latest = checkins.length > 0 ? checkins[0] : null;
+            return {
+                todayDate: todayIso,
+                todayRoutine: String(dayRec?.routine ?? ""),
+                todayTitle: String(dayRec?.title ?? ""),
+                todayTotalExercises: exList.length,
+                todayCompletedExercises: doneCount,
+                todayCompletionPct: exList.length > 0 ? Math.round((doneCount * 100) / exList.length) : 0,
+                todayVolumeKg: Math.round(volKg),
+                currentStreakDays: Number(fb.currentStreakDays ?? 0),
+                totalLoggedWorkouts: fb.days ? Object.keys(fb.days).length : 0,
+                totalBodyCheckins: checkins.length,
+                latestWeightKg: Number(latest?.weightKg ?? 0),
+                latestBodyFatPct: Number(latest?.bodyFatPct ?? 0),
+                latestPhotoPath: String(latest?.photoPath ?? "")
+            };
+        }
+        return ({});
+    }
+
+    readonly property var exercisesTrackerLatestCheckin: {
+        void root._exercisesBridgeRevision;
+        const svc = root.exercisesTrackerService;
+        if (svc && svc.ready) {
+            if (typeof svc.getRecentCheckins === "function") {
+                const list = svc.getRecentCheckins(1);
+                if (Array.isArray(list) && list.length > 0)
+                    return list[0];
+            }
+            if (Array.isArray(svc.bodyCheckins) && svc.bodyCheckins.length > 0)
+                return svc.bodyCheckins[0];
+        }
+        const checkins = root._exercisesFallbackState?.bodyCheckins;
+        return (Array.isArray(checkins) && checkins.length > 0) ? checkins[0] : null;
+    }
+
+    readonly property string exercisesTrackerLatestPhotoUrl: {
+        const ck = root.exercisesTrackerLatestCheckin;
+        const directUrl = String(ck?.photoUrl ?? "").trim();
+        if (directUrl.length > 0)
+            return directUrl;
+        const p = String(ck?.photoPath ?? root.exercisesTrackerSummary?.latestPhotoPath ?? "").trim();
+        if (p.length === 0)
+            return "";
+        return p.startsWith("file://") ? p : ("file://" + p);
+    }
+
+    readonly property bool exercisesTrackerCardVisible: root.exercisesTrackerEnabled
+        && (Boolean(HostServices.AlisIntergration?.exercisesTrackerEnabled)
+            || Number(root.exercisesTrackerSummary?.todayTotalExercises ?? 0) > 0
+            || Number(root.exercisesTrackerSummary?.totalLoggedWorkouts ?? 0) > 0
+            || Number(root.exercisesTrackerSummary?.totalBodyCheckins ?? 0) > 0)
+
+    function getExercisesDaySummary(dateStr: string): var {
+        void root._exercisesBridgeRevision;
+        const target = String(dateStr || Qt.formatDate(new Date(), "yyyy-MM-dd"));
+        const svc = root.exercisesTrackerService;
+        if (svc && svc.ready && typeof svc.getDaySummary === "function")
+            return svc.getDaySummary(target) ?? ({});
+        const fb = root._exercisesFallbackState;
+        const dayRec = fb?.days ? fb.days[target] : null;
+        if (!dayRec)
+            return ({});
+        const exList = Array.isArray(dayRec.exercises) ? dayRec.exercises : [];
+        let doneCount = 0;
+        for (let i = 0; i < exList.length; ++i) {
+            if (exList[i]?.completed)
+                doneCount += 1;
+        }
+        return {
+            date: target,
+            routine: String(dayRec.routine ?? ""),
+            title: String(dayRec.title ?? ""),
+            totalExercises: exList.length,
+            completedExercises: doneCount,
+            completionPct: exList.length > 0 ? Math.round((doneCount * 100) / exList.length) : 0,
+            exercises: exList
+        };
+    }
+
+    function openExercisesTracker(dateStr = ""): void {
+        GlobalStates.dashboardPageId = "exercisesTracker";
+        if (typeof Config !== "undefined" && Config && typeof Config.setNestedValue === "function")
+            Config.setNestedValue("dashboard.lastPageId", "exercisesTracker");
+        if (root.nexus && typeof root.nexus.close === "function")
+            root.nexus.close();
+        GlobalStates.nexusOpen = false;
+        const svc = root.exercisesTrackerService;
+        if (svc && typeof svc.openDashboardTracker === "function") {
+            svc.openDashboardTracker(String(dateStr || ""));
+            return;
+        }
+        GlobalStates.dashboardOpen = true;
+    }
+
     // Mix two colors by weightA (0.0..1.0) and return #rrggbb hex string (matching CSS color-mix in srgb)
     function mixColorHex(colorA, colorB, weightA: real): string {
         const w = Math.max(0.0, Math.min(1.0, Number(weightA)));
@@ -465,7 +631,7 @@ FocusScope {
     readonly property var ccWeights: [0, 0.012, 0.038, 0.073, 0.113, 0.167, 0.228, 0.310, 0.402, 0.506, 0.621, 0.748, 0.886, 1.0]
 
     readonly property bool wallpaperTransitionActive: Boolean(GlobalStates.wallpaperSelectorOpen) || Boolean(GlobalStates.wallpaperLauncherOpen) || Boolean(GlobalStates.coverflowSelectorOpen) || Boolean(HostServices.MaterialThemeLoader?.previewActive)
-    readonly property bool surfaceActive: root.visible && Boolean(root.nexus?.isOpen ?? true) && !root.wallpaperTransitionActive
+    readonly property bool surfaceActive: root.visible && Boolean(root.nexus?.isOpen ?? true) && !root.wallpaperTransitionActive && !Boolean(GlobalStates.screenLocked)
 
     function _readLiveThemeSignature(): string {
         return [
@@ -3242,8 +3408,11 @@ FocusScope {
                 }
 
                 onActiveLocalGraphChanged: {
-                    if ((activeLocalGraph?.nodes?.length ?? 0) > 0 && !nexusLocalGraphCard._graphSettledOnce)
-                        nexusLocalGraphCard._graphSettledOnce = true;
+                    if ((activeLocalGraph?.nodes?.length ?? 0) > 0 && !_graphSettledOnce)
+                        Qt.callLater(() => {
+                            if (nexusLocalGraphCard && !nexusLocalGraphCard._graphSettledOnce)
+                                nexusLocalGraphCard._graphSettledOnce = true;
+                        });
                     localGraphCanvas.requestPaint();
                 }
 
@@ -4616,7 +4785,10 @@ FocusScope {
                                                         source: String(root.nexus?.homepagePhotoUrl || root.nexus?.homepageCoverUrl || "")
                                                         fillMode: Image.PreserveAspectCrop
                                                         asynchronous: true
-                                                        layer.enabled: true
+                                                        cache: false
+                                                        mipmap: false
+                                                        sourceSize: Qt.size(512, 512)
+                                                        layer.enabled: root.surfaceActive && homepagePhotoImage.visible && homepagePhotoImage.status === Image.Ready
                                                         layer.effect: MultiEffect {
                                                             colorization: 0.72
                                                             colorizationColor: Qt.color(root._settledPrimary)
@@ -4844,6 +5016,172 @@ FocusScope {
                                                             StyledText {
                                                                 Layout.preferredWidth: 96
                                                                 text: String(modelData.intensity ?? modelData[2] ?? "")
+                                                                font.pixelSize: 10
+                                                                color: settledColors.colSubtext
+                                                                elide: Text.ElideRight
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // Live Exercises & Body Tracker Bridge Card (synced from DashboardExercisesTracker / state.json)
+                                            Rectangle {
+                                                id: nexusExercisesTrackerCard
+                                                objectName: "nexusExercisesTrackerCard"
+                                                visible: root.exercisesTrackerCardVisible
+                                                Layout.fillWidth: true
+                                                implicitHeight: exercisesBridgeCol.implicitHeight + 18
+                                                radius: 8
+                                                color: settledColors.colLayer1
+                                                border.width: 1
+                                                border.color: settledColors.colLayer0Border
+
+                                                ColumnLayout {
+                                                    id: exercisesBridgeCol
+                                                    anchors.fill: parent
+                                                    anchors.margins: 10
+                                                    spacing: 6
+
+                                                    RowLayout {
+                                                        Layout.fillWidth: true
+                                                        spacing: 6
+
+                                                        Rectangle {
+                                                            width: 3
+                                                            height: 14
+                                                            radius: 1.5
+                                                            color: settledColors.colTertiary ?? settledColors.colPrimary
+                                                        }
+
+                                                        StyledText {
+                                                            Layout.fillWidth: true
+                                                            Layout.minimumWidth: 0
+                                                            text: {
+                                                                const t = String(root.exercisesTrackerSummary?.todayTitle || root.exercisesTrackerSummary?.todayRoutine || "").trim();
+                                                                return t.length > 0 ? ("Workout · " + t) : "Exercises & Body Tracker";
+                                                            }
+                                                            font.pixelSize: Appearance.font.pixelSize.smaller
+                                                            font.weight: Font.Bold
+                                                            color: settledColors.colPrimary
+                                                            elide: Text.ElideRight
+                                                        }
+
+                                                        Rectangle {
+                                                            id: openExercisesTrackerBtn
+                                                            objectName: "nexusOpenExercisesTrackerButton"
+                                                            implicitHeight: 22
+                                                            implicitWidth: openExBtnRow.implicitWidth + 14
+                                                            height: 22
+                                                            width: openExBtnRow.implicitWidth + 14
+                                                            radius: 6
+                                                            color: openExMouse.containsMouse ? settledColors.colPrimary : settledColors.colLayer2
+                                                            border.width: 1
+                                                            border.color: settledColors.colLayer0Border
+
+                                                            Row {
+                                                                id: openExBtnRow
+                                                                anchors.centerIn: parent
+                                                                spacing: 4
+
+                                                                MaterialSymbol {
+                                                                    anchors.verticalCenter: parent.verticalCenter
+                                                                    text: "fitness_center"
+                                                                    iconSize: 13
+                                                                    color: openExMouse.containsMouse ? settledColors.colOnPrimary : settledColors.colPrimary
+                                                                }
+
+                                                                StyledText {
+                                                                    anchors.verticalCenter: parent.verticalCenter
+                                                                    text: "Tracker"
+                                                                    font.pixelSize: Appearance.font.pixelSize.smallest
+                                                                    font.weight: Font.Bold
+                                                                    color: openExMouse.containsMouse ? settledColors.colOnPrimary : settledColors.colPrimary
+                                                                }
+                                                            }
+
+                                                            MouseArea {
+                                                                id: openExMouse
+                                                                anchors.fill: parent
+                                                                hoverEnabled: true
+                                                                cursorShape: Qt.PointingHandCursor
+                                                                onClicked: root.openExercisesTracker(String(root.exercisesTrackerSummary?.todayDate ?? ""))
+                                                            }
+                                                        }
+                                                    }
+
+                                                    RowLayout {
+                                                        Layout.fillWidth: true
+                                                        spacing: 8
+
+                                                        Rectangle {
+                                                            visible: root.exercisesTrackerLatestPhotoUrl.length > 0
+                                                            Layout.preferredWidth: 40
+                                                            Layout.preferredHeight: 40
+                                                            width: 40
+                                                            height: 40
+                                                            radius: 6
+                                                            color: settledColors.colLayer0
+                                                            border.width: 1
+                                                            border.color: settledColors.colLayer0Border
+                                                            clip: true
+
+                                                            Image {
+                                                                anchors.fill: parent
+                                                                source: root.exercisesTrackerLatestPhotoUrl
+                                                                fillMode: Image.PreserveAspectCrop
+                                                                asynchronous: true
+                                                                cache: false
+                                                                mipmap: false
+                                                                sourceSize: Qt.size(96, 96)
+                                                            }
+                                                        }
+
+                                                        ColumnLayout {
+                                                            Layout.fillWidth: true
+                                                            Layout.minimumWidth: 0
+                                                            spacing: 2
+
+                                                            StyledText {
+                                                                Layout.fillWidth: true
+                                                                Layout.minimumWidth: 0
+                                                                text: {
+                                                                    const done = Number(root.exercisesTrackerSummary?.todayCompletedExercises ?? 0);
+                                                                    const total = Number(root.exercisesTrackerSummary?.todayTotalExercises ?? 0);
+                                                                    const pct = Number(root.exercisesTrackerSummary?.todayCompletionPct ?? 0);
+                                                                    const streak = Number(root.exercisesTrackerSummary?.currentStreakDays ?? 0);
+                                                                    const parts = [String(done) + "/" + String(total) + " done (" + String(pct) + "%)"];
+                                                                    if (streak > 0)
+                                                                        parts.push(String(streak) + "d streak");
+                                                                    const vol = Number(root.exercisesTrackerSummary?.todayVolumeKg ?? 0);
+                                                                    if (vol > 0)
+                                                                        parts.push(String(Math.round(vol)) + " kg vol");
+                                                                    return parts.join(" · ");
+                                                                }
+                                                                font.family: Appearance.font.family.monospace
+                                                                font.pixelSize: 10
+                                                                color: settledColors.colOnLayer1
+                                                                elide: Text.ElideRight
+                                                            }
+
+                                                            StyledText {
+                                                                visible: Number(root.exercisesTrackerSummary?.latestWeightKg ?? 0) > 0
+                                                                    || Number(root.exercisesTrackerSummary?.totalBodyCheckins ?? 0) > 0
+                                                                Layout.fillWidth: true
+                                                                Layout.minimumWidth: 0
+                                                                text: {
+                                                                    const metrics = [];
+                                                                    const wt = Number(root.exercisesTrackerSummary?.latestWeightKg ?? 0);
+                                                                    const bf = Number(root.exercisesTrackerSummary?.latestBodyFatPct ?? 0);
+                                                                    const ckCount = Number(root.exercisesTrackerSummary?.totalBodyCheckins ?? 0);
+                                                                    if (wt > 0)
+                                                                        metrics.push(wt.toFixed(1) + " kg");
+                                                                    if (bf > 0)
+                                                                        metrics.push(bf.toFixed(1) + "% BF");
+                                                                    if (ckCount > 0)
+                                                                        metrics.push(String(ckCount) + " check-ins");
+                                                                    return "Body · " + metrics.join(" · ");
+                                                                }
                                                                 font.pixelSize: 10
                                                                 color: settledColors.colSubtext
                                                                 elide: Text.ElideRight
@@ -5393,6 +5731,47 @@ FocusScope {
                                     font.pixelSize: Appearance.font.pixelSize.smallest
                                     font.weight: Font.Bold
                                     color: collectionViewRoot.activeCollectionMeta.accent
+                                }
+                            }
+
+                            Rectangle {
+                                id: collExercisesTrackerBtn
+                                objectName: "nexusCollectionOpenExercisesTrackerButton"
+                                visible: collectionViewRoot.activeCollectionMeta.id === "exercises"
+                                height: 24
+                                width: collExBtnRow.implicitWidth + 16
+                                radius: 12
+                                color: collExBtnMouse.containsMouse ? collectionViewRoot.activeCollectionMeta.accent : settledColors.colLayer0
+                                border.width: 1
+                                border.color: collectionViewRoot.activeCollectionMeta.accent
+
+                                Row {
+                                    id: collExBtnRow
+                                    anchors.centerIn: parent
+                                    spacing: 5
+
+                                    MaterialSymbol {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "monitoring"
+                                        iconSize: 14
+                                        color: collExBtnMouse.containsMouse ? settledColors.colLayer0 : collectionViewRoot.activeCollectionMeta.accent
+                                    }
+
+                                    StyledText {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "Workout Tracker"
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        font.weight: Font.Bold
+                                        color: collExBtnMouse.containsMouse ? settledColors.colLayer0 : collectionViewRoot.activeCollectionMeta.accent
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: collExBtnMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.openExercisesTracker("")
                                 }
                             }
 
@@ -10455,8 +10834,11 @@ FocusScope {
                         "groups": []
                     })
                 onGraphDataChanged: {
-                    if ((graphData?.nodes?.length ?? 0) > 0 && !nexusVaultGraphCard._graphSettledOnce)
-                        nexusVaultGraphCard._graphSettledOnce = true;
+                    if ((graphData?.nodes?.length ?? 0) > 0 && !_graphSettledOnce)
+                        Qt.callLater(() => {
+                            if (nexusVaultGraphCard && !nexusVaultGraphCard._graphSettledOnce)
+                                nexusVaultGraphCard._graphSettledOnce = true;
+                        });
                     vaultGraphCanvas.requestPaint();
                 }
 

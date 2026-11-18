@@ -14,6 +14,7 @@ Item {
     readonly property var zettelkasten: notes.item
     readonly property var nexus: nexusLoader.item
     readonly property var spacedRepetition: spacedRepetitionLoader.item
+    readonly property var exercisesTracker: exercisesTrackerLoader.item
     Loader { id: capabilities; active: host.tlpEnabled; source: "services/TlpRuntimeCapabilities.qml" }
     Loader {
         id: charge; active: host.tlpEnabled
@@ -45,5 +46,24 @@ Item {
     Loader { id: theme; active: host.nexusEnabled; source: "services/NexusTheme.qml" }
     Loader { id: notes; active: host.nexusEnabled; source: "services/Zettelkasten.qml" }
     Loader { id: nexusLoader; active: host.nexusEnabled; source: "services/NexusService.qml" }
-    Loader { id: spacedRepetitionLoader; active: host.spacedRepetitionEnabled ?? false; source: "services/SpacedRepetition.qml" }
+    Loader {
+        id: spacedRepetitionLoader
+        active: host.spacedRepetitionEnabled ?? false
+        function syncSource(): void {
+            if (active && String(source).length === 0) source = "services/SpacedRepetition.qml"
+            else if (!active) source = ""
+        }
+        onActiveChanged: syncSource()
+        Component.onCompleted: syncSource()
+    }
+    Loader {
+        id: exercisesTrackerLoader
+        active: host.exercisesTrackerEnabled ?? false
+        function syncSource(): void {
+            if (active && String(source).length === 0) source = "services/ExercisesTracker.qml"
+            else if (!active) source = ""
+        }
+        onActiveChanged: syncSource()
+        Component.onCompleted: syncSource()
+    }
 }

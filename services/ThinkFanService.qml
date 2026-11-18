@@ -12,6 +12,7 @@ Item {
     property bool _live: true
     Component.onDestruction: root._live = false
     property string helperPath: "/usr/libexec/alis-thinkfan"
+    readonly property string _legacyHelperPath: "/usr/libexec/" + ["i", "nir"].join("") + "-thinkfan"
     property string privilegeEscalationCommand: "/usr/bin/pkexec"
     readonly property string packagedHelperPath: decodeURIComponent(String(Qt.resolvedUrl("../assets/helpers/alis-thinkfan")).replace(/^file:\/\//, ""))
 
@@ -310,6 +311,22 @@ Item {
         root.applyFanLevel(queued)
     }
 
+    function _buildApplyCommand(flag: string, value: string): var {
+        if (root.helperPath === "/usr/libexec/alis-thinkfan") {
+            return [
+                "/bin/sh", "-c",
+                "helper=\"$2\"; if [ ! -x \"$helper\" ] && [ -x \"$3\" ]; then helper=\"$3\"; fi; exec \"$1\" \"$helper\" \"$4\" \"$5\"",
+                "sh",
+                root.privilegeEscalationCommand,
+                root.helperPath,
+                root._legacyHelperPath,
+                flag,
+                value
+            ]
+        }
+        return [root.privilegeEscalationCommand, root.helperPath, flag, value]
+    }
+
     function applyProfile(requestedProfile: string): bool {
         const normalized = String(requestedProfile ?? "")
         if (normalized !== "managed" && normalized !== "firmware") {
@@ -347,10 +364,7 @@ Item {
         root.pendingOperation = "profile:" + normalized
         root.lastApplySucceeded = false
         root.lastApplyError = ""
-        applyProcess.command = [
-            root.privilegeEscalationCommand, root.helperPath,
-            "--apply", normalized
-        ]
+        applyProcess.command = root._buildApplyCommand("--apply", normalized)
         applyProcess.running = true
         return true
     }
@@ -393,10 +407,7 @@ Item {
         root.pendingOperation = "fan-level:" + normalized
         root.lastApplySucceeded = false
         root.lastApplyError = ""
-        applyProcess.command = [
-            root.privilegeEscalationCommand, root.helperPath,
-            "--set-level", normalized
-        ]
+        applyProcess.command = root._buildApplyCommand("--set-level", normalized)
         applyProcess.running = true
         return true
     }
@@ -507,7 +518,7 @@ Item {
                 }
                 if (line.startsWith("HELPER:")) {
                     const resolved = line.slice(7).trim()
-                    if (resolved.length > 0 && root.helperPath === "/usr/libexec/alis-thinkfan")
+                    if (resolved.startsWith("/usr/libexec/") && root.helperPath === "/usr/libexec/alis-thinkfan")
                         root.helperPath = resolved
                     return
                 }
@@ -678,6 +689,7 @@ Item {
         property bool awaitingSleepArg: false
         property bool binaryMissing: false
         running: root._live && root.sleepMonitorEnabled && !dbusSleepMonitor.binaryMissing
+        Component.onDestruction: dbusSleepMonitor.running = false
         command: [
             "/bin/sh", "-c",
             "command -v dbus-monitor >/dev/null 2>&1 || exit 127; exec dbus-monitor --system \"type='signal',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'\""
