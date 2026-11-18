@@ -263,6 +263,26 @@ ShellRoot {
                 plannerJumpBtn.clicked()
                 tryCompare(dashboard, "currentPageId", "exercisesTracker", 3000)
 
+                const workoutCard = findChild(view, "exercisesWorkoutCard")
+                const bodyCard = findChild(view, "exercisesBodyTrackerCard")
+                const openSettingsBtn = findChild(view, "exercisesOpenSettingsButton")
+                check(workoutCard !== null && workoutCard.border.width === 0,
+                    "exercisesWorkoutCard should have border.width === 0")
+                check(bodyCard !== null && bodyCard.border.width === 0,
+                    "exercisesBodyTrackerCard should have border.width === 0")
+                check(openSettingsBtn !== null && openSettingsBtn.visible === true,
+                    "exercisesOpenSettingsButton missing from Exercises Tracker header")
+                const settingsSrc = AlisIntergration.settingsSource("exercisesTracker")
+                check(settingsSrc.endsWith("/modules/settings/DashboardExercisesTrackerSettings.qml"),
+                    "exercisesTracker settingsSource not registered: " + settingsSrc)
+                const settingsComp = Qt.createComponent(settingsSrc)
+                check(settingsComp.status === Component.Ready,
+                    "DashboardExercisesTrackerSettings.qml failed to compile: " + settingsComp.errorString())
+                const settingsView = settingsComp.createObject(win, { width: 720 })
+                check(settingsView !== null && settingsView.implicitHeight > 100,
+                    "DashboardExercisesTrackerSettings failed to instantiate")
+                settingsView.destroy()
+
                 svc.selectDate(origDate)
                 svc.flushSave()
                 wait(250)
@@ -483,7 +503,38 @@ ShellRoot {
                 check(GlobalStates.dashboardPageId === "exercisesTracker",
                     "openDashboardTracker did not route Dashboard back to exercisesTracker")
 
-                // 5. Explicit toggle off & back on via AlisIntergration
+                // 5. Verify borderless inner cards & Spaced Repetition colBorder parity + Integrations Settings view
+                const workoutCard = findChild(view, "exercisesWorkoutCard")
+                const bodyCard = findChild(view, "exercisesBodyTrackerCard")
+                const openSettingsBtn = findChild(view, "exercisesOpenSettingsButton")
+                check(workoutCard !== null && workoutCard.border.width === 0,
+                    "exercisesWorkoutCard should have border.width === 0")
+                check(bodyCard !== null && bodyCard.border.width === 0,
+                    "exercisesBodyTrackerCard should have border.width === 0")
+                check(openSettingsBtn !== null && openSettingsBtn.visible === true,
+                    "exercisesOpenSettingsButton missing from Exercises Tracker header")
+                check(Math.abs(view.colBorder.a - 0.07) < 0.015,
+                    "Exercises Tracker colBorder alpha does not match Spaced Repetition (0.07): " + view.colBorder.a)
+
+                const settingsSrc = AlisIntergration.settingsSource("exercisesTracker")
+                check(settingsSrc.endsWith("/modules/settings/DashboardExercisesTrackerSettings.qml"),
+                    "exercisesTracker settingsSource not registered: " + settingsSrc)
+                const settingsComp = Qt.createComponent(settingsSrc)
+                check(settingsComp.status === Component.Ready,
+                    "DashboardExercisesTrackerSettings.qml failed to compile: " + settingsComp.errorString())
+                const settingsView = settingsComp.createObject(win, { width: 720 })
+                check(settingsView !== null && settingsView.implicitHeight > 100,
+                    "DashboardExercisesTrackerSettings failed to instantiate")
+                svc.updatePreferences({ defaultSets: 4, defaultGalleryMode: "compare", showBodyMetrics: false })
+                check(svc.preferences.defaultSets === 4 && svc.preferences.defaultGalleryMode === "compare",
+                    "ExercisesTracker.updatePreferences did not update preferences")
+                svc.applySplitPreset("upper_lower")
+                check(svc.weeklyTemplates["1"] === "push" && svc.weeklyTemplates["2"] === "legs" && svc.weeklyTemplates["4"] === "pull",
+                    "ExercisesTracker.applySplitPreset failed")
+                svc.updatePreferences({ defaultSets: 3, defaultGalleryMode: "timeline", showBodyMetrics: true })
+                settingsView.destroy()
+
+                // 6. Explicit toggle off & back on via AlisIntergration
                 AlisIntergration.setExercisesTrackerEnabled(false)
                 check(AlisIntergration.exercisesTrackerEnabled === false, "Disabling Exercises Tracker failed")
                 AlisIntergration.setExercisesTrackerEnabled(true)

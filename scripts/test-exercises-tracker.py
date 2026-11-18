@@ -198,6 +198,33 @@ assert.notStrictEqual(migrated1.days["2026-11-10"].exercises[0].id, migrated1.da
 assert.strictEqual(migrated1.bodyCheckins[0].customBcMeta, "safe");
 assert.deepStrictEqual(migrated1.days, migrated2.days);
 assert.deepStrictEqual(migrated1.bodyCheckins, migrated2.bodyCheckins);
+
+// 6. Preferences & Weekly Split Customization
+let customState = ctx.updatePreferences(migrated1, {
+    weightUnit: "lb",
+    defaultSets: 5,
+    defaultRestSeconds: 150,
+    autoStartRestOnSet: true,
+    showInNexus: false,
+    defaultGalleryMode: "compare",
+    showBodyMetrics: false
+});
+assert.strictEqual(customState.preferences.weightUnit, "lb");
+assert.strictEqual(customState.preferences.defaultSets, 5);
+assert.strictEqual(customState.preferences.defaultRestSeconds, 150);
+assert.strictEqual(customState.preferences.autoStartRestOnSet, true);
+assert.strictEqual(customState.preferences.showInNexus, false);
+assert.strictEqual(customState.preferences.defaultGalleryMode, "compare");
+assert.strictEqual(customState.preferences.showBodyMetrics, false);
+assert.strictEqual(customState.preferences.unknownPref, "preserved");
+
+customState = ctx.applyWeeklySplitPreset(customState, "upper_lower");
+assert.strictEqual(customState.weeklyTemplates["1"], "push");
+assert.strictEqual(customState.weeklyTemplates["2"], "legs");
+assert.strictEqual(customState.weeklyTemplates["3"], "rest");
+assert.strictEqual(customState.weeklyTemplates["4"], "pull");
+customState = ctx.updateWeeklyTemplate(customState, 3, "cardio");
+assert.strictEqual(customState.weeklyTemplates["3"], "cardio");
 """
     res = subprocess.run(
         ["node", "-e", node_test, str(ENGINE_JS)],

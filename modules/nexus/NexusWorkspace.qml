@@ -567,7 +567,13 @@ FocusScope {
         return p.startsWith("file://") ? p : ("file://" + p);
     }
 
+    readonly property bool exercisesTrackerShowInNexus: Boolean(
+        root.exercisesTrackerService?.preferences?.showInNexus
+        ?? (root._exercisesFallbackState?.preferences?.showInNexus !== false)
+    )
+
     readonly property bool exercisesTrackerCardVisible: root.exercisesTrackerEnabled
+        && root.exercisesTrackerShowInNexus
         && (Boolean(HostServices.AlisIntergration?.exercisesTrackerEnabled)
             || Number(root.exercisesTrackerSummary?.todayTotalExercises ?? 0) > 0
             || Number(root.exercisesTrackerSummary?.totalLoggedWorkouts ?? 0) > 0

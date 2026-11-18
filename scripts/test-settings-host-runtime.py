@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix="alis-intergration-native-") as name:
     config = private / "config/alis"
     config.mkdir(parents=True)
     options = json.loads((HOST / "defaults/config.json").read_text())
-    options["integrations"]["alisIntergration"] = {key:False for key in ("tlp","thinkfan","nexus","spaced_repetition")}
+    options["integrations"]["alisIntergration"] = {key:False for key in ("tlp","thinkfan","nexus","spaced_repetition","exercises_tracker")}
     options["battery"]["chargeLimit"]["enable"] = False
     options["powerProfiles"]["fanControl"]["enabled"] = False
     options["integrations"]["nexus"]["autoTheme"] = False
@@ -94,7 +94,7 @@ ShellRoot {
    const installed = AlisIntergration.installedPlugins
    check(findChild(integrations,"integrationPrimaryTabs")===null,"top plugin sub-tabs should be replaced by Management cards + modal")
    check(waffleIntegrations.primaryTabs.length===installed.length+1,"Waffle plugin metadata count mismatch")
-   check(installed.length===4 && integrations.primaryTabs.length===5,"N installed plugins must have N+1 entries")
+   check(installed.length===5 && integrations.primaryTabs.length===6,"N installed plugins must have N+1 entries")
    AlisIntergration.installedPlugins=[]
    check(integrations.primaryTabs.length===1 && integrations.activePlugin==="management","empty package did not fall back to Management")
    AlisIntergration.installedPlugins=installed.slice(0,1)
@@ -111,7 +111,7 @@ ShellRoot {
     tryCompare(integrations,"width",width,1000);wait(50)
     const pkg=findChild(integrations,"integrationOptionalPluginsCard")
     check(pkg!==null && pkg.width>0 && pkg.width<=integrations.width+.1,"Optional Plugins card missing or overflows width "+width)
-    for(const pid of ["nexus","spaced_repetition","tlp","thinkfan"]){
+    for(const pid of ["nexus","spaced_repetition","exercises_tracker","tlp","thinkfan"]){
      const card=findChild(integrations,"integrationPluginCard_"+pid)
      check(card!==null && card.width>0,"plugin card "+pid+" missing at width "+width)
      const rightEdge=card.mapToItem(integrations,card.width,0).x
@@ -160,6 +160,11 @@ ShellRoot {
    integrations.activateSettingsSearchSection("Nexus Todo")
    tryVerify(()=>findChild(integrations,"nexusTodoNotePattern")!==null,2000)
    check(findChild(integrations,"nexusTodoNotePattern").text==="Capture/My Tasks.md","reopening task fields lost saved state")
+   Config.setNestedValue("integrations.alisIntergration.exercises_tracker",true)
+   integrations.openPluginModal("exercises_tracker")
+   tryVerify(()=>findChild(integrations,"alisIntergrationExercisesTrackerSettings")!==null,3000)
+   integrations.closePluginModal()
+   Config.setNestedValue("integrations.alisIntergration.exercises_tracker",false)
    Config.setNestedValue("integrations.alisIntergration.tlp",true)
    tryCompare(TlpSettingsService,"schemaLoaded",true,3000)
    tryCompare(TlpSettingsService,"statusReason","fixture",3000)

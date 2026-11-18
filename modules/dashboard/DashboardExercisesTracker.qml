@@ -23,24 +23,33 @@ Item {
         ?? null
 
     readonly property bool abyss: Config.options?.panelFamily === "abyss"
+    readonly property bool alisEverywhere: Appearance.alisEverywhere
+    readonly property bool auroraEverywhere: Appearance.auroraEverywhere
+
+    // Match DashboardSpacedRepetition.qml surface & border tokens (borderless inner cards, subtle colBorder)
     readonly property color colCard: abyss
         ? AbyssStyle.contentLayer
+        : Appearance.angelEverywhere ? Appearance.angel.colGlassCard
+        : alisEverywhere ? Appearance.alis.colLayer1
+        : auroraEverywhere ? Appearance.aurora.colSubSurface
         : Appearance.colors.colLayer1
     readonly property color colCardElevated: abyss
-        ? Qt.lighter(AbyssStyle.contentLayer, 1.12)
+        ? Qt.alpha(AbyssStyle.textColor, 0.06)
+        : Appearance.angelEverywhere ? Appearance.angel.colGlassCardHover
+        : alisEverywhere ? Appearance.alis.colLayer2
         : Appearance.colors.colLayer2
-    readonly property color colCardHover: abyss
-        ? Qt.alpha(AbyssStyle.accent, 0.10)
-        : Appearance.colors.colLayer2Hover
-    readonly property color colBorder: abyss
-        ? Qt.alpha(AbyssStyle.accent, 0.18)
-        : Appearance.colors.colLayer0Border
+    readonly property color colCardHover: Qt.alpha(root.colText, 0.10)
     readonly property color colText: abyss
         ? (Appearance.m3colors.darkmode ? AbyssStyle.textColor : "#000000")
-        : Appearance.colors.colOnLayer1
+        : Appearance.angelEverywhere ? Appearance.angel.colText
+        : alisEverywhere ? Appearance.alis.colText
+        : Appearance.colors.colOnLayer0
     readonly property color colSubtext: abyss
         ? (Appearance.m3colors.darkmode ? AbyssStyle.textColorMuted : Qt.alpha("#000000", 0.66))
+        : Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
+        : alisEverywhere ? Appearance.alis.colTextSecondary
         : Appearance.colors.colSubtext
+    readonly property color colBorder: Qt.alpha(root.colText, 0.07)
     readonly property color colAccent: abyss
         ? AbyssStyle.accent
         : Appearance.colors.colPrimary
@@ -48,18 +57,21 @@ Item {
         ? "#081018"
         : Appearance.colors.colOnPrimary
 
+    readonly property string preferredWeightUnit: root.backend?.preferences?.weightUnit ?? "kg"
+    readonly property bool showBodyMetricsInputs: root.backend?.preferences?.showBodyMetrics ?? true
+
     // Composer & UI state
     property string editingExerciseId: ""
     property string draftCategory: "chest"
-    property int draftSets: 3
+    property int draftSets: root.backend?.preferences?.defaultSets ?? 3
     property string draftReps: "10"
     property string draftWeight: ""
     property string draftDurationMin: ""
-    property int draftRestSec: 90
+    property int draftRestSec: root.backend?.preferences?.defaultRestSeconds ?? 90
 
     property string stagedPhotoPath: ""
     property bool showPhotoPathInput: false
-    property string bodyGalleryMode: "timeline" // "timeline" | "compare"
+    property string bodyGalleryMode: root.backend?.preferences?.defaultGalleryMode ?? "timeline" // "timeline" | "compare"
     property string confirmDeleteCheckinId: ""
     property var previewCheckin: null
 
@@ -120,11 +132,11 @@ Item {
         root.editingExerciseId = ""
         exerciseNameField.text = ""
         root.draftCategory = "chest"
-        root.draftSets = 3
+        root.draftSets = root.backend?.preferences?.defaultSets ?? 3
         root.draftReps = "10"
         root.draftWeight = ""
         root.draftDurationMin = ""
-        root.draftRestSec = 90
+        root.draftRestSec = root.backend?.preferences?.defaultRestSeconds ?? 90
     }
 
     function beginEditExercise(ex): void {
@@ -154,6 +166,7 @@ Item {
             sets: Math.max(1, Math.min(30, Number(setsSpinField.text) || root.draftSets || 3)),
             reps: repsTextField.text.trim() || "10",
             weight: Math.max(0, Number(weightTextField.text) || 0),
+            weightUnit: root.preferredWeightUnit,
             durationSec: durMin > 0 ? Math.round(durMin * 60) : 0,
             restSec: Math.max(15, Math.min(600, Number(restTextField.text) || root.draftRestSec || 90))
         }
@@ -213,8 +226,8 @@ Item {
         id: tf
         selectByMouse: true
         verticalAlignment: TextInput.AlignVCenter
-        leftPadding: 10
-        rightPadding: 10
+        leftPadding: 12
+        rightPadding: 12
         topPadding: 4
         bottomPadding: 4
         color: root.colText
@@ -224,10 +237,10 @@ Item {
         font.family: Appearance.font.family.main
         font.pixelSize: Appearance.font.pixelSize.small
         background: Rectangle {
-            radius: Appearance.rounding.small
-            color: root.colCard
-            border.width: tf.activeFocus ? 1.5 : 1
-            border.color: tf.activeFocus ? root.colAccent : root.colBorder
+            radius: Appearance.rounding.full
+            color: Qt.alpha(root.colText, 0.05)
+            border.width: tf.activeFocus ? 1.5 : 0
+            border.color: tf.activeFocus ? root.colAccent : "transparent"
         }
     }
 
@@ -310,10 +323,9 @@ Item {
             Layout.fillWidth: true
             Layout.minimumWidth: 0
             implicitHeight: topHeaderFlow.implicitHeight + 16
-            radius: Appearance.rounding.normal
+            radius: Appearance.rounding.small
             color: root.colCard
-            border.width: 1
-            border.color: root.colBorder
+            border.width: 0
 
             ColumnLayout {
                 id: topHeaderFlow
@@ -425,10 +437,10 @@ Item {
                         implicitWidth: restRow.implicitWidth + 14
                         radius: 16
                         color: (root.backend?.restRunning ?? false)
-                            ? Qt.alpha(root.colAccent, 0.18)
+                            ? Qt.alpha(root.colAccent, 0.16)
                             : root.colCardElevated
-                        border.width: 1
-                        border.color: (root.backend?.restRunning ?? false) ? root.colAccent : root.colBorder
+                        border.width: (root.backend?.restRunning ?? false) ? 1 : 0
+                        border.color: (root.backend?.restRunning ?? false) ? Qt.alpha(root.colAccent, 0.45) : "transparent"
 
                         Row {
                             id: restRow
@@ -510,6 +522,16 @@ Item {
                         label: root.width >= 760 ? Translation.tr("Nexus") : ""
                         onClicked: root.backend?.openInNexus()
                         StyledToolTip { text: Translation.tr("Open Alis Nexus") }
+                    }
+
+                    PillButton {
+                        objectName: "exercisesOpenSettingsButton"
+                        iconName: "tune"
+                        onClicked: {
+                            GlobalStates.dashboardOpen = false
+                            GlobalStates.openSettingsSection(38, "exercises_tracker")
+                        }
+                        StyledToolTip { text: Translation.tr("Exercises Tracker settings") }
                     }
                 }
 
@@ -615,14 +637,14 @@ Item {
 
             // ══════ LEFT COLUMN: TODAY'S WORKOUT & CHECKLIST ══════
             Rectangle {
+                objectName: "exercisesWorkoutCard"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.minimumWidth: 0
                 Layout.preferredWidth: root.width >= 880 ? Math.round(root.width * 0.54) : root.width
-                radius: Appearance.rounding.normal
+                radius: Appearance.rounding.small
                 color: root.colCard
-                border.width: 1
-                border.color: root.colBorder
+                border.width: 0
                 clip: true
 
                 ColumnLayout {
@@ -704,9 +726,8 @@ Item {
                         visible: (root.backend?.plannerWorkouts?.length ?? 0) > 0
                         implicitHeight: plannerBannerCol.implicitHeight + 14
                         radius: Appearance.rounding.small
-                        color: Qt.alpha(root.colAccent, 0.10)
-                        border.width: 1
-                        border.color: Qt.alpha(root.colAccent, 0.30)
+                        color: Qt.alpha(root.colAccent, 0.09)
+                        border.width: 0
 
                         ColumnLayout {
                             id: plannerBannerCol
@@ -760,8 +781,7 @@ Item {
                         implicitHeight: composerCol.implicitHeight + 16
                         radius: Appearance.rounding.small
                         color: root.colCardElevated
-                        border.width: 1
-                        border.color: root.colBorder
+                        border.width: 0
 
                         ColumnLayout {
                             id: composerCol
@@ -818,7 +838,7 @@ Item {
                                     objectName: "exerciseWeightField"
                                     Layout.preferredWidth: 66
                                     Layout.preferredHeight: 34
-                                    placeholderText: "kg"
+                                    placeholderText: root.preferredWeightUnit
                                     text: root.draftWeight
                                     font.pixelSize: Appearance.font.pixelSize.small
                                     onAccepted: root.submitExerciseDraft()
@@ -938,12 +958,9 @@ Item {
                             implicitHeight: Math.max(50, exInnerRow.implicitHeight + 14)
                             radius: Appearance.rounding.small
                             color: modelData.completed
-                                ? Qt.alpha(root.colAccent, 0.09)
+                                ? Qt.alpha(root.colAccent, 0.10)
                                 : root.colCardElevated
-                            border.width: 1
-                            border.color: modelData.completed
-                                ? Qt.alpha(root.colAccent, 0.35)
-                                : root.colBorder
+                            border.width: 0
 
                             RowLayout {
                                 id: exInnerRow
@@ -1003,9 +1020,8 @@ Item {
                                     implicitHeight: 26
                                     implicitWidth: setStepRow.implicitWidth + 10
                                     radius: 13
-                                    color: root.colCard
-                                    border.width: 1
-                                    border.color: root.colBorder
+                                    color: Qt.alpha(root.colText, 0.06)
+                                    border.width: 0
 
                                     Row {
                                         id: setStepRow
@@ -1172,14 +1188,14 @@ Item {
 
             // ══════ RIGHT COLUMN: POST-WORKOUT BODY TRACKER ══════
             Rectangle {
+                objectName: "exercisesBodyTrackerCard"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.minimumWidth: 0
                 Layout.preferredWidth: root.width >= 880 ? Math.round(root.width * 0.46) : root.width
-                radius: Appearance.rounding.normal
+                radius: Appearance.rounding.small
                 color: root.colCard
-                border.width: 1
-                border.color: root.colBorder
+                border.width: 0
                 clip: true
 
                 ColumnLayout {
@@ -1252,8 +1268,7 @@ Item {
                         implicitHeight: bodyComposerCol.implicitHeight + 16
                         radius: Appearance.rounding.small
                         color: root.colCardElevated
-                        border.width: 1
-                        border.color: root.colBorder
+                        border.width: 0
 
                         ColumnLayout {
                             id: bodyComposerCol
@@ -1361,9 +1376,10 @@ Item {
                                 TrackerTextField {
                                     id: bodyWeightField
                                     objectName: "bodyWeightField"
+                                    visible: root.showBodyMetricsInputs
                                     Layout.preferredWidth: 86
                                     Layout.preferredHeight: 32
-                                    placeholderText: Translation.tr("Weight kg")
+                                    placeholderText: Translation.tr("Weight") + " " + root.preferredWeightUnit
                                     font.pixelSize: Appearance.font.pixelSize.smallest
                                     onAccepted: root.submitBodyCheckin()
                                 }
@@ -1371,6 +1387,7 @@ Item {
                                 TrackerTextField {
                                     id: bodyFatField
                                     objectName: "bodyFatField"
+                                    visible: root.showBodyMetricsInputs
                                     Layout.preferredWidth: 82
                                     Layout.preferredHeight: 32
                                     placeholderText: Translation.tr("Body fat %")
@@ -1436,8 +1453,7 @@ Item {
                             implicitHeight: Math.max(76, bcRow.implicitHeight + 16)
                             radius: Appearance.rounding.small
                             color: root.colCardElevated
-                            border.width: 1
-                            border.color: root.colBorder
+                            border.width: 0
 
                             RowLayout {
                                 id: bcRow
@@ -1450,9 +1466,8 @@ Item {
                                     Layout.preferredWidth: 64
                                     Layout.preferredHeight: 64
                                     radius: 8
-                                    color: root.colCard
-                                    border.width: 1
-                                    border.color: root.colBorder
+                                    color: Qt.alpha(root.colText, 0.05)
+                                    border.width: 0
                                     clip: true
 
                                     Image {
@@ -1578,8 +1593,7 @@ Item {
                                     Layout.minimumWidth: 0
                                     radius: Appearance.rounding.small
                                     color: root.colCardElevated
-                                    border.width: 1
-                                    border.color: root.colBorder
+                                    border.width: 0
                                     clip: true
 
                                     ColumnLayout {

@@ -236,7 +236,7 @@ def _manifest_plugin_ids(data_root, source=None):
     elif source is not None and (Path(source) / "manifest.json").is_file():
         manifest_path = Path(source) / "manifest.json"
     if manifest_path is None:
-        return ["tlp", "thinkfan", "nexus", "spaced_repetition"]
+        return ["tlp", "thinkfan", "nexus", "spaced_repetition", "exercises_tracker"]
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     return [plugin["id"] for plugin in plugin_metadata(data)]
 

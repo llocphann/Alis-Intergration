@@ -189,13 +189,19 @@ function normalizePreferences(raw) {
     var src = (raw && typeof raw === "object" && !Array.isArray(raw)) ? raw : {};
     var out = Object.assign({}, src);
     out.weightUnit = src.weightUnit === "lb" ? "lb" : "kg";
+    var defSets = Math.round(Number(src.defaultSets));
+    out.defaultSets = Number.isFinite(defSets) && defSets > 0 ? Math.min(30, defSets) : 3;
     var rest = Math.round(Number(src.defaultRestSeconds));
     out.defaultRestSeconds = Number.isFinite(rest) ? Math.max(15, Math.min(600, rest)) : 90;
+    out.autoStartRestOnSet = src.autoStartRestOnSet !== false;
     out.autoSyncPlanner = src.autoSyncPlanner !== false;
+    out.showInNexus = src.showInNexus !== false;
     var hr = Math.round(Number(src.workoutDefaultHour));
-    out.workoutDefaultHour = Number.isFinite(hr) ? Math.max(0, Math.min(22, hr)) : 18;
+    out.workoutDefaultHour = Number.isFinite(hr) ? Math.max(0, Math.min(23, hr)) : 18;
     var dur = Math.round(Number(src.workoutDefaultDurationMin));
     out.workoutDefaultDurationMin = Number.isFinite(dur) ? Math.max(15, Math.min(240, dur)) : 60;
+    out.defaultGalleryMode = src.defaultGalleryMode === "compare" ? "compare" : "timeline";
+    out.showBodyMetrics = src.showBodyMetrics !== false;
     return out;
 }
 
@@ -984,4 +990,32 @@ function exportWorkoutMarkdown(state, dateStr) {
         }
     }
     return out.join("\n") + "\n";
+}
+
+function updatePreferences(state, patch, todayStr) {
+    var next = cloneState(state);
+    var merged = Object.assign({}, next.preferences || {}, (patch && typeof patch === "object") ? patch : {});
+    next.preferences = normalizePreferences(merged);
+    return normalizeState(next, todayStr);
+}
+
+function updateWeeklyTemplate(state, weekdayKey, routineKey, todayStr) {
+    var next = cloneState(state);
+    var wd = String(Math.max(0, Math.min(6, Math.floor(Number(weekdayKey) || 0))));
+    next.weeklyTemplates = Object.assign({}, DEFAULT_WEEKLY_TEMPLATES, next.weeklyTemplates || {});
+    next.weeklyTemplates[wd] = normalizeRoutine(routineKey);
+    return normalizeState(next, todayStr);
+}
+
+function applyWeeklySplitPreset(state, presetKey, todayStr) {
+    var presets = {
+        ppl: { "1": "push", "2": "pull", "3": "legs", "4": "rest", "5": "push", "6": "pull", "0": "core" },
+        full_body: { "1": "full_body", "2": "cardio", "3": "full_body", "4": "rest", "5": "full_body", "6": "core", "0": "rest" },
+        upper_lower: { "1": "push", "2": "legs", "3": "rest", "4": "pull", "5": "legs", "6": "core", "0": "rest" },
+        cardio_core: { "1": "cardio", "2": "core", "3": "cardio", "4": "rest", "5": "cardio", "6": "full_body", "0": "rest" }
+    };
+    var chosen = presets[String(presetKey || "ppl")] || presets.ppl;
+    var next = cloneState(state);
+    next.weeklyTemplates = Object.assign({}, chosen);
+    return normalizeState(next, todayStr);
 }

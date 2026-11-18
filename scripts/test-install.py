@@ -102,19 +102,21 @@ with tempfile.TemporaryDirectory(prefix="alis-intergration-install-") as name:
     assert selection == {"schemaVersion": 1, "plugins": ["nexus"]}
     _, enabled = installer.install_plugin(plugin_data, "spaced_repetition", source)
     assert enabled == ["nexus", "spaced_repetition"]
+    _, enabled = installer.install_plugin(plugin_data, "exercises_tracker", source)
+    assert enabled == ["nexus", "spaced_repetition", "exercises_tracker"]
     enabled = installer.remove_plugin(plugin_data, "nexus")
-    assert enabled == ["spaced_repetition"]
+    assert enabled == ["spaced_repetition", "exercises_tracker"]
     assert (plugin_data / "current").exists()
     installer.uninstall(plugin_data)
     assert not (plugin_data / "current").exists() and not (plugin_data / "installed-plugins.json").exists()
 
-    # Legacy current symlink without installed-plugins.json treats all 4 as installed;
-    # removing one plugin migrates the remaining 3 into installed-plugins.json.
+    # Legacy current symlink without installed-plugins.json treats all 5 as installed;
+    # removing one plugin migrates the remaining 4 into installed-plugins.json.
     legacy_data = private / "legacy-data"
     installer.install(legacy_data, source)
     assert not (legacy_data / "installed-plugins.json").exists()
     remaining = installer.remove_plugin(legacy_data, "thinkfan")
-    assert remaining == ["tlp", "nexus", "spaced_repetition"]
+    assert remaining == ["tlp", "nexus", "spaced_repetition", "exercises_tracker"]
 
     # Reject symlinked installed-plugins.json and unknown plugin ids.
     (legacy_data / "installed-plugins.json").unlink()

@@ -8,7 +8,8 @@
     "tlp",
     "thinkfan",
     "nexus",
-    "spaced_repetition"
+    "spaced_repetition",
+    "exercises_tracker"
   ],
   "plugins": [
     {
@@ -71,6 +72,18 @@
           "settings": "spacedRepetition"
         }
       ]
+    },
+    {
+      "id": "exercises_tracker",
+      "name": "Exercises Tracker",
+      "icon": "fitness_center",
+      "capabilities": [
+        {
+          "id": "workouts",
+          "name": "Workouts & Body Tracker",
+          "settings": "exercisesTracker"
+        }
+      ]
     }
   ],
   "settings": {
@@ -81,7 +94,8 @@
     "tlpWaffle": "modules/waffle/settings/WTlpPowerSettings.qml",
     "tlpWaffleRow": "modules/waffle/settings/WTlpSettingRow.qml",
     "thinkfan": "modules/settings/ThinkfanSettings.qml",
-    "spacedRepetition": "modules/settings/DashboardSpacedRepetitionSettings.qml"
+    "spacedRepetition": "modules/settings/DashboardSpacedRepetitionSettings.qml",
+    "exercisesTracker": "modules/settings/DashboardExercisesTrackerSettings.qml"
   },
   "backends": {
     "managedTodo": "services/NexusTodoBackend.qml",

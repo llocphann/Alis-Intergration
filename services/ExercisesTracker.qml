@@ -71,6 +71,16 @@ Item {
         { id: "custom", label: "Custom", icon: "tune" }
     ]
 
+    readonly property var preferences: {
+        void root.revision
+        return root.state?.preferences ?? Engine.normalizePreferences({})
+    }
+
+    readonly property var weeklyTemplates: {
+        void root.revision
+        return root.state?.weeklyTemplates ?? Engine.DEFAULT_WEEKLY_TEMPLATES
+    }
+
     readonly property var todaySummary: {
         void root.revision
         return Engine.computeGlobalSummary(root.state, root.todayStr)
@@ -445,6 +455,36 @@ Item {
     function stepExerciseSets(exerciseId: string, delta: int): void {
         const next = Engine.stepCompletedSets(root.state, root.selectedDate, exerciseId, delta, new Date().toISOString())
         root._commitState(next, root.selectedDate)
+        if (delta > 0 && (root.preferences?.autoStartRestOnSet ?? true) && root.presentationActive) {
+            const ex = (root.dayPlan?.exercises ?? []).find(item => item.id === exerciseId)
+            if (ex && !ex.completed)
+                root.startRestTimer(ex.restSec, ex.name)
+        }
+    }
+
+    function updatePreferences(patch): void {
+        const next = Engine.updatePreferences(root.state, patch, root.todayStr)
+        root._commitState(next)
+    }
+
+    function setWeekdayRoutine(weekdayKey: string, routineKey: string): void {
+        const next = Engine.updateWeeklyTemplate(root.state, weekdayKey, routineKey, root.todayStr)
+        root._commitState(next)
+    }
+
+    function applySplitPreset(presetKey: string): void {
+        const next = Engine.applyWeeklySplitPreset(root.state, presetKey, root.todayStr)
+        root._commitState(next)
+    }
+
+    function openPhotosFolder(): void {
+        if (!root.photosDir.length)
+            return
+        if (!mkdirProc.running) {
+            mkdirProc.command = ["/usr/bin/mkdir", "-p", root.photosDir]
+            mkdirProc.running = true
+        }
+        Qt.openUrlExternally("file://" + root.photosDir)
     }
 
     function removeExercise(exerciseId: string): void {
