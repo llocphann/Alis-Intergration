@@ -71,6 +71,38 @@ ShellRoot {
                 throw new Error(msg)
         }
 
+        function walkItems(item, fn) {
+            if (!item)
+                return
+            fn(item)
+            if (item.contentItem && item.contentItem !== item)
+                walkItems(item.contentItem, fn)
+            const list = item.children || []
+            for (let i = 0; i < list.length; ++i)
+                walkItems(list[i], fn)
+        }
+
+        function findToggledButtons(rootItem) {
+            const found = []
+            const seen = new Set()
+            walkItems(rootItem, (node) => {
+                if (node && node.objectName && node.toggled === true && node.buttonColor !== undefined && !seen.has(node.objectName)) {
+                    seen.add(node.objectName)
+                    found.push(node)
+                }
+            })
+            return found
+        }
+
+        function findTextNodes(item) {
+            const results = []
+            walkItems(item, (node) => {
+                if (node && node.visible !== false && typeof node.text === "string" && node.text.length > 0 && node.color !== undefined && node.font !== undefined)
+                    results.push(node)
+            })
+            return results
+        }
+
         function measureTracker(caseName, tracker) {
             const cCardBg = ColorUtils.applyAlpha(
                 ColorUtils.mix(tracker.colCard, tracker.colSurfaceBase, tracker.colCard.a),
@@ -102,18 +134,42 @@ ShellRoot {
             check(textRatioInput >= 5.5, caseName + " colText/colInputBg low: " + textRatioInput)
             check(subRatioElev >= 4.5, caseName + " colSubtext/colCardElevated low: " + subRatioElev)
             check(accentTextRatio >= 4.5, caseName + " colAccent/colCardElevated low: " + accentTextRatio)
-            check(onAccentRatio >= 4.5, caseName + " colOnAccent/colAccentFill low: " + onAccentRatio)
-            check(onToggledRatio >= 4.5, caseName + " colOnToggled/colToggledBg low: " + onToggledRatio)
+            check(onAccentRatio >= 5.0, caseName + " colOnAccent/colAccentFill low: " + onAccentRatio)
+            check(onToggledRatio >= 5.0, caseName + " colOnToggled/colToggledBg low: " + onToggledRatio)
             check(errRatio >= 4.5, caseName + " colErrorText/colCardElevated low: " + errRatio)
             check(elevInputSep >= 0.015, caseName + " colInputBg too close to colCardElevated: " + elevInputSep)
             check(tracker.colInputBorder.a >= 0.18, caseName + " colInputBorder too faint: " + tracker.colInputBorder.a)
+
+            // Verify every toggled PillButton / dayChip / routineChip / catBtn renders >= 5.0 contrast across icon + label
+            const toggledBtns = findToggledButtons(tracker)
+            check(toggledBtns.length >= 4, caseName + " expected >=4 active toggled buttons, got " + toggledBtns.length)
+            for (const btn of toggledBtns) {
+                const bg = ColorUtils.applyAlpha(ColorUtils.mix(btn.buttonColor, cCardBg, btn.buttonColor.a), 1.0)
+                const txtNodes = findTextNodes(btn)
+                check(txtNodes.length > 0, caseName + " toggled button missing text child: " + btn.objectName)
+                for (const txt of txtNodes) {
+                    const ratio = ColorUtils.contrastRatio(txt.color, bg)
+                    check(ratio >= 5.0, caseName + " rendered toggled contrast low on " + btn.objectName + " (" + txt.text + "): " + ratio)
+                }
+            }
+
+            // Verify chromatic background saturation is preserved across tonal elevation tiers (never washed into neutral gray)
+            const baseSat = Qt.color(tracker.colSurfaceBase).hslSaturation
+            if (baseSat >= 0.05) {
+                check(Qt.color(cElevBg).hslSaturation >= baseSat * 0.90,
+                    caseName + " cElevBg washed to gray: baseSat=" + baseSat + " elevSat=" + Qt.color(cElevBg).hslSaturation)
+                check(Qt.color(cInputBg).hslSaturation >= baseSat * 0.90,
+                    caseName + " cInputBg washed to gray: baseSat=" + baseSat + " inputSat=" + Qt.color(cInputBg).hslSaturation)
+            }
+
             console.info("CASE_PASS", caseName, JSON.stringify({
                 textElev: Number(textRatioElev.toFixed(2)),
                 subElev: Number(subRatioElev.toFixed(2)),
                 accentElev: Number(accentTextRatio.toFixed(2)),
                 onAccent: Number(onAccentRatio.toFixed(2)),
                 onToggled: Number(onToggledRatio.toFixed(2)),
-                inputSep: Number(elevInputSep.toFixed(4))
+                inputSep: Number(elevInputSep.toFixed(4)),
+                toggledCount: toggledBtns.length
             }))
         }
 
@@ -148,23 +204,28 @@ ShellRoot {
                 const tracker = trackerLoader.item
                 // 1. Abyss Dark with low user content opacity
                 applyPalette("abyss", true, "#0f141c", "#161c26", "#222a38", "#7aa2f7", "#0b1320", "#283548", "#dbe7ff", "#edf2fb", "#9aa9c4", "#f7768e")
-                wait(60)
+                wait(280)
                 measureTracker("abyss-dark", tracker)
 
                 // 2. Abyss Light
                 applyPalette("abyss", false, "#eef2f9", "#e4eaf4", "#d6deed", "#2b59c3", "#ffffff", "#d0dcf5", "#132954", "#111622", "#47556b", "#c62828")
-                wait(60)
+                wait(280)
                 measureTracker("abyss-light", tracker)
 
                 // 3. Material Dark
                 applyPalette("material", true, "#121318", "#1c1f26", "#272b35", "#aac7ff", "#10284c", "#34445f", "#d8e4ff", "#e6eaf2", "#a8b2c7", "#ffb4ab")
-                wait(60)
+                wait(280)
                 measureTracker("material-dark", tracker)
 
                 // 4. Material Light
                 applyPalette("material", false, "#f8f9fc", "#eef1f6", "#e1e6ef", "#2f5cd3", "#ffffff", "#d8e2fb", "#152b59", "#171c26", "#50596c", "#ba1a1a")
-                wait(60)
+                wait(280)
                 measureTracker("material-light", tracker)
+
+                // 5. Abyss Rose-Espresso Dark (regression guard for pink primary + warm dark background)
+                applyPalette("abyss", true, "#150e0e", "#1d1414", "#271b1b", "#ffb4ab", "#690005", "#533f3d", "#ffdad6", "#f5dedb", "#bfa9a7", "#ffb4ab")
+                wait(280)
+                measureTracker("abyss-rose-espresso", tracker)
 
                 console.info("EXERCISES_TRACKER_CONTRAST_PASS")
             } catch (err) {

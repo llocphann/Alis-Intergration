@@ -34,6 +34,7 @@ Item {
         1.0
     )
     readonly property bool isDarkSurface: ColorUtils.relativeLuminance(root.colSurfaceBase) < 0.35
+    readonly property real tonalSign: root.isDarkSurface ? 1 : -1
 
     readonly property color colCard: abyss
         ? ColorUtils.applyAlpha(root.colSurfaceBase, Math.max(0.88, AbyssStyle.cardOpacity))
@@ -42,30 +43,63 @@ Item {
         : auroraEverywhere ? Appearance.aurora.colSubSurface
         : Appearance.colors.colLayer1
     readonly property color colCardElevated: {
+        const tonal = ColorUtils.tonalStep(
+            root.colSurfaceBase,
+            root.tonalSign * (root.isDarkSurface ? 0.042 : 0.032),
+            1.10
+        )
         const base = abyss
-            ? ColorUtils.mix(
-                root.colSurfaceBase,
-                root.isDarkSurface ? "#ffffff" : "#000000",
-                root.isDarkSurface ? 0.92 : 0.95
-            )
+            ? tonal
             : Appearance.angelEverywhere ? Appearance.angel.colGlassCardHover
             : alisEverywhere ? Appearance.alis.colLayer2
-            : Appearance.colors.colLayer2
+            : tonal
         return ColorUtils.applyAlpha(base, Math.max(0.94, root.colCard.a))
     }
     readonly property color colInputBg: ColorUtils.applyAlpha(
-        ColorUtils.mix(
+        ColorUtils.tonalStep(
             root.colSurfaceBase,
-            root.isDarkSurface ? "#ffffff" : "#000000",
-            root.isDarkSurface ? 0.85 : 0.91
+            root.tonalSign * (root.isDarkSurface ? 0.118 : 0.072),
+            1.12
         ),
         0.96
     )
-    readonly property color colInputBorder: Qt.alpha(root.colText, root.isDarkSurface ? 0.22 : 0.24)
+    readonly property color colInputBorder: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * 0.24, 1.15),
+        root.isDarkSurface ? 0.55 : 0.48
+    )
     readonly property color colCardHover: ColorUtils.applyAlpha(
-        ColorUtils.mix(root.colCardElevated, root.colText, 0.86),
+        ColorUtils.tonalStep(
+            root.colSurfaceBase,
+            root.tonalSign * (root.isDarkSurface ? 0.135 : 0.095),
+            1.14
+        ),
         1.0
     )
+    readonly property color colCardGradTop: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.026 : 0.008), 1.06),
+        root.colCard.a
+    )
+    readonly property color colCardGradBottom: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.006 : 0.022), 1.04),
+        root.colCard.a
+    )
+    readonly property color colBoxGradTop: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.062 : 0.024), 1.12),
+        Math.max(0.94, root.colCard.a)
+    )
+    readonly property color colBoxGradBottom: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.036 : 0.042), 1.08),
+        Math.max(0.94, root.colCard.a)
+    )
+    readonly property color colInputGradTop: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.128 : 0.060), 1.14),
+        0.96
+    )
+    readonly property color colInputGradBottom: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.104 : 0.082), 1.10),
+        0.96
+    )
+
     readonly property color _rawText: abyss
         ? (root.isDarkSurface ? AbyssStyle.textColor : "#10141c")
         : Appearance.angelEverywhere ? Appearance.angel.colText
@@ -78,7 +112,10 @@ Item {
         : alisEverywhere ? Appearance.alis.colTextSecondary
         : Appearance.colors.colSubtext
     readonly property color colSubtext: ColorUtils.ensureReadable(root._rawSubtext, root.colCardElevated, 4.6)
-    readonly property color colBorder: Qt.alpha(root.colText, 0.07)
+    readonly property color colBorder: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * 0.24, 1.10),
+        0.07
+    )
     readonly property color colAccentFill: ColorUtils.applyAlpha(
         abyss ? AbyssStyle.accent : Appearance.colors.colPrimary,
         1.0
@@ -87,7 +124,7 @@ Item {
     readonly property color colOnAccent: ColorUtils.ensureReadable(
         Appearance.colors.colOnPrimary,
         root.colAccentFill,
-        4.8
+        5.5
     )
     readonly property color colToggledBg: ColorUtils.applyAlpha(
         Appearance.colors.colSecondaryContainer,
@@ -96,15 +133,19 @@ Item {
     readonly property color colOnToggled: ColorUtils.ensureReadable(
         Appearance.colors.colOnSecondaryContainer,
         root.colToggledBg,
-        5.0
+        5.5
     )
     readonly property color colErrorText: ColorUtils.ensureReadable(
         Appearance.colors.colError,
         root.colCardElevated,
         4.6
     )
-    readonly property color colTrackBg: ColorUtils.mix(root.colCardElevated, root.colText, 0.84)
-    readonly property color colBannerBg: ColorUtils.mix(root.colCardElevated, root.colAccentFill, 0.84)
+    readonly property color colTrackBg: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.095 : 0.085), 1.10),
+        1.0
+    )
+    readonly property color colBannerBg: ColorUtils.mix(root.colCardElevated, root.colAccentFill, 0.82)
+    readonly property color colOnBanner: ColorUtils.ensureReadable(root.colAccent, root.colBannerBg, 5.0)
     readonly property color colCompletedRowBg: ColorUtils.mix(root.colCardElevated, root.colAccentFill, 0.86)
 
     readonly property string preferredWeightUnit: root.backend?.preferences?.weightUnit ?? "kg"
@@ -289,6 +330,10 @@ Item {
         background: Rectangle {
             radius: Appearance.rounding.full
             color: root.colInputBg
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: root.colInputGradTop }
+                GradientStop { position: 1.0; color: root.colInputGradBottom }
+            }
             border.width: tf.activeFocus ? 1.5 : 1
             border.color: tf.activeFocus ? root.colAccent : root.colInputBorder
         }
@@ -312,6 +357,12 @@ Item {
         colBackgroundHover: pillBtn.accentFill
             ? Qt.lighter(root.colAccentFill, 1.12)
             : root.colCardHover
+        colBackgroundToggled: pillBtn.accentFill
+            ? root.colAccentFill
+            : root.colToggledBg
+        colBackgroundToggledHover: pillBtn.accentFill
+            ? Qt.lighter(root.colAccentFill, 1.12)
+            : Qt.lighter(root.colToggledBg, 1.10)
         contentItem: Item {
             implicitWidth: pillInnerRow.implicitWidth
             implicitHeight: pillInnerRow.implicitHeight
@@ -335,6 +386,7 @@ Item {
                 StyledText {
                     visible: pillBtn.label.length > 0
                     anchors.verticalCenter: parent.verticalCenter
+                    horizontalAlignment: Text.AlignHCenter
                     text: pillBtn.label
                     font.pixelSize: Appearance.font.pixelSize.smaller
                     font.weight: pillBtn.accentFill ? Font.DemiBold : Font.Medium
@@ -375,6 +427,10 @@ Item {
             implicitHeight: topHeaderFlow.implicitHeight + 16
             radius: Appearance.rounding.small
             color: root.colCard
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: root.colCardGradTop }
+                GradientStop { position: 1.0; color: root.colCardGradBottom }
+            }
             border.width: 0
 
             ColumnLayout {
@@ -441,6 +497,8 @@ Item {
                                         ? root.colBannerBg
                                         : root.colCardElevated
                                 colBackgroundHover: root.colCardHover
+                                colBackgroundToggled: root.colAccentFill
+                                colBackgroundToggledHover: Qt.lighter(root.colAccentFill, 1.10)
                                 onClicked: root.backend?.selectDate(modelData.date)
                                 contentItem: Item {
                                     Row {
@@ -608,6 +666,8 @@ Item {
                                 toggled: root.dayPlan.routine === modelData.id
                                 colBackground: toggled ? root.colAccentFill : root.colCardElevated
                                 colBackgroundHover: root.colCardHover
+                                colBackgroundToggled: root.colAccentFill
+                                colBackgroundToggledHover: Qt.lighter(root.colAccentFill, 1.10)
                                 onClicked: root.backend?.applyTemplate(modelData.id, false)
                                 contentItem: Item {
                                     Row {
@@ -694,6 +754,10 @@ Item {
                 Layout.preferredWidth: root.width >= 880 ? Math.round(root.width * 0.54) : root.width
                 radius: Appearance.rounding.small
                 color: root.colCard
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: root.colCardGradTop }
+                    GradientStop { position: 1.0; color: root.colCardGradBottom }
+                }
                 border.width: 0
                 clip: true
 
@@ -832,6 +896,10 @@ Item {
                         implicitHeight: composerCol.implicitHeight + 16
                         radius: Appearance.rounding.small
                         color: root.colCardElevated
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: root.colBoxGradTop }
+                            GradientStop { position: 1.0; color: root.colBoxGradBottom }
+                        }
                         border.width: 0
 
                         ColumnLayout {
@@ -937,17 +1005,20 @@ Item {
                                         implicitWidth: catBtnText.implicitWidth + 14
                                         buttonRadius: 12
                                         toggled: root.draftCategory === modelData.id
-                                        colBackground: toggled ? root.colBannerBg : "transparent"
+                                        colBackground: toggled ? root.colBannerBg : root.colCardElevated
                                         colBackgroundHover: root.colCardHover
+                                        colBackgroundToggled: root.colBannerBg
+                                        colBackgroundToggledHover: Qt.lighter(root.colBannerBg, 1.12)
                                         onClicked: root.draftCategory = modelData.id
                                         contentItem: Item {
                                             StyledText {
                                                 id: catBtnText
                                                 anchors.centerIn: parent
+                                                horizontalAlignment: Text.AlignHCenter
                                                 text: Translation.tr(catBtn.modelData.label)
                                                 font.pixelSize: Appearance.font.pixelSize.smallest
                                                 font.weight: catBtn.toggled ? Font.DemiBold : Font.Normal
-                                                color: catBtn.toggled ? root.colAccent : root.colSubtext
+                                                color: catBtn.toggled ? root.colOnBanner : root.colSubtext
                                             }
                                         }
                                     }
@@ -1011,6 +1082,10 @@ Item {
                             color: modelData.completed
                                 ? root.colCompletedRowBg
                                 : root.colCardElevated
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: modelData.completed ? root.colCompletedRowBg : root.colBoxGradTop }
+                                GradientStop { position: 1.0; color: modelData.completed ? ColorUtils.tonalStep(root.colCompletedRowBg, root.tonalSign * -0.012, 1.04) : root.colBoxGradBottom }
+                            }
                             border.width: 0
 
                             RowLayout {
@@ -1246,6 +1321,10 @@ Item {
                 Layout.preferredWidth: root.width >= 880 ? Math.round(root.width * 0.46) : root.width
                 radius: Appearance.rounding.small
                 color: root.colCard
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: root.colCardGradTop }
+                    GradientStop { position: 1.0; color: root.colCardGradBottom }
+                }
                 border.width: 0
                 clip: true
 
@@ -1319,6 +1398,10 @@ Item {
                         implicitHeight: bodyComposerCol.implicitHeight + 16
                         radius: Appearance.rounding.small
                         color: root.colCardElevated
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: root.colBoxGradTop }
+                            GradientStop { position: 1.0; color: root.colBoxGradBottom }
+                        }
                         border.width: 0
 
                         ColumnLayout {
@@ -1504,6 +1587,10 @@ Item {
                             implicitHeight: Math.max(76, bcRow.implicitHeight + 16)
                             radius: Appearance.rounding.small
                             color: root.colCardElevated
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: root.colBoxGradTop }
+                                GradientStop { position: 1.0; color: root.colBoxGradBottom }
+                            }
                             border.width: 0
 
                             RowLayout {
@@ -1644,6 +1731,10 @@ Item {
                                     Layout.minimumWidth: 0
                                     radius: Appearance.rounding.small
                                     color: root.colCardElevated
+                                    gradient: Gradient {
+                                        GradientStop { position: 0.0; color: root.colBoxGradTop }
+                                        GradientStop { position: 1.0; color: root.colBoxGradBottom }
+                                    }
                                     border.width: 0
                                     clip: true
 
