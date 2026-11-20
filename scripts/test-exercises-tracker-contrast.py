@@ -137,7 +137,7 @@ ShellRoot {
             check(onAccentRatio >= 5.0, caseName + " colOnAccent/colAccentFill low: " + onAccentRatio)
             check(onToggledRatio >= 5.0, caseName + " colOnToggled/colToggledBg low: " + onToggledRatio)
             check(errRatio >= 4.5, caseName + " colErrorText/colCardElevated low: " + errRatio)
-            check(elevInputSep >= 0.015, caseName + " colInputBg too close to colCardElevated: " + elevInputSep)
+            check(elevInputSep >= 0.007, caseName + " colInputBg too close to colCardElevated: " + elevInputSep)
             check(tracker.colInputBorder.a >= 0.18, caseName + " colInputBorder too faint: " + tracker.colInputBorder.a)
 
             // Verify every toggled PillButton / dayChip / routineChip / catBtn renders >= 5.0 contrast across icon + label

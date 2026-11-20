@@ -26,11 +26,12 @@ Item {
     readonly property bool alisEverywhere: Appearance.alisEverywhere
     readonly property bool auroraEverywhere: Appearance.auroraEverywhere
 
-    // Stepped flat tonal layers anchored on the auto-theming root background (Layer 0 -> Layer 1 -> Layer 2 -> Layer 3 -> Hover)
+    // Stepped flat tonal layers anchored on Home Dashboard card color (DashCard / colLayer1Base)
+    // with gentle ~2.2% HSL steps for nested layers (Layer 1 -> Layer 2 -> Layer 3 -> Hover).
     readonly property color colSurfaceBase: ColorUtils.applyAlpha(
-        Qt.color(Appearance.colors.colLayer0Base).valid
-            ? Appearance.colors.colLayer0Base
-            : Appearance.colors.colLayer1Base,
+        Qt.color(Appearance.colors.colLayer1Base).valid
+            ? Appearance.colors.colLayer1Base
+            : Appearance.colors.colLayer0Base,
         1.0
     )
     readonly property bool isDarkSurface: ColorUtils.relativeLuminance(root.colSurfaceBase) < 0.35
@@ -38,16 +39,16 @@ Item {
     readonly property real tonalDir: Qt.color(root.colSurfaceBase).hslLightness > 0.86 ? -1 : 1
 
     readonly property color colCard: abyss
-        ? ColorUtils.applyAlpha(ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * 0.032, 1.05), Math.max(0.88, AbyssStyle.cardOpacity))
+        ? ColorUtils.applyAlpha(root.colSurfaceBase, Math.max(0.88, AbyssStyle.cardOpacity))
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCard
         : alisEverywhere ? Appearance.alis.colLayer1
         : auroraEverywhere ? Appearance.aurora.colSubSurface
-        : ColorUtils.applyAlpha(ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * 0.032, 1.05), 1.0)
+        : Appearance.colors.colLayer1
     readonly property color colCardElevated: {
         const tonal = ColorUtils.tonalStep(
             root.colSurfaceBase,
-            root.tonalDir * 0.068,
-            1.10
+            root.tonalDir * 0.022,
+            1.04
         )
         const base = abyss
             ? tonal
@@ -59,20 +60,20 @@ Item {
     readonly property color colInputBg: ColorUtils.applyAlpha(
         ColorUtils.tonalStep(
             root.colSurfaceBase,
-            root.tonalDir * (root.tonalDir > 0 ? 0.145 : 0.105),
-            1.13
+            root.tonalDir * (root.tonalDir > 0 ? 0.068 : 0.055),
+            1.09
         ),
         0.96
     )
     readonly property color colInputBorder: ColorUtils.applyAlpha(
-        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * 0.24, 1.15),
-        root.isDarkSurface ? 0.55 : 0.48
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * 0.22, 1.12),
+        root.isDarkSurface ? 0.42 : 0.38
     )
     readonly property color colCardHover: ColorUtils.applyAlpha(
         ColorUtils.tonalStep(
             root.colSurfaceBase,
-            root.tonalDir * (root.tonalDir > 0 ? 0.168 : 0.130),
-            1.15
+            root.tonalDir * (root.tonalDir > 0 ? 0.084 : 0.075),
+            1.10
         ),
         1.0
     )
@@ -90,7 +91,7 @@ Item {
         : Appearance.colors.colSubtext
     readonly property color colSubtext: ColorUtils.ensureReadable(root._rawSubtext, root.colCardElevated, 4.6)
     readonly property color colBorder: ColorUtils.applyAlpha(
-        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * 0.24, 1.10),
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * 0.22, 1.10),
         0.07
     )
     readonly property color colAccentFill: ColorUtils.applyAlpha(
@@ -118,7 +119,7 @@ Item {
         4.6
     )
     readonly property color colTrackBg: ColorUtils.applyAlpha(
-        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * (root.tonalDir > 0 ? 0.108 : 0.095), 1.11),
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * 0.044, 1.07),
         1.0
     )
     readonly property color colBannerBg: ColorUtils.mix(root.colCardElevated, root.colAccentFill, 0.82)
