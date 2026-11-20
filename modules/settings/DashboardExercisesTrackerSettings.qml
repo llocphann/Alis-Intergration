@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 
 SettingsCardSection {
@@ -181,7 +182,7 @@ SettingsCardSection {
                                         : (wdChip.routineId.charAt(0).toUpperCase() + wdChip.routineId.slice(1))
                                     font.pixelSize: Appearance.font.pixelSize.smallest
                                     font.weight: Font.DemiBold
-                                    color: Appearance.colors.colPrimary
+                                    color: ColorUtils.ensureReadable(Appearance.colors.colPrimary, Appearance.colors.colLayer2, 4.5)
                                 }
                             }
                         }

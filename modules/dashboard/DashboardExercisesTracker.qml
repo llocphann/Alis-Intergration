@@ -26,36 +26,86 @@ Item {
     readonly property bool alisEverywhere: Appearance.alisEverywhere
     readonly property bool auroraEverywhere: Appearance.auroraEverywhere
 
-    // Match DashboardSpacedRepetition.qml surface & border tokens (borderless inner cards, subtle colBorder)
+    // Luminance-driven WCAG contrast tokens across Abyss/Angel/Alis/Aurora/Material & Dark/Light modes
+    readonly property color colSurfaceBase: ColorUtils.applyAlpha(
+        Qt.color(Appearance.colors.colLayer1Base).valid
+            ? Appearance.colors.colLayer1Base
+            : Appearance.colors.colLayer0Base,
+        1.0
+    )
+    readonly property bool isDarkSurface: ColorUtils.relativeLuminance(root.colSurfaceBase) < 0.35
+
     readonly property color colCard: abyss
-        ? AbyssStyle.contentLayer
+        ? ColorUtils.applyAlpha(root.colSurfaceBase, Math.max(0.88, AbyssStyle.cardOpacity))
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCard
         : alisEverywhere ? Appearance.alis.colLayer1
         : auroraEverywhere ? Appearance.aurora.colSubSurface
         : Appearance.colors.colLayer1
-    readonly property color colCardElevated: abyss
-        ? Qt.alpha(AbyssStyle.textColor, 0.06)
-        : Appearance.angelEverywhere ? Appearance.angel.colGlassCardHover
-        : alisEverywhere ? Appearance.alis.colLayer2
-        : Appearance.colors.colLayer2
-    readonly property color colCardHover: Qt.alpha(root.colText, 0.10)
-    readonly property color colText: abyss
-        ? (Appearance.m3colors.darkmode ? AbyssStyle.textColor : "#000000")
+    readonly property color colCardElevated: {
+        const base = abyss
+            ? ColorUtils.mix(
+                root.colSurfaceBase,
+                root.isDarkSurface ? "#ffffff" : "#000000",
+                root.isDarkSurface ? 0.92 : 0.95
+            )
+            : Appearance.angelEverywhere ? Appearance.angel.colGlassCardHover
+            : alisEverywhere ? Appearance.alis.colLayer2
+            : Appearance.colors.colLayer2
+        return ColorUtils.applyAlpha(base, Math.max(0.94, root.colCard.a))
+    }
+    readonly property color colInputBg: ColorUtils.applyAlpha(
+        ColorUtils.mix(
+            root.colSurfaceBase,
+            root.isDarkSurface ? "#ffffff" : "#000000",
+            root.isDarkSurface ? 0.85 : 0.91
+        ),
+        0.96
+    )
+    readonly property color colInputBorder: Qt.alpha(root.colText, root.isDarkSurface ? 0.22 : 0.24)
+    readonly property color colCardHover: ColorUtils.applyAlpha(
+        ColorUtils.mix(root.colCardElevated, root.colText, 0.86),
+        1.0
+    )
+    readonly property color _rawText: abyss
+        ? (root.isDarkSurface ? AbyssStyle.textColor : "#10141c")
         : Appearance.angelEverywhere ? Appearance.angel.colText
         : alisEverywhere ? Appearance.alis.colText
         : Appearance.colors.colOnLayer0
-    readonly property color colSubtext: abyss
-        ? (Appearance.m3colors.darkmode ? AbyssStyle.textColorMuted : Qt.alpha("#000000", 0.66))
+    readonly property color colText: ColorUtils.ensureReadable(root._rawText, root.colCardElevated, 7.0)
+    readonly property color _rawSubtext: abyss
+        ? ColorUtils.mix(root.colText, root.colSurfaceBase, 0.72)
         : Appearance.angelEverywhere ? Appearance.angel.colTextSecondary
         : alisEverywhere ? Appearance.alis.colTextSecondary
         : Appearance.colors.colSubtext
+    readonly property color colSubtext: ColorUtils.ensureReadable(root._rawSubtext, root.colCardElevated, 4.6)
     readonly property color colBorder: Qt.alpha(root.colText, 0.07)
-    readonly property color colAccent: abyss
-        ? AbyssStyle.accent
-        : Appearance.colors.colPrimary
-    readonly property color colOnAccent: abyss
-        ? "#081018"
-        : Appearance.colors.colOnPrimary
+    readonly property color colAccentFill: ColorUtils.applyAlpha(
+        abyss ? AbyssStyle.accent : Appearance.colors.colPrimary,
+        1.0
+    )
+    readonly property color colAccent: ColorUtils.adaptAccent(root.colAccentFill, root.colCardElevated, 4.5)
+    readonly property color colOnAccent: ColorUtils.ensureReadable(
+        Appearance.colors.colOnPrimary,
+        root.colAccentFill,
+        4.8
+    )
+    readonly property color colToggledBg: ColorUtils.applyAlpha(
+        Appearance.colors.colSecondaryContainer,
+        Math.max(0.92, root.colCardElevated.a)
+    )
+    readonly property color colOnToggled: ColorUtils.ensureReadable(
+        Appearance.colors.colOnSecondaryContainer,
+        root.colToggledBg,
+        5.0
+    )
+    readonly property color colErrorText: ColorUtils.ensureReadable(
+        Appearance.colors.colError,
+        root.colCardElevated,
+        4.6
+    )
+    readonly property color colTrackBg: ColorUtils.mix(root.colCardElevated, root.colText, 0.84)
+    readonly property color colBannerBg: ColorUtils.mix(root.colCardElevated, root.colAccentFill, 0.84)
+    readonly property color colCompletedRowBg: ColorUtils.mix(root.colCardElevated, root.colAccentFill, 0.86)
 
     readonly property string preferredWeightUnit: root.backend?.preferences?.weightUnit ?? "kg"
     readonly property bool showBodyMetricsInputs: root.backend?.preferences?.showBodyMetrics ?? true
@@ -232,15 +282,15 @@ Item {
         bottomPadding: 4
         color: root.colText
         placeholderTextColor: root.colSubtext
-        selectionColor: Qt.alpha(root.colAccent, 0.35)
+        selectionColor: Qt.alpha(root.colAccentFill, 0.35)
         selectedTextColor: root.colText
         font.family: Appearance.font.family.main
         font.pixelSize: Appearance.font.pixelSize.small
         background: Rectangle {
             radius: Appearance.rounding.full
-            color: Qt.alpha(root.colText, 0.05)
-            border.width: tf.activeFocus ? 1.5 : 0
-            border.color: tf.activeFocus ? root.colAccent : "transparent"
+            color: root.colInputBg
+            border.width: tf.activeFocus ? 1.5 : 1
+            border.color: tf.activeFocus ? root.colAccent : root.colInputBorder
         }
     }
 
@@ -255,12 +305,12 @@ Item {
         buttonRadius: 16
         Accessible.name: label.length > 0 ? label : iconName
         colBackground: pillBtn.accentFill
-            ? root.colAccent
+            ? root.colAccentFill
             : pillBtn.toggled
-                ? Appearance.colors.colSecondaryContainer
+                ? root.colToggledBg
                 : root.colCardElevated
         colBackgroundHover: pillBtn.accentFill
-            ? Qt.lighter(root.colAccent, 1.12)
+            ? Qt.lighter(root.colAccentFill, 1.12)
             : root.colCardHover
         contentItem: Item {
             implicitWidth: pillInnerRow.implicitWidth
@@ -277,9 +327,9 @@ Item {
                     color: pillBtn.accentFill
                         ? root.colOnAccent
                         : pillBtn.subtleDanger
-                            ? Appearance.colors.colError
+                            ? root.colErrorText
                             : pillBtn.toggled
-                                ? Appearance.colors.colOnSecondaryContainer
+                                ? root.colOnToggled
                                 : root.colText
                 }
                 StyledText {
@@ -291,9 +341,9 @@ Item {
                     color: pillBtn.accentFill
                         ? root.colOnAccent
                         : pillBtn.subtleDanger
-                            ? Appearance.colors.colError
+                            ? root.colErrorText
                             : pillBtn.toggled
-                                ? Appearance.colors.colOnSecondaryContainer
+                                ? root.colOnToggled
                                 : root.colText
                 }
             }
@@ -386,9 +436,9 @@ Item {
                                 buttonRadius: 10
                                 toggled: modelData.isSelected
                                 colBackground: modelData.isSelected
-                                    ? root.colAccent
+                                    ? root.colAccentFill
                                     : modelData.isToday
-                                        ? Qt.alpha(root.colAccent, 0.14)
+                                        ? root.colBannerBg
                                         : root.colCardElevated
                                 colBackgroundHover: root.colCardHover
                                 onClicked: root.backend?.selectDate(modelData.date)
@@ -437,10 +487,10 @@ Item {
                         implicitWidth: restRow.implicitWidth + 14
                         radius: 16
                         color: (root.backend?.restRunning ?? false)
-                            ? Qt.alpha(root.colAccent, 0.16)
+                            ? root.colBannerBg
                             : root.colCardElevated
                         border.width: (root.backend?.restRunning ?? false) ? 1 : 0
-                        border.color: (root.backend?.restRunning ?? false) ? Qt.alpha(root.colAccent, 0.45) : "transparent"
+                        border.color: (root.backend?.restRunning ?? false) ? root.colAccent : "transparent"
 
                         Row {
                             id: restRow
@@ -556,7 +606,7 @@ Item {
                                 implicitWidth: routineChipRow.implicitWidth + 16
                                 buttonRadius: 14
                                 toggled: root.dayPlan.routine === modelData.id
-                                colBackground: toggled ? root.colAccent : root.colCardElevated
+                                colBackground: toggled ? root.colAccentFill : root.colCardElevated
                                 colBackgroundHover: root.colCardHover
                                 onClicked: root.backend?.applyTemplate(modelData.id, false)
                                 contentItem: Item {
@@ -609,7 +659,7 @@ Item {
                     MaterialSymbol {
                         text: (root.backend?.errorMessage?.length ?? 0) > 0 ? "error" : "check_circle"
                         iconSize: 15
-                        color: (root.backend?.errorMessage?.length ?? 0) > 0 ? Appearance.colors.colError : root.colAccent
+                        color: (root.backend?.errorMessage?.length ?? 0) > 0 ? root.colErrorText : root.colAccent
                     }
 
                     StyledText {
@@ -620,7 +670,7 @@ Item {
                             ? root.backend.errorMessage
                             : (root.backend?.statusMessage ?? "")
                         font.pixelSize: Appearance.font.pixelSize.smallest
-                        color: (root.backend?.errorMessage?.length ?? 0) > 0 ? Appearance.colors.colError : root.colSubtext
+                        color: (root.backend?.errorMessage?.length ?? 0) > 0 ? root.colErrorText : root.colSubtext
                     }
                 }
             }
@@ -683,7 +733,7 @@ Item {
                                 Layout.fillWidth: true
                                 height: 5
                                 radius: 2.5
-                                color: Qt.alpha(root.colText, 0.10)
+                                color: root.colTrackBg
 
                                 Rectangle {
                                     width: parent.width * Math.max(0, Math.min(1, root.dayPlan.completionPct / 100))
@@ -727,7 +777,7 @@ Item {
                         visible: (root.backend?.plannerWorkouts?.length ?? 0) > 0
                         implicitHeight: plannerBannerCol.implicitHeight + 14
                         radius: Appearance.rounding.small
-                        color: Qt.alpha(root.colAccent, 0.09)
+                        color: root.colBannerBg
                         border.width: 0
 
                         ColumnLayout {
@@ -887,7 +937,7 @@ Item {
                                         implicitWidth: catBtnText.implicitWidth + 14
                                         buttonRadius: 12
                                         toggled: root.draftCategory === modelData.id
-                                        colBackground: toggled ? Qt.alpha(root.colAccent, 0.22) : "transparent"
+                                        colBackground: toggled ? root.colBannerBg : "transparent"
                                         colBackgroundHover: root.colCardHover
                                         onClicked: root.draftCategory = modelData.id
                                         contentItem: Item {
@@ -959,7 +1009,7 @@ Item {
                             implicitHeight: Math.max(50, exInnerRow.implicitHeight + 14)
                             radius: Appearance.rounding.small
                             color: modelData.completed
-                                ? Qt.alpha(root.colAccent, 0.10)
+                                ? root.colCompletedRowBg
                                 : root.colCardElevated
                             border.width: 0
 
@@ -975,7 +1025,7 @@ Item {
                                     implicitWidth: 28
                                     implicitHeight: 28
                                     buttonRadius: 14
-                                    colBackground: exRow.modelData.completed ? root.colAccent : "transparent"
+                                    colBackground: exRow.modelData.completed ? root.colAccentFill : "transparent"
                                     colBackgroundHover: root.colCardHover
                                     onClicked: root.backend?.toggleExercise(exRow.modelData.id)
                                     contentItem: Item {
@@ -1021,7 +1071,7 @@ Item {
                                     implicitHeight: 26
                                     implicitWidth: setStepRow.implicitWidth + 10
                                     radius: 13
-                                    color: Qt.alpha(root.colText, 0.06)
+                                    color: root.colInputBg
                                     border.width: 0
 
                                     Row {
@@ -1467,7 +1517,7 @@ Item {
                                     Layout.preferredWidth: 64
                                     Layout.preferredHeight: 64
                                     radius: 8
-                                    color: Qt.alpha(root.colText, 0.05)
+                                    color: root.colInputBg
                                     border.width: 0
                                     clip: true
 
