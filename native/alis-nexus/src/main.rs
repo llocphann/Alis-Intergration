@@ -4801,14 +4801,26 @@ pub fn cmd_scan_for_date_with_cache_opts(
     let today_journal = if let Some(jn) = notes.iter().find(|n| n.journal_date.as_deref() == Some(today_iso.as_str())) {
         let mood = jn.frontmatter.get("mood").cloned().unwrap_or_default();
         let energy = jn.frontmatter.get("energy").cloned().unwrap_or_default();
+        let weight = jn
+            .frontmatter
+            .get("weight")
+            .or_else(|| jn.frontmatter.get("body_weight"))
+            .or_else(|| jn.frontmatter.get("bodyweight"))
+            .cloned()
+            .unwrap_or_default();
+        let has_weight = jn.frontmatter.contains_key("weight")
+            || jn.frontmatter.contains_key("body_weight")
+            || jn.frontmatter.contains_key("bodyweight");
         json!({
             "date": today_iso,
             "exists": true,
             "relPath": jn.rel_path,
             "mood": mood,
             "energy": energy,
+            "weight": weight,
             "hasMood": jn.frontmatter.contains_key("mood"),
             "hasEnergy": jn.frontmatter.contains_key("energy"),
+            "hasWeight": has_weight,
         })
     } else {
         json!({
@@ -4817,8 +4829,10 @@ pub fn cmd_scan_for_date_with_cache_opts(
             "relPath": "",
             "mood": "",
             "energy": "",
+            "weight": "",
             "hasMood": false,
             "hasEnergy": false,
+            "hasWeight": false,
         })
     };
     let daily_schedule = parse_vault_daily_schedule(
@@ -5296,6 +5310,9 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
                     "energy": frontmatter.get("energy").cloned().unwrap_or_default(),
                     "hasMood": frontmatter.contains_key("mood"),
                     "hasEnergy": frontmatter.contains_key("energy"),
+                    "hasWeight": frontmatter.contains_key("weight")
+                        || frontmatter.contains_key("body_weight")
+                        || frontmatter.contains_key("bodyweight"),
                     "weather": frontmatter.get("weather").cloned().unwrap_or_default(),
                     "reflection": frontmatter.get("reflection").cloned().unwrap_or_default(),
                     "weight": frontmatter
@@ -7269,6 +7286,7 @@ pub fn cmd_daily_with_check_in(
     format_opt: Option<&str>,
     mood_opt: Option<&str>,
     energy_opt: Option<&str>,
+    weight_opt: Option<&str>,
 ) -> Result<Value, String> {
     let vault_canon = resolve_vault_root(vault_str)?;
     let now_secs = SystemTime::now()
@@ -7323,6 +7341,9 @@ pub fn cmd_daily_with_check_in(
     if let Some(e) = energy_opt.map(|s| s.trim()) {
         fm_updates.insert("energy".to_string(), Value::String(e.to_string()));
     }
+    if let Some(w) = weight_opt.map(|s| s.trim()) {
+        fm_updates.insert("weight".to_string(), Value::String(w.to_string()));
+    }
     if !fm_updates.is_empty() {
         let (target, rel) = resolve_inside_vault(&vault_canon, &target_rel_path, true)?;
         let raw = fs::read_to_string(&target).map_err(|e| format!("Cannot read '{}': {}", rel, e))?;
@@ -7340,7 +7361,7 @@ pub fn cmd_daily(
     folder_opt: Option<&str>,
     format_opt: Option<&str>,
 ) -> Result<Value, String> {
-    cmd_daily_with_check_in(vault_str, date_opt, folder_opt, format_opt, None, None)
+    cmd_daily_with_check_in(vault_str, date_opt, folder_opt, format_opt, None, None, None)
 }
 
 fn collect_calendar_journal_tasks_recursive(
@@ -9862,7 +9883,8 @@ fn run_cli() -> Result<Value, String> {
             let format = parse_flag(&args, "--format");
             let mood = parse_flag(&args, "--mood");
             let energy = parse_flag(&args, "--energy");
-            cmd_daily_with_check_in(vault, date, folder, format, mood, energy)
+            let weight = parse_flag(&args, "--weight");
+            cmd_daily_with_check_in(vault, date, folder, format, mood, energy, weight)
         }
         "calendar" => {
             let now_secs = SystemTime::now()
@@ -10164,24 +10186,24 @@ mod tests {
         let raw = "---\r\njournal: Daily Notes\r\nMood: great\r\n  # Keep this comment\r\nenergy: high\r\ncreated: 2020-01-02T03:04:05\r\ncustom:\r\n  - keep me\r\n...\r\n\r\n## Daily Log\r\nPrivate fixture thoughts.\r\n```dataviewjs\r\nconst x = 'unchanged';\r\n```";
         fs::write(vault.join(rel), raw).unwrap();
         let v = vault.to_str().unwrap();
-        let unchanged = cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, None, None).unwrap();
+        let unchanged = cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, None, None, None).unwrap();
         assert_eq!(unchanged["relPath"], rel);
         assert_eq!(fs::read_to_string(vault.join(rel)).unwrap(), raw);
-        let cleared = cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, Some(""), None).unwrap();
+        let cleared = cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, Some(""), None, None).unwrap();
         assert_eq!(cleared["journalView"]["mood"], "");
         assert_eq!(cleared["journalView"]["energy"], "high");
         let one_cleared = raw.replace("Mood: great", "Mood: \"\"");
         assert_eq!(fs::read_to_string(vault.join(rel)).unwrap(), one_cleared);
-        cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, Some(""), None).unwrap();
+        cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, Some(""), None, None).unwrap();
         assert_eq!(fs::read_to_string(vault.join(rel)).unwrap(), one_cleared);
-        let both = cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, Some(""), Some(" ")).unwrap();
+        let both = cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, Some(""), Some(" "), None).unwrap();
         assert_eq!(both["journalView"]["energy"], "");
         let both_cleared = one_cleared.replace("energy: high", "energy: \"\"");
         assert_eq!(fs::read_to_string(vault.join(rel)).unwrap(), both_cleared);
         assert_eq!(cmd_read(v, rel).unwrap()["journalView"]["mood"], "");
-        assert!(cmd_daily_with_check_in(v, Some("invalid"), None, None, Some("good"), None).is_err());
+        assert!(cmd_daily_with_check_in(v, Some("invalid"), None, None, Some("good"), None, None).is_err());
         assert_eq!(fs::read_to_string(vault.join(rel)).unwrap(), both_cleared);
-        let retry = cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, Some("good"), None).unwrap();
+        let retry = cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, Some("good"), None, None).unwrap();
         assert_eq!(retry["journalView"]["mood"], "good");
         assert_eq!(retry["journalView"]["energy"], "");
         assert_eq!(fs::read_to_string(vault.join(rel)).unwrap(), both_cleared.replace("Mood: \"\"", "Mood: good"));
@@ -10192,16 +10214,16 @@ mod tests {
     fn test_check_in_new_mixed_dates_and_explicit_empty_are_independent() {
         let vault = make_temp_vault("checkin-mixed");
         let v = vault.to_str().unwrap();
-        let old = cmd_daily_with_check_in(v, Some("2026-11-09"), None, None, Some("great"), Some("high")).unwrap();
+        let old = cmd_daily_with_check_in(v, Some("2026-11-09"), None, None, Some("great"), Some("high"), None).unwrap();
         let old_path = vault.join(old["relPath"].as_str().unwrap());
         let old_bytes = fs::read(&old_path).unwrap();
-        let new = cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, Some(""), Some("medium")).unwrap();
+        let new = cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, Some(""), Some("medium"), None).unwrap();
         let new_rel = new["relPath"].as_str().unwrap();
         assert_eq!(new["journalView"]["mood"], "");
         assert_eq!(new["journalView"]["energy"], "medium");
-        cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, Some("good"), None).unwrap();
+        cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, Some("good"), None, None).unwrap();
         assert_eq!(cmd_read(v, new_rel).unwrap()["journalView"]["energy"], "medium");
-        let clear = cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, None, Some("")).unwrap();
+        let clear = cmd_daily_with_check_in(v, Some("2026-11-10"), None, None, None, Some(""), None).unwrap();
         assert_eq!(clear["journalView"]["mood"], "good");
         assert_eq!(clear["journalView"]["energy"], "");
         assert_eq!(fs::read(old_path).unwrap(), old_bytes);
@@ -10212,6 +10234,26 @@ mod tests {
         let previous_day = cmd_scan_for_date(v, Some("2026-11-09")).unwrap();
         assert_eq!(previous_day["todayJournal"]["mood"], "great");
         assert!(cmd_scan_for_date(v, Some("2026-02-30")).is_err());
+        fs::remove_dir_all(vault).unwrap();
+    }
+
+    #[test]
+    fn test_check_in_weight_preserves_legacy_bytes_and_scan() {
+        let vault = make_temp_vault("checkin-weight");
+        let rel = "Journal/11-11-2026-Wednesday.md";
+        fs::create_dir(vault.join("Journal")).unwrap();
+        let raw = "---\r\njournal: Daily Notes\r\nmood: good\r\nweight: 64.2\r\ncustom:\r\n  - untouched\r\n...\r\n\r\nBody stays intact.\r\n";
+        fs::write(vault.join(rel), raw).unwrap();
+        let v = vault.to_str().unwrap();
+        let res = cmd_daily_with_check_in(v, Some("2026-11-11"), None, None, None, None, Some("65.5")).unwrap();
+        assert_eq!(res["journalView"]["weight"], "65.5");
+        assert_eq!(res["journalView"]["hasWeight"], true);
+        assert_eq!(res["journalView"]["mood"], "good");
+        let saved = fs::read_to_string(vault.join(rel)).unwrap();
+        assert_eq!(saved, raw.replace("weight: 64.2", "weight: 65.5"));
+        let scanned = cmd_scan_for_date(v, Some("2026-11-11")).unwrap();
+        assert_eq!(scanned["todayJournal"]["weight"], "65.5");
+        assert_eq!(scanned["todayJournal"]["hasWeight"], true);
         fs::remove_dir_all(vault).unwrap();
     }
 

@@ -58,6 +58,10 @@ Item {
 
     readonly property bool profileFanControlEnabled:
         Config.getNestedValue("powerProfiles.fanControl.enabled", false) === true
+    readonly property bool managedIntentEnabled:
+        Config.ready && Config.getNestedValue("powerProfiles.fanControl.managed", false) === true
+    property bool _startupManagedRecoveryDone: false
+    property string _pendingManagedIntentValue: ""
     readonly property string activePowerProfileKey:
         root._powerProfileKey(PowerProfiles.profile)
     readonly property int configuredActiveFanLevel:
@@ -157,15 +161,28 @@ Item {
             root._daemonRunningBeforeSleep = root._daemonRunning
         }
         root._scheduleConfiguredFanLevelApply()
+        root._maybeRecoverManagedOnStartup()
         root._reconcileResumeRecovery()
         return true
+    }
+
+    function _maybeRecoverManagedOnStartup(): void {
+        if (root._startupManagedRecoveryDone || !root._profileFollowArmed
+                || !Config.ready || !root.stateKnown)
+            return
+        if (!root.managedIntentEnabled || root.profileFanControlEnabled)
+            return
+        root._startupManagedRecoveryDone = true
+        if (root.serviceInstalled && root.available && !root.active
+                && !root.busy && !root._sleeping)
+            root._applyProfileInternal("managed", false)
     }
 
     function _reconcileResumeRecovery(): void {
         if (!root._resumeRecoveryPending || !root.stateKnown)
             return
         const finishPass = root._resumeSecondPass
-        if (((root.enabled || root._managedBeforeSleep) && !root.active
+        if (((root.enabled || root.managedIntentEnabled || root._managedBeforeSleep) && !root.active
                 || (root._daemonRunningBeforeSleep && !root._daemonRunning && !root.active))
                 && root.serviceInstalled
                 && root.available) {
@@ -173,7 +190,7 @@ Item {
             root._resumeSecondPass = false
             Qt.callLater(() => {
                 if (root._live && !root.busy && !root.active)
-                    root.applyProfile("managed")
+                    root._applyProfileInternal("managed", false)
             })
             return
         }
@@ -328,6 +345,10 @@ Item {
     }
 
     function applyProfile(requestedProfile: string): bool {
+        return root._applyProfileInternal(requestedProfile, true)
+    }
+
+    function _applyProfileInternal(requestedProfile: string, persistIntent: bool): bool {
         const normalized = String(requestedProfile ?? "")
         if (normalized !== "managed" && normalized !== "firmware") {
             root.lastApplySucceeded = false
@@ -360,6 +381,7 @@ Item {
             root._manualLevelBeforeSleep = ""
         }
 
+        root._pendingManagedIntentValue = (persistIntent && !root._reapplyManagedAfterBounce) ? normalized : ""
         root.busy = true
         root.pendingOperation = "profile:" + normalized
         root.lastApplySucceeded = false
@@ -474,6 +496,12 @@ Item {
 
     Connections {
         target: Config
+        function onReadyChanged(): void {
+            if (!Config.ready)
+                return
+            root.refresh()
+            root._maybeRecoverManagedOnStartup()
+        }
         function onConfigChanged(): void {
             const nextSignature = root._fanConfigSignature()
             if (nextSignature === root._lastFanConfigSignature)
@@ -493,6 +521,7 @@ Item {
         onTriggered: {
             root._profileFollowArmed = true
             root._scheduleConfiguredFanLevelApply()
+            root._maybeRecoverManagedOnStartup()
         }
     }
 
@@ -620,7 +649,18 @@ Item {
             }
             root.lastApplySucceeded = succeeded
             root.lastApplyError = errCode
+            const intentTarget = root._pendingManagedIntentValue
+            root._pendingManagedIntentValue = ""
             root.pendingOperation = ""
+            if (succeeded && Config.ready && intentTarget.length > 0
+                    && (completedOperation === "profile:managed" || completedOperation === "profile:firmware")) {
+                const desiredManaged = completedOperation === "profile:managed"
+                if (root.managedIntentEnabled !== desiredManaged && typeof Config.setNestedValue === "function") {
+                    Config.setNestedValue("powerProfiles.fanControl.managed", desiredManaged)
+                    if (typeof Config.flushWrites === "function")
+                        Config.flushWrites()
+                }
+            }
 
             Qt.callLater(() => {
                 if (!root._live)

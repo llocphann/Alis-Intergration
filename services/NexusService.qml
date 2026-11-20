@@ -412,7 +412,8 @@ Item {
             "exists": false,
             "relPath": "",
             "mood": "",
-            "energy": ""
+            "energy": "",
+            "weight": ""
         })
     property string vaultCachePath: `${Directories.state}/user/nexus_vault_cache.json`
     readonly property string vaultCacheFsPath: decodeURIComponent(String(root.vaultCachePath ?? "").replace(/^file:\/\//, ""))
@@ -565,6 +566,7 @@ Item {
         target: Persistent.states?.aquaCheckIn ?? null
         function onMoodChanged() { root._onCompanionCheckInChanged("mood", Persistent.states?.aquaCheckIn); }
         function onEnergyChanged() { root._onCompanionCheckInChanged("energy", Persistent.states?.aquaCheckIn); }
+        function onWeightChanged() { root._onCompanionCheckInChanged("weight", Persistent.states?.aquaCheckIn); }
         function onDateChanged() { root._onCompanionCheckInChanged("", Persistent.states?.aquaCheckIn); }
     }
 
@@ -574,6 +576,7 @@ Item {
             : null
         function onMoodChanged() { root._onCompanionCheckInChanged("mood", Persistent.states?.companionCheckIn); }
         function onEnergyChanged() { root._onCompanionCheckInChanged("energy", Persistent.states?.companionCheckIn); }
+        function onWeightChanged() { root._onCompanionCheckInChanged("weight", Persistent.states?.companionCheckIn); }
         function onDateChanged() { root._onCompanionCheckInChanged("", Persistent.states?.companionCheckIn); }
     }
 
@@ -608,7 +611,9 @@ Item {
         const c1 = Persistent.states?.companionCheckIn;
         const c2 = Persistent.states?.aquaCheckIn;
         if (c1 && String(c1.date ?? "").trim() === todayIso
-                && (String(c1.mood ?? "").trim().length > 0 || String(c1.energy ?? "").trim().length > 0))
+                && (String(c1.mood ?? "").trim().length > 0
+                    || String(c1.energy ?? "").trim().length > 0
+                    || (("weight" in c1) && String(c1.weight ?? "").trim().length > 0)))
             return c1;
         if (c2 && String(c2.date ?? "").trim() === todayIso)
             return c2;
@@ -624,10 +629,12 @@ Item {
         }
         const mood = String(journal.mood ?? "").trim();
         const energy = String(journal.energy ?? "").trim();
+        const weight = String(journal.weight ?? "").trim();
         const hasMood = journal.hasMood === undefined ? mood.length > 0 : Boolean(journal.hasMood);
         const hasEnergy = journal.hasEnergy === undefined ? energy.length > 0 : Boolean(journal.hasEnergy);
-        if (hasMood || hasEnergy)
-            root._syncJournalToCompanion(String(journal.date ?? ""), hasMood ? mood : undefined, hasEnergy ? energy : undefined);
+        const hasWeight = journal.hasWeight === undefined ? weight.length > 0 : Boolean(journal.hasWeight);
+        if (hasMood || hasEnergy || hasWeight)
+            root._syncJournalToCompanion(String(journal.date ?? ""), hasMood ? mood : undefined, hasEnergy ? energy : undefined, hasWeight ? weight : undefined);
         else
             root._onCompanionCheckInChanged();
     }
@@ -649,34 +656,42 @@ Item {
             return;
         const mood = String(ci.mood ?? "").trim();
         const energy = String(ci.energy ?? "").trim();
+        const weight = ("weight" in ci) ? String(ci.weight ?? "").trim() : "";
         if (changedField === "mood") {
-            root.syncCompanionCheckIn(todayIso, mood, undefined);
+            root.syncCompanionCheckIn(todayIso, mood, undefined, undefined);
             return;
         }
         if (changedField === "energy") {
-            root.syncCompanionCheckIn(todayIso, undefined, energy);
+            root.syncCompanionCheckIn(todayIso, undefined, energy, undefined);
+            return;
+        }
+        if (changedField === "weight") {
+            root.syncCompanionCheckIn(todayIso, undefined, undefined, weight);
             return;
         }
         // Startup/date discovery has no explicit clear intent.
-        if (mood.length === 0 && energy.length === 0)
+        if (mood.length === 0 && energy.length === 0 && weight.length === 0)
             return;
-        root.syncCompanionCheckIn(todayIso, mood.length > 0 ? mood : undefined, energy.length > 0 ? energy : undefined);
+        root.syncCompanionCheckIn(todayIso, mood.length > 0 ? mood : undefined, energy.length > 0 ? energy : undefined, weight.length > 0 ? weight : undefined);
     }
 
-    function syncCompanionCheckIn(dateStr: string, mood, energy): bool {
+    function syncCompanionCheckIn(dateStr: string, mood, energy, weight = undefined): bool {
         if (!root.vaultConfigured)
             return false;
         const targetDate = String(dateStr ?? "").trim() || Qt.formatDate(new Date(), "yyyy-MM-dd");
         const hasMood = mood !== undefined && mood !== null;
         const hasEnergy = energy !== undefined && energy !== null;
+        const hasWeight = weight !== undefined && weight !== null;
         const cleanMood = String(mood ?? "").trim();
         const cleanEnergy = String(energy ?? "").trim();
-        if (!hasMood && !hasEnergy)
+        const cleanWeight = String(weight ?? "").trim();
+        if (!hasMood && !hasEnergy && !hasWeight)
             return false;
         const tj = root.todayJournalInfo ?? ({});
         if (Boolean(tj.exists) && String(tj.date ?? "") === targetDate
                 && (!hasMood || (tj.hasMood !== false && String(tj.mood ?? "") === cleanMood))
-                && (!hasEnergy || (tj.hasEnergy !== false && String(tj.energy ?? "") === cleanEnergy))) {
+                && (!hasEnergy || (tj.hasEnergy !== false && String(tj.energy ?? "") === cleanEnergy))
+                && (!hasWeight || (tj.hasWeight !== false && String(tj.weight ?? "") === cleanWeight))) {
             return false;
         }
         // Keep this readback authoritative: a failed queued write must remain retryable.
@@ -700,6 +715,10 @@ Item {
             args.push("--energy");
             args.push(cleanEnergy);
         }
+        if (hasWeight) {
+            args.push("--weight");
+            args.push(cleanWeight);
+        }
         root._rescanAfterDoc = true;
         root._enqueueDocOp({
             "kind": "daily-checkin",
@@ -711,7 +730,7 @@ Item {
         return true;
     }
 
-    function _syncJournalToCompanion(dateIso: string, moodVal, energyVal): void {
+    function _syncJournalToCompanion(dateIso: string, moodVal, energyVal, weightVal = undefined): void {
         const cleanDate = String(dateIso ?? "").trim();
         const todayIso = Qt.formatDate(new Date(), "yyyy-MM-dd");
         if (!cleanDate || cleanDate !== todayIso)
@@ -727,13 +746,15 @@ Item {
         const sameDay = primary.date === todayIso;
         const nextMood = moodVal !== undefined && moodVal !== null ? String(moodVal).trim() : String(sameDay ? primary.mood : "");
         const nextEnergy = energyVal !== undefined && energyVal !== null ? String(energyVal).trim() : String(sameDay ? primary.energy : "");
+        const nextWeight = weightVal !== undefined && weightVal !== null ? String(weightVal).trim() : String((sameDay && ("weight" in primary)) ? primary.weight : "");
         root.todayJournalInfo = Object.assign({}, root.todayJournalInfo, {
             "date": todayIso,
             "exists": true,
             "mood": nextMood,
-            "energy": nextEnergy
+            "energy": nextEnergy,
+            "weight": nextWeight
         });
-        const allSynced = targets.every(t => t.date === todayIso && t.mood === nextMood && t.energy === nextEnergy);
+        const allSynced = targets.every(t => t.date === todayIso && t.mood === nextMood && t.energy === nextEnergy && (!("weight" in t) || t.weight === nextWeight));
         if (allSynced)
             return;
         root._syncingCheckInGuard = true;
@@ -745,6 +766,8 @@ Item {
                 ci.mood = nextMood;
             if (!ciSameDay || (energyVal !== undefined && energyVal !== null))
                 ci.energy = nextEnergy;
+            if (("weight" in ci) && (!ciSameDay || (weightVal !== undefined && weightVal !== null)))
+                ci.weight = nextWeight;
         }
         root._syncingCheckInGuard = false;
     }
@@ -3385,12 +3408,15 @@ Item {
                             "relPath": newRel,
                             "mood": String(jv.mood ?? root.todayJournalInfo?.mood ?? ""),
                             "energy": String(jv.energy ?? root.todayJournalInfo?.energy ?? ""),
+                            "weight": String(jv.weight ?? root.todayJournalInfo?.weight ?? ""),
                             "hasMood": jv.hasMood,
-                            "hasEnergy": jv.hasEnergy
+                            "hasEnergy": jv.hasEnergy,
+                            "hasWeight": jv.hasWeight
                         };
                         root._syncJournalToCompanion(root.todayJournalInfo.date,
                             jv.hasMood !== false ? root.todayJournalInfo.mood : undefined,
-                            jv.hasEnergy !== false ? root.todayJournalInfo.energy : undefined);
+                            jv.hasEnergy !== false ? root.todayJournalInfo.energy : undefined,
+                            jv.hasWeight !== false ? root.todayJournalInfo.weight : undefined);
                         if (newRel.length > 0 && String(jv.weather ?? "").trim().length === 0) {
                             const liveSummary = root.alisWeatherSummary || root.formatAlisWeatherSummary();
                             if (liveSummary.length > 0)
@@ -3451,6 +3477,7 @@ Item {
                             const jDateIso = String(payload.journalView.dateIso ?? "").trim();
                             const jMood = String(payload.journalView.mood ?? "").trim();
                             const jEnergy = String(payload.journalView.energy ?? "").trim();
+                            const jWeight = String(payload.journalView.weight ?? "").trim();
                             if (jDateIso === Qt.formatDate(new Date(), "yyyy-MM-dd")) {
                                 root.todayJournalInfo = {
                                     "date": jDateIso,
@@ -3458,13 +3485,16 @@ Item {
                                     "relPath": newRel,
                                     "mood": jMood,
                                     "energy": jEnergy,
+                                    "weight": jWeight,
                                     "hasMood": payload.journalView.hasMood,
-                                    "hasEnergy": payload.journalView.hasEnergy
+                                    "hasEnergy": payload.journalView.hasEnergy,
+                                    "hasWeight": payload.journalView.hasWeight
                                 };
                                 const hasMood = payload.journalView.hasMood === undefined ? jMood.length > 0 || isSaveOnly : Boolean(payload.journalView.hasMood);
                                 const hasEnergy = payload.journalView.hasEnergy === undefined ? jEnergy.length > 0 || isSaveOnly : Boolean(payload.journalView.hasEnergy);
-                                if (hasMood || hasEnergy) {
-                                    root._syncJournalToCompanion(jDateIso, hasMood ? jMood : undefined, hasEnergy ? jEnergy : undefined);
+                                const hasWeight = payload.journalView.hasWeight === undefined ? jWeight.length > 0 || isSaveOnly : Boolean(payload.journalView.hasWeight);
+                                if (hasMood || hasEnergy || hasWeight) {
+                                    root._syncJournalToCompanion(jDateIso, hasMood ? jMood : undefined, hasEnergy ? jEnergy : undefined, hasWeight ? jWeight : undefined);
                                 }
                             }
                             const existingWeather = String(payload.journalView.weather ?? "").trim();

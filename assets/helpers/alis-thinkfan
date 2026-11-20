@@ -123,6 +123,9 @@ apply_profile() {
                 printf '%s\n' 'alis-thinkfan: thinkfan executable is unavailable' >&2
                 exit 69
             }
+            if [ -f /run/thinkfan.pid ] && ! pgrep -x thinkfan >/dev/null 2>&1; then
+                rm -f /run/thinkfan.pid
+            fi
             systemctl enable --now "$service_name" || exit $?
             systemctl is-active --quiet "$service_name" || {
                 printf '%s\n' 'alis-thinkfan: service did not become active' >&2

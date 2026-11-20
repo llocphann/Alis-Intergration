@@ -251,6 +251,20 @@ SettingsCardSection {
             }
         }
 
+        StyledText {
+            objectName: "thinkfanModeHintText"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            wrapMode: Text.WordWrap
+            font.pixelSize: Appearance.font.pixelSize.smallest
+            color: Appearance.colors.colSubtext
+            text: root.thinkFanManaged
+                ? Translation.tr("Managed Mode enables thinkfan.service on boot and recovers it after sleep.")
+                : (ThinkFanService.managedIntentEnabled
+                    ? Translation.tr("Managed Mode preference is saved; enable above or refresh if stopped.")
+                    : Translation.tr("Firmware Mode leaves fan curves to EC firmware unless per-profile levels are enabled."))
+        }
+
         SettingsDivider {}
 
         ConfigRow {
