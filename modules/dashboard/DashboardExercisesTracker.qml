@@ -26,26 +26,27 @@ Item {
     readonly property bool alisEverywhere: Appearance.alisEverywhere
     readonly property bool auroraEverywhere: Appearance.auroraEverywhere
 
-    // Luminance-driven WCAG contrast tokens across Abyss/Angel/Alis/Aurora/Material & Dark/Light modes
+    // Stepped flat tonal layers anchored on the auto-theming root background (Layer 0 -> Layer 1 -> Layer 2 -> Layer 3 -> Hover)
     readonly property color colSurfaceBase: ColorUtils.applyAlpha(
-        Qt.color(Appearance.colors.colLayer1Base).valid
-            ? Appearance.colors.colLayer1Base
-            : Appearance.colors.colLayer0Base,
+        Qt.color(Appearance.colors.colLayer0Base).valid
+            ? Appearance.colors.colLayer0Base
+            : Appearance.colors.colLayer1Base,
         1.0
     )
     readonly property bool isDarkSurface: ColorUtils.relativeLuminance(root.colSurfaceBase) < 0.35
-    readonly property real tonalSign: root.isDarkSurface ? 1 : -1
+    // Lighten nested layers when headroom exists; subtly step deeper on near-white canvases
+    readonly property real tonalDir: Qt.color(root.colSurfaceBase).hslLightness > 0.86 ? -1 : 1
 
     readonly property color colCard: abyss
-        ? ColorUtils.applyAlpha(root.colSurfaceBase, Math.max(0.88, AbyssStyle.cardOpacity))
+        ? ColorUtils.applyAlpha(ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * 0.032, 1.05), Math.max(0.88, AbyssStyle.cardOpacity))
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCard
         : alisEverywhere ? Appearance.alis.colLayer1
         : auroraEverywhere ? Appearance.aurora.colSubSurface
-        : Appearance.colors.colLayer1
+        : ColorUtils.applyAlpha(ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * 0.032, 1.05), 1.0)
     readonly property color colCardElevated: {
         const tonal = ColorUtils.tonalStep(
             root.colSurfaceBase,
-            root.tonalSign * (root.isDarkSurface ? 0.042 : 0.032),
+            root.tonalDir * 0.068,
             1.10
         )
         const base = abyss
@@ -58,46 +59,22 @@ Item {
     readonly property color colInputBg: ColorUtils.applyAlpha(
         ColorUtils.tonalStep(
             root.colSurfaceBase,
-            root.tonalSign * (root.isDarkSurface ? 0.118 : 0.072),
-            1.12
+            root.tonalDir * (root.tonalDir > 0 ? 0.145 : 0.105),
+            1.13
         ),
         0.96
     )
     readonly property color colInputBorder: ColorUtils.applyAlpha(
-        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * 0.24, 1.15),
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * 0.24, 1.15),
         root.isDarkSurface ? 0.55 : 0.48
     )
     readonly property color colCardHover: ColorUtils.applyAlpha(
         ColorUtils.tonalStep(
             root.colSurfaceBase,
-            root.tonalSign * (root.isDarkSurface ? 0.135 : 0.095),
-            1.14
+            root.tonalDir * (root.tonalDir > 0 ? 0.168 : 0.130),
+            1.15
         ),
         1.0
-    )
-    readonly property color colCardGradTop: ColorUtils.applyAlpha(
-        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.026 : 0.008), 1.06),
-        root.colCard.a
-    )
-    readonly property color colCardGradBottom: ColorUtils.applyAlpha(
-        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.006 : 0.022), 1.04),
-        root.colCard.a
-    )
-    readonly property color colBoxGradTop: ColorUtils.applyAlpha(
-        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.062 : 0.024), 1.12),
-        Math.max(0.94, root.colCard.a)
-    )
-    readonly property color colBoxGradBottom: ColorUtils.applyAlpha(
-        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.036 : 0.042), 1.08),
-        Math.max(0.94, root.colCard.a)
-    )
-    readonly property color colInputGradTop: ColorUtils.applyAlpha(
-        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.128 : 0.060), 1.14),
-        0.96
-    )
-    readonly property color colInputGradBottom: ColorUtils.applyAlpha(
-        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.104 : 0.082), 1.10),
-        0.96
     )
 
     readonly property color _rawText: abyss
@@ -113,7 +90,7 @@ Item {
         : Appearance.colors.colSubtext
     readonly property color colSubtext: ColorUtils.ensureReadable(root._rawSubtext, root.colCardElevated, 4.6)
     readonly property color colBorder: ColorUtils.applyAlpha(
-        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * 0.24, 1.10),
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * 0.24, 1.10),
         0.07
     )
     readonly property color colAccentFill: ColorUtils.applyAlpha(
@@ -141,7 +118,7 @@ Item {
         4.6
     )
     readonly property color colTrackBg: ColorUtils.applyAlpha(
-        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalSign * (root.isDarkSurface ? 0.095 : 0.085), 1.10),
+        ColorUtils.tonalStep(root.colSurfaceBase, root.tonalDir * (root.tonalDir > 0 ? 0.108 : 0.095), 1.11),
         1.0
     )
     readonly property color colBannerBg: ColorUtils.mix(root.colCardElevated, root.colAccentFill, 0.82)
@@ -330,10 +307,6 @@ Item {
         background: Rectangle {
             radius: Appearance.rounding.full
             color: root.colInputBg
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: root.colInputGradTop }
-                GradientStop { position: 1.0; color: root.colInputGradBottom }
-            }
             border.width: tf.activeFocus ? 1.5 : 1
             border.color: tf.activeFocus ? root.colAccent : root.colInputBorder
         }
@@ -427,10 +400,6 @@ Item {
             implicitHeight: topHeaderFlow.implicitHeight + 16
             radius: Appearance.rounding.small
             color: root.colCard
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: root.colCardGradTop }
-                GradientStop { position: 1.0; color: root.colCardGradBottom }
-            }
             border.width: 0
 
             ColumnLayout {
@@ -754,10 +723,6 @@ Item {
                 Layout.preferredWidth: root.width >= 880 ? Math.round(root.width * 0.54) : root.width
                 radius: Appearance.rounding.small
                 color: root.colCard
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: root.colCardGradTop }
-                    GradientStop { position: 1.0; color: root.colCardGradBottom }
-                }
                 border.width: 0
                 clip: true
 
@@ -896,10 +861,6 @@ Item {
                         implicitHeight: composerCol.implicitHeight + 16
                         radius: Appearance.rounding.small
                         color: root.colCardElevated
-                        gradient: Gradient {
-                            GradientStop { position: 0.0; color: root.colBoxGradTop }
-                            GradientStop { position: 1.0; color: root.colBoxGradBottom }
-                        }
                         border.width: 0
 
                         ColumnLayout {
@@ -1082,10 +1043,6 @@ Item {
                             color: modelData.completed
                                 ? root.colCompletedRowBg
                                 : root.colCardElevated
-                            gradient: Gradient {
-                                GradientStop { position: 0.0; color: modelData.completed ? root.colCompletedRowBg : root.colBoxGradTop }
-                                GradientStop { position: 1.0; color: modelData.completed ? ColorUtils.tonalStep(root.colCompletedRowBg, root.tonalSign * -0.012, 1.04) : root.colBoxGradBottom }
-                            }
                             border.width: 0
 
                             RowLayout {
@@ -1321,10 +1278,6 @@ Item {
                 Layout.preferredWidth: root.width >= 880 ? Math.round(root.width * 0.46) : root.width
                 radius: Appearance.rounding.small
                 color: root.colCard
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: root.colCardGradTop }
-                    GradientStop { position: 1.0; color: root.colCardGradBottom }
-                }
                 border.width: 0
                 clip: true
 
@@ -1398,10 +1351,6 @@ Item {
                         implicitHeight: bodyComposerCol.implicitHeight + 16
                         radius: Appearance.rounding.small
                         color: root.colCardElevated
-                        gradient: Gradient {
-                            GradientStop { position: 0.0; color: root.colBoxGradTop }
-                            GradientStop { position: 1.0; color: root.colBoxGradBottom }
-                        }
                         border.width: 0
 
                         ColumnLayout {
@@ -1587,10 +1536,6 @@ Item {
                             implicitHeight: Math.max(76, bcRow.implicitHeight + 16)
                             radius: Appearance.rounding.small
                             color: root.colCardElevated
-                            gradient: Gradient {
-                                GradientStop { position: 0.0; color: root.colBoxGradTop }
-                                GradientStop { position: 1.0; color: root.colBoxGradBottom }
-                            }
                             border.width: 0
 
                             RowLayout {
@@ -1731,10 +1676,6 @@ Item {
                                     Layout.minimumWidth: 0
                                     radius: Appearance.rounding.small
                                     color: root.colCardElevated
-                                    gradient: Gradient {
-                                        GradientStop { position: 0.0; color: root.colBoxGradTop }
-                                        GradientStop { position: 1.0; color: root.colBoxGradBottom }
-                                    }
                                     border.width: 0
                                     clip: true
 
