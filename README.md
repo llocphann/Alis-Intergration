@@ -1,93 +1,61 @@
 # Alis-Intergration
 
-Optional small and medium application integrations for Alis: TLP, Thinkfan,
-Nexus and Spaced Repetition. Alis owns generic Battery, Power Profiles, Todo, Notes,
-Dashboard, configuration and UI primitives. Alis-Intergration owns the integration workers,
-application-specific settings, Spaced Repetition learning engine (`spaced_repetition`),
-byte-safe vault helpers and privileged helper payloads. Existing integration preferences and application data are retained.
+Optional workspace, study, fitness, and hardware integration plugins for the [**Alis**](https://github.com/llocphann/Alis) Wayland desktop shell (`hostApi: 1`). Every plugin is optional and disabled by default until you install and enable it.
 
-Install a committed revision with `make install`. Installation does not enable
-an integration, launch Nexus, change fan/charge policies, or stop existing
-system services. Each integration loads one disposable QML tree when explicitly
-enabled in Alis. Missing packages report unavailable rather than claiming an
-operation succeeded. `make uninstall` deactivates only this package's owned
-link; releases, user configuration, vaults and system services are preserved.
+## Included Plugins
 
-The supported Alis host entrypoint for system provisioning is
-`./setup integrations install` (or `reinstall`, `update`, `rollback`, `remove`).
-Use `./setup integrations install --dry-run` to review the stages and
-`./setup integrations status` to reconcile package/helper receipts. Mutations
-require explicit confirmation and native Polkit permission. Core Alis
-`./setup install`, `reinstall` and `update` accept `--integration-helpers` as an
-explicit opt-in; ordinary setup never provisions these helpers. Interrupted
-or uncertain transactions require inspection and an explicit
-`status --acknowledge-uncertain` before retry; they are never replayed.
+### Nexus Knowledge Workspace (`nexus`)
 
-For distribution packaging, `make install-helpers DESTDIR=/staging/root`
-installs helper/polkit/schema files without enabling services or creating
-TLP configuration overrides. Prefixes and `DESTDIR` are supported for packaging.
-`LIBEXECDIR`, `POLKIT_ACTIONS_DIR`, `ALIS_SYSTEM_SHAREDIR` and `TLP_CONFDIR`
-control helper, policy, schema and profile locations; helper installation does
-not create profile directories or overrides. TLP (including its optional
-Radio Device Wizard), Thinkfan and Nexus remain separately installed apps.
+Browse your Markdown vault inside Alis with an interactive file tree, folder-colored Canvas Mini-Graph, Homepage overview, Daily Schedule, Calendar & Today timeline, 3D Globe widget, Quicknotes, Todo sync, and adaptive Nexus Vault theming.
 
-## Nexus automatic colors
+<p align="center">
+  <img src="docs/screenshots/nexus-workspace.png" alt="Nexus Workspace showing file tree, Vault Mini-Graph, Homepage overview, 3D Globe, and Today timeline" width="100%" />
+</p>
 
-Alis Settings → Integrations → Nexus → Auto theming is the only controller. “Follow Alis colors” updates `99_Alis_Theme.css` after the vault's existing snippets; Apply performs a one-time update and Disable removes only this owned selection. The generator owns the dark-to-light ramp, dark/light surface roles, theme-tinted sidebar, startup masks and numeric accent/status channels. It preserves the selected theme, fonts, notes and original snippets. A recognized old `99_Alis_Theme` selection is retired without deleting its bytes; an unrecognized user file is preserved. The new destination also refuses to overwrite unowned CSS.
+### Spaced Repetition (`spaced_repetition`)
 
-No auto-theme setting or synchronization plugin is needed inside Nexus. This integration runs on Linux with Alis and the optional Integration package; Windows/macOS are unsupported. The startup templates preserve the vault's original animations. Saved Graph/Local Graph color groups are explicit numeric Nexus overrides, so they keep their saved colors: CSS cannot rewrite their in-memory values. Graph files are not modified and Nexus CLI evaluation is never used.
+Review vocabulary directly on the Alis Dashboard with CEFR badges, morphology hints, Multiple Choice prompts, mastery bars, an Analytics donut, and a 7-day review forecast.
 
-Run `make test` for scoped filesystem/helper and installation contracts.
-Native tests prefer a sibling `Alis` host checkout, with a sibling `Alis`
-checkout accepted for legacy fixtures. Set `ALIS_ROOT=/path/to/Alis` to pin the
-native-test host explicitly (`ALIS_ROOT` is a supported legacy override).
-They require Quickshell, Qt 6 and private Niri, and use synthetic vaults and
-injected status helpers.
-Initial provenance is recorded in `manifest.json`. All active Integration feature, rework and bug tasks are tracked **in
-[Alis-Intergration GitHub Issues](https://github.com/llocphann/Alis-Intergration/issues?q=is%3Aissue+is%3Aopen)**. Alis core shell/host Issues and Companion Issues stay in their own repositories; link cross-repo dependencies rather than creating duplicate Issues.
-Search existing Alis-Intergration Issues first (including closed and historical Alis MOVED links); create one only for a new outcome. Keep its Goal,
-necessary constraints and Done-when criteria brief; reuse `bug`, `enhancement`
-or `documentation` plus the primary `area:integration`. Add colored
-`complexity:high` only for genuinely difficult native, privileged or cross-repo
-work, and a `status:*` label only when applicable; do not use obsolete `type:*`. Update it directly at
-meaningful milestones with actual Alis `dev` / Integration `main` SHAs, test
-results and any Owner/permission gate. A bot-complete Issue remains open until
-Owner verification. **Do not write task progress to Markdown.** This repository
-still owns its optional QML services, Settings, helpers and package-local tests;
-no user vault, privileged settings or existing data is changed by task tracking.
+<p align="center">
+  <img src="docs/screenshots/spaced-repetition.png" alt="Dashboard Spaced Repetition card with CEFR mastery, morphology hints, and 7-day forecast" width="100%" />
+</p>
 
-Classic and Waffle TLP editors, Nexus task/capture settings, and Spaced
-Repetition Dashboard/Settings (`modules/dashboard/DashboardSpacedRepetition.qml`,
-`modules/dashboard/DashboardSpacedRepetitionSettings.qml`, `services/SpacedRepetition.qml`,
-`services/SpacedRepetitionEngine.js`, `services/SpacedRepetitionLexicon.js`,
-`scripts/spaced_repetition/lookup_word_level.py`) are owned here. Alis retains
-navigation, optional loaders, generic Battery controls and the preserved
-internal Todo store. Version 0.3 adds declarative `plugins` metadata to host API 1: each installed
-plugin names its capabilities by validated `settings` keys (`tlp`, `thinkfan`, `nexus`, `spaced_repetition`), with an optional
-`waffleSettings` presentation. Nexus exposes Theming, Quicknotes and Todo;
-its combined legacy editor remains supported. Spaced Repetition provides an
-SM-2/FSRS-inspired flashcard & vocabulary system with CEFR A1–C2 grading,
-bilingual English/Vietnamese definitions, morphology (root/prefix/suffix)
-analysis, and Bulk Auto-Syntax / Nexus SR import. Discovery reads metadata and
-verifies the complete immutable payload without loading QML. Hosts without
-this navigation extension retain the existing API 1 entrypoints. Integration
-enable switches remain off by default.
+### Exercises Tracker (`exercises_tracker`)
 
-## Compatibility and preserved data
+Track strength workouts and body metrics in clean borderless Dashboard cards synced with `Body Tracker` weight check-ins and configurable under **Alis Settings → Integrations**.
 
-The public package name is Alis-Intergration. API 1 retains its `alis-intergration`
-machine identity, `AlisSession.qml`, installed release/config locations,
-saved preferences and existing note markers. New hosts expose
-`alis ipc integrations refresh`; older clients/hosts can keep using
-`alis ipc alis-intergration refresh`. Both targets use one package owner.
+<p align="center">
+  <img src="docs/screenshots/exercises-tracker.png" alt="Dashboard Exercises Tracker with Push Strength session and Body Tracker weight check-in" width="100%" />
+</p>
 
-The fixed-hash helper/Polkit payload, including its legacy native policy
-wording, remains an explicit security compatibility exception. This rebrand
-does not reinstall helpers, move directories or rewrite notes. See
-[compatibility contracts](docs/COMPATIBILITY.md) and the
-[pre-edit identifier inventory](docs/compatibility/INT-R05-identifiers.json).
+### Hardware & Power (`tlp` · `thinkfan`)
 
-## Development & Release Cadence (`1.0.0`)
+- **TLP Power Management (`tlp`)** — Optional battery charge threshold and power profile controls for supported laptops.
+- **Thinkfan Cooling (`thinkfan`)** — Optional managed fan-curve control and concise single-row status/toggle inside the System Monitor popup.
 
-- **LLM-Assisted Engineering:** Designed and developed with the assistance of Large Language Models (LLMs) under maintainer review.
+## Installation
+
+Install all plugins into your user data directory from a clean git checkout without enabling any integration automatically:
+
+```sh
+python3 scripts/install.py install
+```
+
+Or manage individual plugins:
+
+```sh
+python3 scripts/install.py install-plugin nexus
+python3 scripts/install.py remove-plugin nexus
+python3 scripts/install.py uninstall
+```
+
+## Documentation & Links
+
+- [Compatibility & Host Contract](docs/COMPATIBILITY.md) — host API boundary, saved preference guarantees, and safety defaults
+- [Alis-Intergration GitHub Issues](https://github.com/llocphann/Alis-Intergration/issues) — active integration issues and milestones
+- [Alis Core Shell](https://github.com/llocphann/Alis) — Wayland host shell (`dev` / `stable`)
+
+---
+
+- **License:** GPL-3.0-or-later; optional plugin isolation preserved.
 - **Release Schedule:** Maintained alongside Alis `1.0.0` with updates released on a **quarterly, semi-annual, or annual** cadence.
