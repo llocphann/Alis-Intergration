@@ -1,5 +1,6 @@
 .pragma library
 .import "SpacedRepetitionEssential4000.js" as Essential4000
+.import "SpacedRepetitionPrompts.js" as Prompts
 
 // SpacedRepetitionEngine.js
 // Pure scheduling, automated syntax parsing, queue construction, and storage migration
@@ -4200,9 +4201,10 @@ function buildMatchingRound(studyQueue, allCards, randomFn) {
     var deckPool = Array.isArray(allCards) ? allCards : [];
     var rng = typeof randomFn === "function" ? randomFn : Math.random;
 
-    var usedIds = {};
-    var usedFronts = {};
-    var usedDefs = {};
+    var usedIds = Object.create(null);
+    var usedFronts = Object.create(null);
+    var usedDefs = Object.create(null);
+    var usedCues = Object.create(null);
     var leftWords = [];
 
     var addWordCandidate = function(card, inQueueFlag) {
@@ -4214,9 +4216,12 @@ function buildMatchingRound(studyQueue, allCards, randomFn) {
         var fKey = front.toLowerCase();
         var dKey = defEn.toLowerCase();
         if (usedIds[cid] || usedFronts[fKey] || usedDefs[dKey]) return false;
+        var cue = Prompts.visibleDefinitionKey(defEn, { front: front });
+        if (usedCues[cue]) return false;
         usedIds[cid] = true;
         usedFronts[fKey] = true;
         usedDefs[dKey] = true;
+        usedCues[cue] = true;
         leftWords.push({
             id: cid,
             front: front,
@@ -4308,6 +4313,7 @@ function buildMatchingRound(studyQueue, allCards, randomFn) {
         var dfKey = dFront.toLowerCase();
         var ddKey = dDef.toLowerCase();
         if ((dId && usedIds[dId]) || (dfKey && usedFronts[dfKey]) || usedDefs[ddKey]) return null;
+        if (usedCues[Prompts.visibleDefinitionKey(dDef, { front: dFront })]) return null;
         return {
             defId: "distractor-" + (dId || "extra"),
             targetCardId: "",

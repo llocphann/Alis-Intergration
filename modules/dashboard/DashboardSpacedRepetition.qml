@@ -700,8 +700,10 @@ Item {
         }
         const targetId = String(target.id ?? "")
         const targetPos = normPos(target.pos)
-        const usedFronts = [String(target.front || target.term || "").trim().toLowerCase()]
-        const usedDefs = [String(target.definitionEn || target.back || "").trim().toLowerCase()]
+        const correctOption = root.toMultipleChoiceOption(target, targetId)
+        const usedFronts = [correctOption.front.trim().toLowerCase()]
+        const usedDefs = [correctOption.definitionEn.trim().toLowerCase()]
+        const usedCues = [Prompts.visibleDefinitionKey(correctOption.definitionEn, correctOption)]
 
         const shuffle = arr => {
             const copy = arr.slice()
@@ -719,16 +721,20 @@ Item {
             if (!cand || distractors.length >= 3) return false
             const cid = String(cand.id ?? "")
             if (cid === targetId) return false
-            const f = String(cand.front || cand.term || "").trim()
-            const d = String(cand.definitionEn || cand.back || "").trim()
+            const option = root.toMultipleChoiceOption(cand, targetId)
+            const f = option.front.trim()
+            const d = option.definitionEn.trim()
             if (!f.length || !d.length) return false
             const fKey = f.toLowerCase()
             const dKey = d.toLowerCase()
             if (usedFronts.includes(fKey) || usedDefs.includes(dKey)) return false
             if (Prompts.containsAnswerForm(f, target) || Prompts.containsAnswerForm(d, target)) return false
+            const cue = Prompts.visibleDefinitionKey(d, option)
+            if (usedCues.includes(cue)) return false
             usedFronts.push(fKey)
             usedDefs.push(dKey)
-            distractors.push(root.toMultipleChoiceOption(cand, targetId))
+            usedCues.push(cue)
+            distractors.push(option)
             return true
         }
 
@@ -762,8 +768,8 @@ Item {
             for (let i = 0; i < deckLen; i++) {
                 const c = allCards[i]
                 if (!c || String(c.id ?? "") === targetId) continue
-                const f = String(c.front || c.term || "").trim()
-                const d = String(c.definitionEn || c.back || "").trim()
+                const f = String(c.front || c.headword || c.term || "").trim()
+                const d = String(c.definitionEn || c.back || c.meaning || "").trim()
                 if (!f.length || !d.length) continue
                 if (c.category === target.category && c.language === target.language) {
                     if (targetPos.length > 0 && normPos(c.pos) === targetPos)
@@ -795,7 +801,7 @@ Item {
             }
         }
 
-        const combined = shuffle([root.toMultipleChoiceOption(target, targetId), ...distractors].filter(Boolean))
+        const combined = shuffle([correctOption, ...distractors])
         root.pendingChoiceIndex = -1
         root.selectedChoiceIndex = -1
         root.multipleChoiceOptions = combined

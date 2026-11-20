@@ -173,7 +173,7 @@ var IRREGULAR_FORMS = {
     "bad": ["worse", "worst"]
 };
 
-var _compiledMaskCache = {};
+var _compiledMaskCache = Object.create(null);
 var _compiledMaskCacheCount = 0;
 
 function _escapeRegExp(str) {
@@ -183,7 +183,7 @@ function _escapeRegExp(str) {
 function answerForms(card) {
     if (!card) return [];
     var forms = [];
-    var seenLower = {};
+    var seenLower = Object.create(null);
     function add(value) {
         var text = String(value || "").trim();
         if (!text) return;
@@ -202,7 +202,7 @@ function answerForms(card) {
         var stripped = head.replace(/^(?:der|die|das|sich|to)\s+/i, "").trim();
         add(stripped);
         var irr = IRREGULAR_FORMS[stripped.toLowerCase()];
-        if (irr) {
+        if (Array.isArray(irr)) {
             for (var ir = 0; ir < irr.length; ir++) add(irr[ir]);
         }
     }
@@ -269,7 +269,7 @@ function _compiledRegexes(forms) {
     var cached = _compiledMaskCache[key];
     if (cached) return cached;
     if (_compiledMaskCacheCount >= 4096) {
-        _compiledMaskCache = {};
+        _compiledMaskCache = Object.create(null);
         _compiledMaskCacheCount = 0;
     }
     var patterns = [];
@@ -303,4 +303,10 @@ function containsAnswerForm(raw, card) {
     var compiled = _compiledRegexes(forms);
     if (!compiled) return false;
     return compiled.testRe.test(text);
+}
+
+// Compare the cue before reveal. Keep meaningful punctuation inside formulas and numbers.
+function visibleDefinitionKey(definition, option) {
+    return maskAnswer(definition, option, false).normalize("NFC").toLowerCase()
+        .trim().replace(/[.!?。！？]+$/, "").replace(/\s+/g, " ").trim();
 }

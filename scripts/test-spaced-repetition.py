@@ -30,6 +30,7 @@ const lexiconCode = fs.readFileSync("services/SpacedRepetitionLexicon.js", "utf8
     .replace(/^\.import\s+"SpacedRepetitionEssential4000\.js"\s+as\s+Essential4000\s*$/m, "");
 const engineCode = fs.readFileSync("services/SpacedRepetitionEngine.js", "utf8")
     .replace(/^\.pragma\s+library\s*$/m, "")
+    .replace(/^\.import\s+"SpacedRepetitionPrompts\.js"\s+as\s+Prompts\s*$/m, "")
     .replace(/^\.import\s+"SpacedRepetitionEssential4000\.js"\s+as\s+Essential4000\s*$/m, "")
     .replace(/^\.import\s+"SpacedRepetitionLexicon\.js"\s+as\s+Lexicon\s*$/m, "");
 
@@ -99,6 +100,27 @@ assert.strictEqual(roundTiny.rightDefs.filter(d => d.isDistractor).length, 1);
 const roundEmpty = sandbox.buildMatchingRound([], seeded.cards);
 assert.strictEqual(roundEmpty.leftWords.length, 0, "Empty studyQueue must not pad non-due cards into a phantom round");
 assert.strictEqual(roundEmpty.rightDefs.length, 0);
+
+// The learner sees the masked definition, including for the extra distractor.
+const smallPair = ["huge", "massive"].map(front => ({
+    id: front, front, definitionEn: "If something is " + front + ", it is very big."
+}));
+const fillers = seeded.cards.slice(10, 14);
+for (const [first, twin] of [smallPair, smallPair.slice().reverse()]) {
+    for (const queue of [[first, twin, ...fillers], [first], [first, ...fillers]]) {
+        const before = JSON.stringify(queue);
+        const round = sandbox.buildMatchingRound(queue, [first, twin, ...fillers], () => 0.32);
+        assert(round.leftWords.some(w => w.id === first.id && w.inQueue));
+        assert(!round.rightDefs.some(d => d.front === twin.front));
+        const cues = round.rightDefs.map(d => promptsSandbox.maskAnswer(d.definitionEn, d, false));
+        assert.strictEqual(new Set(cues).size, cues.length);
+        assert.strictEqual(round.leftWords.length, 5);
+        assert.strictEqual(round.rightDefs.length, 6);
+        assert.strictEqual(JSON.stringify(queue), before);
+    }
+}
+assert.strictEqual(promptsSandbox.maskAnswer("A constructor builds objects.", {front: "constructor"}, false),
+    "A [...] builds objects.");
 
 // 3. Smart Mode Selection (Combines Matching, Multiple Choice, Cloze Reading; Flashcard as Last Resort)
 let state = { bag: [], lastMode: "" };

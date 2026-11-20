@@ -111,6 +111,37 @@ ShellRoot {
                 throw new Error(msg)
         }
 
+        function verifyNexusExport(tracker) {
+            const writer = AlisIntergration.session.zettelkasten
+            const nexus = AlisIntergration.nexus
+            tryVerify(() => writer?.ready && nexus?.vaultConfigured, 4000)
+            GlobalStates.dashboardPageId = "exercisesTracker"
+            GlobalStates.dashboardOpen = true
+            nexus.isOpen = false
+
+            check(writer.capture("Other note", "Independent capture"), "Other capture should start")
+            check(!tracker.sendWorkoutLogToNexus(), "Busy writer should reject workout export")
+            tryVerify(() => !writer.busy && writer.lastCreatedPath.includes("Other note"), 4000)
+            check(GlobalStates.dashboardOpen && !nexus.isOpen, "Other capture must not navigate Tracker")
+
+            Config.setNestedValue("notes.zettelkasten.folder", "Blocked")
+            tryCompare(writer, "folder", "Blocked", 2000)
+            check(tracker.sendWorkoutLogToNexus(), "Write attempt should start")
+            check(tracker.workoutExportPending && !tracker.statusMessage && GlobalStates.dashboardOpen,
+                "Tracker must wait for the note receipt")
+            tryVerify(() => !tracker.workoutExportPending, 4000)
+            check(tracker.errorMessage.length > 0 && !tracker.statusMessage && !nexus.isOpen
+                && GlobalStates.dashboardOpen, "Failed write must leave the Dashboard open")
+
+            Config.setNestedValue("notes.zettelkasten.folder", "Logs")
+            tryCompare(writer, "folder", "Logs", 2000)
+            check(tracker.sendWorkoutLogToNexus(), "Retry should start")
+            check(!tracker.sendWorkoutLogToNexus(), "Duplicate export must be rejected while pending")
+            tryVerify(() => !tracker.workoutExportPending && nexus.isOpen && !GlobalStates.dashboardOpen, 4000)
+            tryCompare(nexus, "currentPath", writer.lastCreatedPath, 4000)
+            check(!tracker.errorMessage && tracker.statusMessage.includes("Exported"), "Missing successful receipt")
+        }
+
         function run() {
             try {
                 tryCompare(Config, "ready", true, 5000)
@@ -284,6 +315,7 @@ ShellRoot {
                 settingsView.destroy()
 
                 svc.selectDate(origDate)
+                verifyNexusExport(svc)
                 svc.flushSave()
                 wait(250)
                 console.info("ET_RUNTIME_INITIAL_PASS", checks)
@@ -588,11 +620,17 @@ def main() -> None:
         config_dir = private / "config/alis"
         config_dir.mkdir(parents=True)
         options = json.loads((HOST / "defaults/config.json").read_text(encoding="utf-8"))
+        vault = private / "vault"
+        vault.mkdir()
+        (vault / "Blocked").write_text("fixture sentinel", encoding="utf-8")
+        options["todo"]["nexus"]["vaultPath"] = str(vault)
+        options["notes"]["zettelkasten"]["folder"] = "Logs"
         options["integrations"]["alisIntergration"] = {
             "tlp": False,
             "thinkfan": False,
             "nexus": True,
             "spaced_repetition": False,
+            "exercises_tracker": True,
         }
         options["battery"]["chargeLimit"]["enable"] = False
         options["powerProfiles"]["fanControl"]["enabled"] = False
@@ -713,6 +751,13 @@ def main() -> None:
             ):
                 print(res1.stdout)
                 raise SystemExit(1)
+
+            if use_virtual_wayland:
+                notes = list(vault.rglob("*.md"))
+                workouts = [note for note in notes if "Workout" in note.name]
+                assert len(notes) == 2 and len(workouts) == 1, notes
+                assert "Weighted Dips" in workouts[0].read_text(encoding="utf-8")
+                assert (vault / "Blocked").read_text(encoding="utf-8") == "fixture sentinel"
 
             photos_on_disk = list((et_state_dir / "photos").glob("*.png"))
             assert len(photos_on_disk) == 1, f"Expected 1 retained photo on disk, got {photos_on_disk}"

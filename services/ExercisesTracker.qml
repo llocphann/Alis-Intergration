@@ -26,6 +26,9 @@ Item {
     readonly property string todayStr: Engine.formatDateStr(HostServices.DateTime?.todayDate ?? new Date())
     property string selectedDate: Engine.formatDateStr(HostServices.DateTime?.todayDate ?? new Date())
 
+    readonly property var _workoutWriter: HostServices.AlisIntergration?.session?.zettelkasten ?? null
+    property string _exportVaultPath: ""
+    readonly property bool workoutExportPending: root._exportVaultPath.length > 0
     property bool photoImportBusy: false
     property string statusMessage: ""
     property string errorMessage: ""
@@ -709,9 +712,40 @@ Item {
         return true
     }
 
+    on_WorkoutWriterChanged: {
+        if (root.workoutExportPending) {
+            root._exportVaultPath = ""
+            root.errorMessage = "Nexus was disconnected before the workout export was confirmed"
+        }
+    }
+
+    Connections {
+        target: root._workoutWriter
+        function onCaptureFinished(requester, notePath, message) {
+            if (requester !== root || !root.workoutExportPending)
+                return
+            const vault = root._exportVaultPath
+            root._exportVaultPath = ""
+            if (!notePath.length) {
+                root.errorMessage = message || "Could not export workout to Nexus"
+                return
+            }
+            root.errorMessage = ""
+            root.statusMessage = "Exported workout note to Alis Nexus"
+            const nx = HostServices.AlisIntergration.nexus
+            if (nx?.configuredVaultPath === vault && GlobalStates.dashboardOpen
+                    && GlobalStates.dashboardPageId === "exercisesTracker" && nx.openNote(notePath))
+                GlobalStates.dashboardOpen = false
+        }
+    }
+
     function sendWorkoutLogToNexus(dateStr = ""): bool {
-        const nx = HostServices.AlisIntergration?.nexus ?? HostServices.AlisIntergration?.session?.nexus ?? null
-        if (!nx) {
+        if (root.workoutExportPending)
+            return false
+        root.statusMessage = ""
+        const nx = HostServices.AlisIntergration.nexus
+        const writer = root._workoutWriter
+        if (!nx || !writer) {
             root.errorMessage = "Enable Alis Nexus in Settings → Integrations first"
             return false
         }
@@ -721,15 +755,13 @@ Item {
         }
         const targetDate = Engine.formatDateStr(dateStr || root.selectedDate)
         const info = Engine.computeDaySummary(root.state, targetDate)
-        const md = Engine.exportWorkoutMarkdown(root.state, targetDate)
-        const noteTitle = "Workout " + targetDate + " " + info.title
-        if (typeof nx.captureZettelkastenNote === "function" && nx.captureZettelkastenNote(noteTitle, md)) {
-            root.statusMessage = "Exported workout note to Alis Nexus"
-            GlobalStates.dashboardOpen = false
-            if (typeof nx.open === "function")
-                nx.open()
+        const title = "Workout " + targetDate + " " + info.title
+        root.errorMessage = ""
+        root._exportVaultPath = nx.configuredVaultPath
+        if (writer.captureFor(root, title, Engine.exportWorkoutMarkdown(root.state, targetDate), root._exportVaultPath))
             return true
-        }
+        root._exportVaultPath = ""
+        root.errorMessage = writer.errorMessage || "Could not start workout export"
         return false
     }
 

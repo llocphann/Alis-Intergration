@@ -710,6 +710,7 @@ Item {
 
                         PillButton {
                             objectName: "exercisesExportNexusButton"
+                            enabled: !(root.backend?.workoutExportPending ?? false)
                             visible: HostServices.AlisIntergration.nexusEnabled && (HostServices.AlisIntergration.nexus?.vaultConfigured ?? false)
                             iconName: "note_add"
                             label: Translation.tr("Log to Nexus")

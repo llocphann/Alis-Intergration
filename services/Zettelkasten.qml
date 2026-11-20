@@ -34,7 +34,9 @@ Item {
     property string helperPath:
         decodeURIComponent(String(Qt.resolvedUrl("../scripts/notes/zettelkasten.py")).replace(/^file:\/\//, ""))
 
+    property QtObject _captureRequester: null
     signal captured(var payload)
+    signal captureFinished(QtObject requester, string notePath, string message)
 
     function _setError(code: string, message: string): void {
         root.errorCode = code
@@ -51,8 +53,16 @@ Item {
     }
 
     function captureWithAttachments(title, body, attachmentRoot): bool {
+        return root._beginCapture(title, body, attachmentRoot, null, root.configuredVaultPath)
+    }
+
+    function captureFor(requester: QtObject, title: string, body: string, vaultPath: string): bool {
+        return root._beginCapture(title, body, "", requester, vaultPath)
+    }
+
+    function _beginCapture(title, body, attachmentRoot, requester, vaultPath): bool {
         const content = String(body ?? "")
-        if (!root.ready) {
+        if (!vaultPath.length || !root.folder.trim().length) {
             root._setError(
                 "not_configured",
                 "Configure a Nexus vault before saving a Zettelkasten quick note"
@@ -68,11 +78,12 @@ Item {
             return false
         }
 
+        root._captureRequester = requester
         root.busy = true
         root._clearError()
         captureProc.command = [
             "/usr/bin/python3", root.helperPath,
-            "--vault", root.configuredVaultPath,
+            "--vault", vaultPath,
             "--folder", root.folder,
             "--title", String(title ?? ""),
             "--body", content,
@@ -82,6 +93,25 @@ Item {
         ]
         captureProc.running = true
         return true
+    }
+
+    function _finishCapture(payload, code, message): void {
+        if (!root.busy)
+            return
+        const requester = root._captureRequester
+        root._captureRequester = null
+        if (payload) {
+            root.lastCreatedPath = payload.notePath
+            root.lastCreatedFullPath = payload.noteFullPath
+            root._clearError()
+        } else {
+            root._setError(code, message)
+        }
+        root.busy = false
+        if (requester)
+            root.captureFinished(requester, payload ? payload.notePath : "", message)
+        if (payload)
+            root.captured(payload)
     }
 
     function openLast(): bool {
@@ -122,8 +152,7 @@ Item {
             if (captureProc.startObserved)
                 return
             captureTimeout.stop()
-            root.busy = false
-            root._setError("capture_start_failed", "Failed to start Zettelkasten helper")
+            root._finishCapture(null, "capture_start_failed", "Failed to start Zettelkasten helper")
         }
 
         onStarted: {
@@ -134,24 +163,24 @@ Item {
 
         onExited: (exitCode, exitStatus) => {
             captureTimeout.stop()
-            root.busy = false
             if (captureProc.timedOut) {
-                root._setError("capture_timeout", "Zettelkasten quick-note capture timed out")
+                root._finishCapture(null, "capture_timeout", "Zettelkasten quick-note capture timed out")
                 return
             }
             if (exitCode !== 0) {
-                root._setError("capture_failed", "Zettelkasten helper failed; no saved-note receipt was accepted")
+                root._finishCapture(null, "capture_failed", "Zettelkasten helper failed; no saved-note receipt was accepted")
                 return
             }
             const output = String(captureCollector.text ?? "").trim()
             if (output.length === 0) {
-                root._setError("capture_failed", "Zettelkasten helper returned no result")
+                root._finishCapture(null, "capture_failed", "Zettelkasten helper returned no result")
                 return
             }
             try {
                 const payload = JSON.parse(output)
                 if (payload?.ok !== true) {
-                    root._setError(
+                    root._finishCapture(
+                        null,
                         String(payload?.error?.code ?? "capture_failed"),
                         String(payload?.error?.message ?? "Failed to save Zettelkasten quick note")
                     )
@@ -165,15 +194,12 @@ Item {
                         || !payload.noteFullPath.startsWith("/")
                         || !payload.noteFullPath.endsWith("/" + payload.notePath)
                         || /[\x00-\x1f\x7f]/.test(payload.notePath + payload.noteFullPath)) {
-                    root._setError("capture_invalid_output", "Zettelkasten helper returned no valid saved-note receipt")
+                    root._finishCapture(null, "capture_invalid_output", "Zettelkasten helper returned no valid saved-note receipt")
                     return
                 }
-                root.lastCreatedPath = payload.notePath
-                root.lastCreatedFullPath = payload.noteFullPath
-                root._clearError()
-                root.captured(payload)
+                root._finishCapture(payload, "", "")
             } catch (error) {
-                root._setError("capture_invalid_output", "Zettelkasten helper returned invalid JSON")
+                root._finishCapture(null, "capture_invalid_output", "Zettelkasten helper returned invalid JSON")
             }
         }
     }
