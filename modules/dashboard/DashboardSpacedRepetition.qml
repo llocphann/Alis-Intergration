@@ -244,7 +244,7 @@ Item {
     }
 
     readonly property color _heatFutureColor: ColorUtils.applyAlpha(Appearance.colors.colLayer2Base, 0.22)
-    readonly property color _heatEmptyColor: ColorUtils.mix(root.colAnalyticsSubBoxBg, root.colText, 0.92)
+    readonly property color _heatEmptyColor: ColorUtils.tonalStep(root.colAnalyticsSubBoxBg, root.tonalDir * 0.014, 1.04)
     readonly property color _heatLevel1Color: ColorUtils.mix(root.colAnalyticsSubBoxBg, Appearance.colors.colPrimary, 0.68)
     readonly property color _heatLevel2Color: ColorUtils.mix(root.colAnalyticsSubBoxBg, Appearance.colors.colPrimary, 0.46)
     readonly property color _heatLevel3Color: ColorUtils.mix(root.colAnalyticsSubBoxBg, Appearance.colors.colPrimary, 0.24)
@@ -265,47 +265,64 @@ Item {
     readonly property bool alisEverywhere: Appearance.alisEverywhere
     readonly property bool auroraEverywhere: Appearance.auroraEverywhere
 
-    // Match DashCard.qml surface & border tokens so cards blend seamlessly with the rest of the Dashboard
+    // Anchor Layer 1 directly on Home Dashboard card color (DashCard / colLayer1Base)
+    // and gently lift nested tiers by ~2.0% HSL so inner layers stay cohesive and restful.
+    readonly property color colCardBase: ColorUtils.applyAlpha(
+        Qt.color(Appearance.colors.colLayer1Base).valid
+            ? Appearance.colors.colLayer1Base
+            : Appearance.colors.colLayer0Base,
+        1.0
+    )
+    readonly property bool isDarkSurface: Appearance.m3colors.darkmode
+        || ColorUtils.relativeLuminance(root.colCardBase) < 0.35
+    // Step lighter while headroom exists; subtly step deeper on near-white canvases
+    readonly property real tonalDir: Qt.color(root.colCardBase).hslLightness > 0.86 ? -1 : 1
+
+    // Layer 1 (main cards): matches Home Dashboard DashCard (AbyssStyle.contentLayer / colLayer1)
     readonly property color colSurface: abyss
         ? AbyssStyle.contentLayer
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCard
         : alisEverywhere ? Appearance.alis.colLayer1
         : auroraEverywhere ? Appearance.aurora.colSubSurface
         : Appearance.colors.colLayer1
+    // Layer 3+ (elevated options, chips, composer inputs): +5.2% HSL from Home Dashboard card base
     readonly property color colSurfaceElevated: abyss
-        ? Qt.alpha(AbyssStyle.textColor, 0.06)
+        ? ColorUtils.applyAlpha(ColorUtils.tonalStep(root.colCardBase, root.tonalDir * 0.052, 1.08), Math.max(0.92, root.colSurface.a))
         : Appearance.angelEverywhere ? Appearance.angel.colGlassCardHover
         : alisEverywhere ? Appearance.alis.colLayer2
-        : Appearance.colors.colLayer2
-    // Auto-themed Analytics column hierarchy derived directly from Appearance.colors:
-    // colAnalyticsColumnBg <= colAnalyticsCardBg <= colAnalyticsSubBoxBg < colSurfaceElevated
+        : ColorUtils.applyAlpha(ColorUtils.tonalStep(root.colCardBase, root.tonalDir * 0.052, 1.08), Math.max(0.92, root.colSurface.a))
+    // Layer 4 (hover & micro-badges inside elevated boxes): +7.4% HSL
+    readonly property color colBoxHover: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colCardBase, root.tonalDir * 0.074, 1.10),
+        Math.max(0.95, root.colSurface.a)
+    )
+    readonly property color colActivePillInk: ColorUtils.ensureReadable(
+        Appearance.colors.colOnPrimary,
+        Appearance.colors.colPrimary,
+        5.0
+    )
+    // Stepped flat tonal layers for Analytics column:
+    // colAnalyticsColumnBg (Layer 1) <= colAnalyticsCardBg (Layer 2) <= colAnalyticsSubBoxBg (Layer 3) < colSurfaceElevated
     readonly property color colAnalyticsColumnBg: ColorUtils.applyAlpha(
-        Appearance.colors.colLayer1Base,
+        root.colCardBase,
         root.colSurface.a
     )
-    readonly property color colAnalyticsCardBg: {
-        const layer1 = Appearance.colors.colLayer1Base
-        const upperLayer = root.relativeLuminance(Appearance.colors.colLayer2Base) > root.relativeLuminance(layer1)
-            ? Appearance.colors.colLayer2Base
-            : (root.relativeLuminance(Appearance.colors.colLayer0Base) > root.relativeLuminance(layer1)
-                ? Appearance.colors.colLayer0Base
-                : Qt.lighter(layer1, 1.08))
-        return ColorUtils.applyAlpha(ColorUtils.mix(layer1, upperLayer, 0.68), root.colSurface.a)
-    }
-    readonly property color colAnalyticsSubBoxBg: {
-        const layer1 = Appearance.colors.colLayer1Base
-        const upperLayer = root.relativeLuminance(Appearance.colors.colLayer2Base) > root.relativeLuminance(layer1)
-            ? Appearance.colors.colLayer2Base
-            : (root.relativeLuminance(Appearance.colors.colLayer0Base) > root.relativeLuminance(layer1)
-                ? Appearance.colors.colLayer0Base
-                : Qt.lighter(layer1, 1.12))
-        return ColorUtils.applyAlpha(ColorUtils.mix(layer1, upperLayer, 0.42), root.colSurface.a)
-    }
+    readonly property color colAnalyticsCardBg: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colCardBase, root.tonalDir * 0.020, 1.04),
+        root.colSurface.a
+    )
+    readonly property color colAnalyticsSubBoxBg: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colCardBase, root.tonalDir * 0.040, 1.07),
+        root.colSurface.a
+    )
     readonly property color colAnalyticsBorder: ColorUtils.applyAlpha(
         Appearance.colors.colOutlineVariant,
-        0.20
+        0.24
     )
-    readonly property color colBorder: Qt.alpha(root.colText, 0.07)
+    readonly property color colBorder: ColorUtils.applyAlpha(
+        ColorUtils.tonalStep(root.colCardBase, root.tonalDir * 0.22, 1.10),
+        0.07
+    )
     readonly property color colText: abyss
         ? (Appearance.m3colors.darkmode ? AbyssStyle.textColor : "#000000")
         : Appearance.angelEverywhere ? Appearance.angel.colText
@@ -1668,7 +1685,7 @@ Item {
             : root.colSurfaceElevated
         colBackgroundHover: activeChip
             ? Qt.alpha(chip.badgeColor, 0.24)
-            : Qt.alpha(root.colText, 0.10)
+            : root.colBoxHover
         colBackgroundToggled: Qt.alpha(chip.badgeColor, 0.18)
         colBackgroundToggledHover: Qt.alpha(chip.badgeColor, 0.26)
         Rectangle {
@@ -1744,7 +1761,7 @@ Item {
         implicitHeight: 22
         implicitWidth: Math.min(morphPill.maxStripWidth, morphRow.implicitWidth + 16)
         radius: 6
-        color: Qt.alpha(root.colText, 0.05)
+        color: root.colAnalyticsSubBoxBg
         border.width: 0
         Row {
             id: morphRow
@@ -1775,7 +1792,7 @@ Item {
         implicitWidth: 38
         implicitHeight: 20
         radius: 5
-        color: Qt.alpha(root.colText, 0.06)
+        color: root.colSurfaceElevated
         StyledText {
             anchors.centerIn: parent
             text: parent.label
@@ -2511,7 +2528,7 @@ Item {
                                                                 radius: 5
                                                                 color: (matchWordBtn.modelData.matched || matchWordBtn.isSelected || matchWordBtn.isMismatch)
                                                                     ? Qt.alpha(matchWordBtn.stateAccent, 0.24)
-                                                                    : Qt.alpha(root.colText, 0.08)
+                                                                    : root.colBoxHover
                                                                 StyledText {
                                                                     anchors.centerIn: parent
                                                                     text: String(matchWordBtn.index + 1)
@@ -2708,7 +2725,7 @@ Item {
                                                                 radius: 6
                                                                 color: (matchDefBtn.modelData.matched || matchDefBtn.isSelected || matchDefBtn.isMismatch)
                                                                     ? Qt.alpha(matchDefBtn.stateAccent, 0.24)
-                                                                    : Qt.alpha(root.colText, 0.08)
+                                                                    : root.colBoxHover
                                                                 StyledText {
                                                                     anchors.centerIn: parent
                                                                     text: ["A", "B", "C", "D", "E", "F"][matchDefBtn.index] ?? String(matchDefBtn.index + 1)
@@ -2751,7 +2768,7 @@ Item {
                                                                 implicitWidth: distractorBadgeText.implicitWidth + 10
                                                                 implicitHeight: 20
                                                                 radius: 5
-                                                                color: Qt.alpha(root.colText, 0.08)
+                                                                color: root.colBoxHover
                                                                 StyledText {
                                                                     id: distractorBadgeText
                                                                     anchors.centerIn: parent
@@ -3078,7 +3095,7 @@ Item {
                                             && Boolean(root.backend.currentCard?.example || root.backend.currentCard?.clozeText)
                                         implicitHeight: Math.max(34, topExampleRow.implicitHeight + 14)
                                         radius: Appearance.rounding.small
-                                        color: Qt.alpha(Appearance.colors.colPrimary, 0.09)
+                                        color: ColorUtils.applyAlpha(ColorUtils.mix(root.colSurfaceElevated, Appearance.colors.colPrimary, 0.88), Math.max(0.92, root.colSurface.a))
                                         border.width: 1
                                         border.color: Qt.alpha(Appearance.colors.colPrimary, 0.24)
 
@@ -3288,7 +3305,7 @@ Item {
                                             implicitHeight: 28
                                             implicitWidth: clozeZeroRow.implicitWidth + 18
                                             buttonRadius: Appearance.rounding.full
-                                            colBackground: Qt.alpha(root.colText, 0.06)
+                                            colBackground: root.colSurfaceElevated
                                             colBackgroundHover: Qt.alpha(Appearance.colors.colPrimary, 0.14)
                                             onClicked: root.triggerStudyShortcut("cloze-reveal", true)
 
@@ -3382,7 +3399,7 @@ Item {
                                             ? Qt.alpha(Appearance.colors.colPrimary, isPending ? 0.20 : 0.14)
                                             : isRight || isChosen
                                             ? colBackground
-                                            : Qt.alpha(root.colText, 0.10)
+                                            : root.colBoxHover
 
                                         onClicked: root.selectMultipleChoiceOption(index)
 
@@ -3418,7 +3435,7 @@ Item {
                                                         radius: 6
                                                         color: (root.answerRevealed && (mcOptionBtn.isRight || mcOptionBtn.isChosen)) || mcOptionBtn.isPending
                                                             ? Qt.alpha(mcOptionBtn.stateAccent, 0.24)
-                                                            : Qt.alpha(root.colText, 0.08)
+                                                            : root.colBoxHover
                                                         StyledText {
                                                             anchors.centerIn: parent
                                                             text: ["A", "B", "C", "D"][mcOptionBtn.index] ?? String(mcOptionBtn.index + 1)
@@ -4841,7 +4858,7 @@ Item {
                                                 Layout.fillWidth: true
                                                 implicitHeight: 3
                                                 radius: 1.5
-                                                color: Qt.alpha(root.colText, 0.06)
+                                                color: root.colAnalyticsSubBoxBg
 
                                                 Rectangle {
                                                     readonly property real viewRatio: Math.max(0.12, Math.min(1, srHeatmapFlick.width / Math.max(1, srHeatmapFlick.contentWidth)))
@@ -4949,15 +4966,17 @@ Item {
                                                 color: isScopeActive
                                                     ? Appearance.colors.colPrimary
                                                     : scopeBtnMouse.containsMouse
-                                                        ? ColorUtils.mix(root.colAnalyticsSubBoxBg, Appearance.colors.colPrimary, 0.85)
+                                                        ? root.colBoxHover
                                                         : root.colAnalyticsSubBoxBg
 
                                                 StyledText {
                                                     anchors.centerIn: parent
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    verticalAlignment: Text.AlignVCenter
                                                     text: modelData.label
                                                     font.pixelSize: Appearance.font.pixelSize.smallest
                                                     font.weight: isScopeActive ? Font.Bold : Font.Medium
-                                                    color: isScopeActive ? Appearance.colors.colOnPrimary : root.colSubtext
+                                                    color: isScopeActive ? root.colActivePillInk : root.colSubtext
                                                 }
 
                                                 MouseArea {
@@ -5560,7 +5579,7 @@ Item {
                                             implicitHeight: 24
                                             implicitWidth: previewPosText.implicitWidth + 14
                                             radius: Appearance.rounding.full
-                                            color: Qt.alpha(root.colText, 0.06)
+                                            color: root.colAnalyticsSubBoxBg
                                             StyledText {
                                                 id: previewPosText
                                                 anchors.centerIn: parent
@@ -5809,14 +5828,15 @@ Item {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 text: "add_task"
                                                 iconSize: 18
-                                                color: Appearance.colors.colOnPrimary
+                                                color: root.colActivePillInk
                                             }
                                             StyledText {
                                                 anchors.verticalCenter: parent.verticalCenter
+                                                horizontalAlignment: Text.AlignHCenter
                                                 text: Translation.tr("Add Card")
                                                 font.pixelSize: Appearance.font.pixelSize.small
                                                 font.weight: Font.Bold
-                                                color: Appearance.colors.colOnPrimary
+                                                color: root.colActivePillInk
                                             }
                                         }
                                     }
@@ -5956,7 +5976,7 @@ Item {
                                                 Layout.fillWidth: true
                                                 implicitHeight: guideCodeText.implicitHeight + 10
                                                 radius: 6
-                                                color: Qt.alpha(root.colText, 0.06)
+                                                color: root.colAnalyticsSubBoxBg
                                                 StyledText {
                                                     id: guideCodeText
                                                     anchors.fill: parent
@@ -6245,7 +6265,7 @@ Item {
                                         implicitHeight: 20
                                         implicitWidth: deckTagText.implicitWidth + 12
                                         radius: Appearance.rounding.full
-                                        color: Qt.alpha(root.colText, 0.06)
+                                        color: root.colAnalyticsSubBoxBg
                                         StyledText {
                                             id: deckTagText
                                             anchors.centerIn: parent
@@ -6290,7 +6310,7 @@ Item {
                                     Rectangle {
                                         Layout.fillWidth: true
                                         height: 1
-                                        color: Qt.alpha(root.colText, 0.06)
+                                        color: root.colBorder
                                     }
 
                                     RowLayout {
