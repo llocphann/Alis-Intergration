@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E1B3A"/>
+      <stop offset="55%" stop-color="#2D2459"/>
+      <stop offset="100%" stop-color="#162238"/>
+    </linearGradient>
+    <linearGradient id="prismGrad" x1="15%" y1="10%" x2="85%" y2="90%">
+      <stop offset="0%" stop-color="#A78BFA"/>
+      <stop offset="50%" stop-color="#7C5CFF"/>
+      <stop offset="100%" stop-color="#38BDF8"/>
+    </linearGradient>
+    <linearGradient id="facetLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E0D4FF" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#7C5CFF" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="edgeGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C4B5FD"/>
+      <stop offset="100%" stop-color="#67E8F9"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded squircle app icon base -->
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#bgGrad)"/>
+  <rect x="7.5" y="7.5" width="113" height="113" rx="26.5" fill="none" stroke="url(#edgeGlow)" stroke-opacity="0.32" stroke-width="2"/>
+
+  <!-- Subtle outer orbital ring -->
+  <ellipse cx="64" cy="64" rx="44" ry="26" transform="rotate(-28 64 64)" fill="none" stroke="#67E8F9" stroke-opacity="0.28" stroke-width="2" stroke-dasharray="6 5"/>
+
+  <!-- Faceted Nexus Obsidian Hexagon Crystal -->
+  <polygon points="64,20 100,41 100,87 64,108 28,87 28,41" fill="url(#prismGrad)" fill-opacity="0.20" stroke="url(#edgeGlow)" stroke-width="2.6" stroke-linejoin="round"/>
+  <polygon points="64,20 100,41 64,64 28,41" fill="url(#facetLight)"/>
+
+  <!-- Knowledge Graph constellation links -->
+  <g stroke="url(#edgeGlow)" stroke-width="2.6" stroke-linecap="round" opacity="0.92">
+    <line x1="64" y1="64" x2="64" y2="30"/>
+    <line x1="64" y1="64" x2="92" y2="48"/>
+    <line x1="64" y1="64" x2="88" y2="84"/>
+    <line x1="64" y1="64" x2="40" y2="84"/>
+    <line x1="64" y1="64" x2="36" y2="48"/>
+    <line x1="64" y1="30" x2="92" y2="48" stroke-opacity="0.45" stroke-width="1.8"/>
+    <line x1="36" y1="48" x2="40" y2="84" stroke-opacity="0.45" stroke-width="1.8"/>
+    <line x1="40" y1="84" x2="88" y2="84" stroke-opacity="0.45" stroke-width="1.8"/>
+  </g>
+
+  <!-- Satellite graph nodes -->
+  <circle cx="64" cy="30" r="6" fill="#E9D5FF"/>
+  <circle cx="92" cy="48" r="5.5" fill="#67E8F9"/>
+  <circle cx="88" cy="84" r="5.5" fill="#A78BFA"/>
+  <circle cx="40" cy="84" r="5.5" fill="#67E8F9"/>
+  <circle cx="36" cy="48" r="5.5" fill="#C4B5FD"/>
+
+  <!-- Central Nexus hub node -->
+  <circle cx="64" cy="64" r="14" fill="#7C5CFF" fill-opacity="0.35"/>
+  <circle cx="64" cy="64" r="9" fill="#FFFFFF"/>
+  <circle cx="64" cy="64" r="4.5" fill="#38BDF8"/>
+</svg>

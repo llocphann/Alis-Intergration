@@ -109,18 +109,28 @@ Item {
         String(root.textStrong)
     ].join("|")
 
+    function _opaqueHex(c, fallback): string {
+        const col = Qt.color(c ?? fallback ?? "#334155");
+        if (!col || isNaN(col.r) || isNaN(col.g) || isNaN(col.b))
+            return String(fallback ?? "#334155");
+        const toHex = v => Math.max(0, Math.min(255, Math.round(v * 255))).toString(16).padStart(2, "0");
+        return "#" + toHex(col.r) + toHex(col.g) + toHex(col.b);
+    }
+
     function themeRichHtml(rawHtml): string {
         const s = String(rawHtml ?? "");
         if (s.length === 0)
             return "";
-        const accHex = String(root.accentColor);
-        const codeBgHex = String(root.cardRaisedBg);
-        const codeFgHex = String(root.textStrong);
-        const bodyFgHex = String(root.textPrimary);
-        const borderHex = String(root.borderSubtle);
-        const markBgHex = String(Qt.tint(root.cardRaisedBg, Qt.rgba(root.accentColor.r, root.accentColor.g, root.accentColor.b, 0.32)));
-        const subHex = String(root.textSecondary);
+        const accHex = root._opaqueHex(root.accentColor, "#82c2cf");
+        const codeBgHex = root._opaqueHex(root.cardRaisedBg, "#162024");
+        const codeFgHex = root._opaqueHex(root.textStrong, "#eaf1f2");
+        const bodyFgHex = root._opaqueHex(root.textPrimary, "#d9e1e3");
+        const borderHex = root._opaqueHex(root.ccStop(6), "#334155");
+        const markBgHex = root._opaqueHex(Qt.tint(root.cardRaisedBg, Qt.rgba(root.accentColor.r, root.accentColor.g, root.accentColor.b, 0.32)), "#1f3338");
+        const subHex = root._opaqueHex(root.textSecondary, "#8f9d9f");
+        const themedHr = "<table width='100%' cellspacing='0' cellpadding='0' style='margin-top:8px;margin-bottom:8px;'><tr><td height='1' style='background-color:" + borderHex + ";font-size:1px;line-height:1px;'></td></tr></table>";
         return s
+            .replace(/<hr\b[^>]*\/?>/gi, themedHr)
             .replace(/#38bdf8/gi, accHex)
             .replace(/#7dd3fc/gi, accHex)
             .replace(/#7dcfff/gi, accHex)
@@ -277,7 +287,8 @@ Item {
                 }
             }
             if (t === "---" || t === "***" || t === "___") {
-                blocks.push("<hr/>");
+                const sepHex = root._opaqueHex(root.ccStop(6), "#334155");
+                blocks.push("<table width='100%' cellspacing='0' cellpadding='0' style='margin-top:8px;margin-bottom:8px;'><tr><td height='1' style='background-color:" + sepHex + ";font-size:1px;line-height:1px;'></td></tr></table>");
                 continue;
             }
             const hMatch = t.match(/^(#{1,6})\s+(.*)$/);
@@ -1117,6 +1128,7 @@ Item {
 
     Connections {
         target: root.service
+        ignoreUnknownSignals: true
         function onFileRead(relPath) {
             if (root.noteKind === "recipe" && String(relPath) === String(root.doc?.relPath ?? "")) {
                 root.recipeActiveSection = "overview";

@@ -56,7 +56,25 @@ ColumnLayout {
 
     readonly property var filteredCollectionItems: {
         const cid = String(root.nexus?.activeCollection ?? "movies").toLowerCase();
-        const all = root.nexus?.collections?.[cid] ?? (cid === "tvseries" ? (root.nexus?.collections?.tvSeries ?? []) : []);
+        let all = root.nexus?.collections?.[cid] ?? (cid === "tvseries" ? (root.nexus?.collections?.tvSeries ?? []) : []);
+        if (cid === "finance") {
+            const fs = root.nexus?.financeSummary ?? {};
+            const tab = collectionViewRoot.financeSubTab;
+            if (tab === "accounts" && Array.isArray(fs.accounts) && fs.accounts.length > 0)
+                all = fs.accounts;
+            else if (tab === "subscriptions" && Array.isArray(fs.subscriptions) && fs.subscriptions.length > 0)
+                all = fs.subscriptions;
+            else if (tab === "transactions" && Array.isArray(fs.transactions) && fs.transactions.length > 0)
+                all = fs.transactions;
+            else if (tab === "all") {
+                const combined = []
+                    .concat(Array.isArray(fs.transactions) ? fs.transactions : [])
+                    .concat(Array.isArray(fs.accounts) ? fs.accounts : [])
+                    .concat(Array.isArray(fs.subscriptions) ? fs.subscriptions : []);
+                if (combined.length > 0)
+                    all = combined;
+            }
+        }
         const q = String(root.nexus?.collectionFilterQuery ?? "").trim().toLowerCase();
         if (!q)
             return all;
@@ -64,7 +82,13 @@ ColumnLayout {
         for (let i = 0; i < all.length; ++i) {
             const it = all[i];
             const hay = (
-                String(it.title ?? "") + " " +
+                String(it.title ?? it.name ?? "") + " " +
+                String(it.description ?? "") + " " +
+                String(it.merchant ?? "") + " " +
+                String(it.account ?? "") + " " +
+                String(it.txType ?? it.type ?? "") + " " +
+                String(it.zettelId ?? "") + " " +
+                String(it.zettelType ?? "") + " " +
                 String(it.genre ?? "") + " " +
                 String(it.director ?? "") + " " +
                 String(it.actors ?? "") + " " +
@@ -78,12 +102,44 @@ ColumnLayout {
                 String(it.plot ?? "") + " " +
                 String(it.status ?? "") + " " +
                 String(it.location ?? "") + " " +
-                String(it.url ?? "")
+                String(it.url ?? "") + " " +
+                (Array.isArray(it.tags) ? it.tags.join(" ") : "")
             ).toLowerCase();
             if (hay.indexOf(q) !== -1)
                 out.push(it);
         }
         return out;
+    }
+
+    function _formatMoney(rawVal, currency): string {
+        const n = Number(rawVal);
+        const cur = String(currency ?? "").trim();
+        if (!Number.isFinite(n))
+            return String(rawVal ?? "0") + (cur ? (" " + cur) : "");
+        const abs = Math.abs(n);
+        const fixed = Math.abs(abs - Math.round(abs)) < 0.005 ? Math.round(abs).toString() : abs.toFixed(2);
+        const parts = fixed.split(".");
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        const formatted = parts.join(".");
+        const sign = n < 0 ? "-" : "";
+        if (cur === "$" || cur === "USD")
+            return sign + "$" + formatted;
+        if (cur === "€" || cur === "EUR")
+            return sign + "€" + formatted;
+        return sign + formatted + (cur.length > 0 ? (" " + cur) : "");
+    }
+
+    function _cleanExcerpt(raw): string {
+        let s = String(raw ?? "");
+        s = s.replace(/!\[\[[^\]]+\]\]/g, "");
+        s = s.replace(/!\[[^\]]*\]\([^)]+\)/g, "");
+        s = s.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2");
+        s = s.replace(/\[\[([^\]]+)\]\]/g, "$1");
+        s = s.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+        s = s.replace(/^#+\s*/gm, "");
+        s = s.replace(/[*_`~]/g, "");
+        s = s.replace(/\s+/g, " ").trim();
+        return s;
     }
 
     function _placeCoordinates(item): string {
@@ -506,12 +562,13 @@ ColumnLayout {
             color: settledColors.colLayer0Border
         }
 
-        // Finance.base sub-view tabs (`Transactions | Accounts | Subscription`)
+        // Finance.base sub-view tabs (`All | Transactions | Accounts | Subscription`)
         RowLayout {
             visible: collectionViewRoot.activeCollectionMeta.id === "finance"
             spacing: 4
             Repeater {
                 model: [
+                    { "id": "all", "label": "All" },
                     { "id": "transactions", "label": "Transactions" },
                     { "id": "accounts", "label": "Accounts" },
                     { "id": "subscriptions", "label": "Subscription" }
@@ -595,6 +652,100 @@ ColumnLayout {
         }
     }
 
+    // Finance Cashflow KPI Summary Strip (shown in Finance collection Cards/Table view)
+    RowLayout {
+        id: financeKpiSummaryBar
+        objectName: "nexusFinanceKpiSummaryBar"
+        visible: collectionViewRoot.activeCollectionMeta.id === "finance"
+        Layout.fillWidth: true
+        spacing: 8
+
+        readonly property var fs: root.nexus?.financeSummary ?? ({})
+        readonly property string defaultCurrency: String(fs.currency ?? "")
+
+        Repeater {
+            model: [
+                {
+                    "label": "TOTAL INCOME",
+                    "value": collectionViewRoot._formatMoney(financeKpiSummaryBar.fs.totalIncome ?? 0, financeKpiSummaryBar.defaultCurrency),
+                    "icon": "south_west",
+                    "accent": String(settledColors.colTertiary ?? settledColors.colPrimary)
+                },
+                {
+                    "label": "TOTAL SPENT",
+                    "value": collectionViewRoot._formatMoney(financeKpiSummaryBar.fs.totalSpent ?? 0, financeKpiSummaryBar.defaultCurrency),
+                    "icon": "north_east",
+                    "accent": String(settledColors.colError ?? "#f38ba8")
+                },
+                {
+                    "label": "NET CASHFLOW",
+                    "value": collectionViewRoot._formatMoney(financeKpiSummaryBar.fs.balance ?? 0, financeKpiSummaryBar.defaultCurrency),
+                    "icon": "account_balance_wallet",
+                    "accent": String(settledColors.colPrimary)
+                },
+                {
+                    "label": "ACCOUNTS / SUBS",
+                    "value": String((financeKpiSummaryBar.fs.accounts ?? []).length) + " acc · " + String((financeKpiSummaryBar.fs.subscriptions ?? []).length) + " sub",
+                    "icon": "autorenew",
+                    "accent": String(settledColors.colSecondary ?? settledColors.colPrimary)
+                }
+            ]
+            delegate: Rectangle {
+                required property var modelData
+                Layout.fillWidth: true
+                Layout.preferredHeight: 54
+                radius: 10
+                color: settledColors.colLayer2
+                border.width: 1
+                border.color: settledColors.colLayer0Border
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    spacing: 8
+
+                    Rectangle {
+                        Layout.preferredWidth: 30
+                        Layout.preferredHeight: 30
+                        radius: 8
+                        color: Qt.alpha(Qt.color(modelData.accent), 0.16)
+                        MaterialSymbol {
+                            anchors.centerIn: parent
+                            text: modelData.icon
+                            iconSize: 16
+                            color: Qt.color(modelData.accent)
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 1
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: modelData.label
+                            font.family: Appearance.font.family.monospace
+                            font.pixelSize: 9
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.6
+                            color: settledColors.colSubtext
+                            elide: Text.ElideRight
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: modelData.value
+                            font.family: Appearance.font.family.monospace
+                            font.pixelSize: 13
+                            font.weight: Font.Bold
+                            color: settledColors.colOnLayer0
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Collection / Bases Cards Grid (Virtualized GridView for zero-freeze rendering on 873+ Exercise notes)
     GridView {
         id: collectionCardsGrid
@@ -609,14 +760,17 @@ ColumnLayout {
         readonly property bool isPortraitDeck: activeKind === "movies" || activeKind === "tvseries" || activeKind === "games" || activeKind === "books" || activeKind === "recipes" || activeKind === "exercises" || activeKind === "places"
         readonly property int columns: isPortraitDeck
             ? Math.max(2, Math.floor(Math.max(320, width) / 228))
-            : Math.max(2, Math.floor(Math.max(320, width) / 260))
+            : Math.max(2, Math.floor(Math.max(320, width) / 276))
         readonly property int cardHeight: activeKind === "movies" ? 352
             : (activeKind === "tvseries" ? 336
             : (activeKind === "games" ? 324
             : (activeKind === "books" ? 326
             : (activeKind === "recipes" ? 324
             : (activeKind === "exercises" ? 268
-            : (activeKind === "places" ? 268 : 168))))))
+            : (activeKind === "places" ? 268
+            : (activeKind === "cornell" ? 222
+            : (activeKind === "zettelkasten" ? 208
+            : (activeKind === "finance" ? 176 : 168)))))))))
         cellWidth: Math.floor(Math.max(320, width) / columns)
         cellHeight: cardHeight + 14
 
@@ -657,6 +811,9 @@ ColumnLayout {
                 readonly property bool isRecipeCard: cid === "recipes" || modelData.kind === "recipe"
                 readonly property bool isExerciseCard: cid === "exercises" || modelData.kind === "exercise"
                 readonly property bool isPlaceCard: cid === "places" || modelData.kind === "place"
+                readonly property bool isCornellCard: cid === "cornell" || modelData.kind === "cornell"
+                readonly property bool isZettelCard: cid === "zettelkasten" || modelData.kind === "zettelkasten"
+                readonly property bool isFinanceCard: cid === "finance" || modelData.kind === "finance"
                 property bool flipped: false
                 readonly property bool showBack: flipped || baseCardHover.hovered
                 width: Math.max(120, parent.width - 14)
@@ -668,13 +825,12 @@ ColumnLayout {
                     id: baseCardHover
                 }
 
-                    // ── 1. MOVIES: "CINEMA TICKET" CARD (Darker Alis Auto-Themed Surface + Concave Keyline Frame + Stub) ──
-                    Rectangle {
+                    // ── 1. MOVIES: "CINEMA TICKET" CARD (Die-Cut Ticket Silhouette Larger Than Inner Border + Non-Overlapping Stub) ──
+                    Item {
                         id: cinemaTicketCard
                         objectName: "nexusCinemaTicketCard_" + String(baseCardDelegate.index)
                         visible: baseCardDelegate.isMovieCard
                         anchors.fill: parent
-                        radius: 0
                         readonly property color outerCanvasBg: Qt.color(root.ccStop(0))
                         readonly property color ticketBg: Qt.darker(Qt.color(root.ccStop(1)), 1.28)
                         readonly property color ticketInnerBg: Qt.darker(Qt.color(root.ccStop(0)), 1.35)
@@ -682,14 +838,114 @@ ColumnLayout {
                         readonly property color ticketKeyline: baseCardHover.hovered ? Qt.alpha(ticketAccent, 0.72) : Qt.alpha(ticketAccent, 0.42)
                         readonly property color ticketStubBg: Qt.tint(Qt.darker(Qt.color(root.ccStop(2)), 1.18), Qt.alpha(ticketAccent, 0.22))
                         readonly property color ticketStubInk: settledColors.colOnLayer1
-                        color: ticketBg
-                        border.width: 0
-                        clip: true
+                        clip: false
 
-                        // FRONT FACE: Auto-Themed "CINEMA TICKET" Header (below top notch) + Keyline Poster Frame + Dark Auto-Themed Barcode Stub
+                        // Die-Cut Ticket Background Silhouette Canvas (same concave-corner + notch shape as inner border, slightly larger; transparent outside)
+                        Canvas {
+                            id: cinemaTicketSilhouetteCanvas
+                            objectName: "nexusCinemaTicketSilhouette_" + String(baseCardDelegate.index)
+                            anchors.fill: parent
+                            z: 0
+                            readonly property color _bg: cinemaTicketCard.ticketBg
+                            readonly property color _stubBg: cinemaTicketCard.ticketStubBg
+                            readonly property color _keyline: cinemaTicketCard.ticketKeyline
+                            readonly property bool _showBack: baseCardDelegate.showBack
+                            readonly property string _themeSig: root.themeSignature
+                            on_BgChanged: if (visible) requestPaint()
+                            on_StubBgChanged: if (visible) requestPaint()
+                            on_KeylineChanged: if (visible) requestPaint()
+                            on_ShowBackChanged: if (visible) requestPaint()
+                            on_ThemeSigChanged: if (visible) requestPaint()
+                            onVisibleChanged: if (visible) requestPaint()
+                            onWidthChanged: if (visible) requestPaint()
+                            onHeightChanged: if (visible) requestPaint()
+                            onPaint: {
+                                const ctx = getContext("2d");
+                                ctx.clearRect(0, 0, width, height);
+                                const w = width;
+                                const h = height;
+                                if (w < 40 || h < 40) return;
+
+                                // Outer die-cut ticket path: mirrors the inner border (pad=10, cr=8, nr=9)
+                                // expanded cleanly outward (outerPad=3, outerCr=10, outerNr=9) with side perforations.
+                                const p = 3;
+                                const cr = 10;
+                                const nr = 9;
+                                const cx = w * 0.5;
+
+                                function traceTicketSilhouette() {
+                                    ctx.beginPath();
+                                    // Top edge: top-left concave corner -> top-center semicircular notch -> top-right concave corner
+                                    ctx.moveTo(p + cr, p);
+                                    ctx.lineTo(cx - nr, p);
+                                    ctx.arc(cx, p, nr, Math.PI, 0, true);
+                                    ctx.lineTo(w - p - cr, p);
+                                    ctx.arc(w - p, p, cr, Math.PI, Math.PI * 0.5, true);
+                                    // Right edge -> bottom-right concave corner
+                                    ctx.lineTo(w - p, h - p - cr);
+                                    ctx.arc(w - p, h - p, cr, Math.PI * 1.5, Math.PI, true);
+                                    // Straight bottom edge -> bottom-left concave corner (matches unmodified inner border shape 1:1)
+                                    ctx.lineTo(p + cr, h - p);
+                                    ctx.arc(p, h - p, cr, 0, Math.PI * 1.5, true);
+                                    // Left edge -> top-left concave corner
+                                    ctx.lineTo(p, p + cr);
+                                    ctx.arc(p, p, cr, Math.PI * 0.5, 0, true);
+                                    ctx.closePath();
+                                }
+
+                                // Fill ticket body + tinted bottom stub clipped cleanly inside the ticket silhouette
+                                ctx.save();
+                                traceTicketSilhouette();
+                                ctx.fillStyle = cinemaTicketCard.ticketBg;
+                                ctx.fill();
+                                ctx.clip();
+
+                                const stubTopY = baseCardDelegate.showBack ? (h - 52) : (h - 68);
+                                ctx.fillStyle = cinemaTicketCard.ticketStubBg;
+                                ctx.fillRect(p, stubTopY, w - p * 2, h - stubTopY);
+
+                                // Subtle perforated tear-line separating ticket body from stub
+                                ctx.strokeStyle = cinemaTicketCard.ticketKeyline;
+                                ctx.lineWidth = 1;
+                                if (typeof ctx.setLineDash === "function")
+                                    ctx.setLineDash([4, 3]);
+                                ctx.beginPath();
+                                ctx.moveTo(12, stubTopY);
+                                ctx.lineTo(w - 12, stubTopY);
+                                ctx.stroke();
+                                if (typeof ctx.setLineDash === "function")
+                                    ctx.setLineDash([]);
+                                ctx.restore();
+
+                                // Punch crisp real side perforation scallops along left & right outer edges (true alpha transparency)
+                                ctx.save();
+                                ctx.globalCompositeOperation = "destination-out";
+                                ctx.fillStyle = "#000000";
+                                for (let py = 20; py < h - 18; py += 13) {
+                                    ctx.beginPath();
+                                    ctx.arc(p, py, 2.2, 0, Math.PI * 2);
+                                    ctx.fill();
+                                    ctx.beginPath();
+                                    ctx.arc(w - p, py, 2.2, 0, Math.PI * 2);
+                                    ctx.fill();
+                                }
+                                ctx.restore();
+
+                                // Subtle outer die-cut hairline rim for tangible ticket edge contrast
+                                ctx.save();
+                                traceTicketSilhouette();
+                                ctx.strokeStyle = Qt.alpha(cinemaTicketCard.ticketAccent, baseCardHover.hovered ? 0.34 : 0.16);
+                                ctx.lineWidth = 1;
+                                ctx.stroke();
+                                ctx.restore();
+                            }
+                        }
+
+                        // FRONT FACE: Auto-Themed "CINEMA TICKET" Header (below top notch) + Keyline Poster Frame + Properly Inset Stub
                         Item {
                             id: movieFrontFace
                             anchors.fill: parent
+                            z: 2
                             visible: !baseCardDelegate.showBack
 
                             StyledText {
@@ -709,14 +965,14 @@ ColumnLayout {
                                 anchors.topMargin: 39
                                 anchors.left: parent.left
                                 anchors.right: parent.right
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
                                 height: 1
                                 color: cinemaTicketCard.ticketKeyline
                                 z: 4
                             }
 
-                            // Inner Keyline Poster Frame (`margin: 44px 14px 8px`)
+                            // Inner Keyline Poster Frame (`margin: 44px 16px 8px` cleanly inside pad=10 border)
                             Rectangle {
                                 id: frontPosterFrame
                                 anchors.top: parent.top
@@ -724,8 +980,8 @@ ColumnLayout {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.bottom: frontTicketStub.top
-                                anchors.leftMargin: 14
-                                anchors.rightMargin: 14
+                                anchors.leftMargin: 16
+                                anchors.rightMargin: 16
                                 anchors.bottomMargin: 8
                                 color: cinemaTicketCard.ticketInnerBg
                                 border.width: 1
@@ -767,52 +1023,47 @@ ColumnLayout {
                                 }
                             }
 
-                            // Full-Width Bottom Dark Auto-Themed Ticket Stub with Left-Aligned Barcode/ID + 90deg Rotated Status
-                            Rectangle {
+                            // Inset Bottom Ticket Stub — aligned cleanly INSIDE the inner keyline border (pad=10, cr=8 => safe x=[21..w-21], y<=h-16) with ZERO overlap!
+                            Item {
                                 id: frontTicketStub
+                                objectName: "nexusCinemaFrontStub_" + String(baseCardDelegate.index)
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.bottom: parent.bottom
-                                height: 52
-                                color: cinemaTicketCard.ticketStubBg
+                                anchors.leftMargin: 21
+                                anchors.rightMargin: 21
+                                anchors.bottomMargin: 16
+                                height: 48
                                 clip: true
-
-                                Rectangle {
-                                    anchors.top: parent.top
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    height: 1
-                                    color: cinemaTicketCard.ticketKeyline
-                                }
 
                                 RowLayout {
                                     anchors.fill: parent
-                                    anchors.leftMargin: 14
-                                    anchors.rightMargin: 12
                                     spacing: 6
 
                                     // Left-Aligned Simulated Code-128 Barcode + numeric IDs (`imdbId-id`)
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
-                                        spacing: 2
+                                        spacing: 3
+
+                                        Item { Layout.fillHeight: true }
 
                                         Row {
                                             Layout.alignment: Qt.AlignLeft
-                                            Layout.topMargin: 6
                                             spacing: 1.5
                                             Repeater {
-                                                model: [2, 1, 3, 1, 2, 1, 4, 1, 2, 2, 1, 3, 1, 2, 1, 3, 2, 1, 2, 3, 1, 2, 1, 2, 3, 1, 2]
+                                                model: [2, 1, 3, 1, 2, 1, 3, 1, 2, 2, 1, 3, 1, 2, 1, 3, 2, 1, 2, 3, 1, 2, 1, 2]
                                                 delegate: Rectangle {
                                                     required property int modelData
                                                     width: modelData
-                                                    height: 24
-                                                    color: Qt.alpha(cinemaTicketCard.ticketAccent, 0.88)
+                                                    height: 20
+                                                    color: Qt.alpha(cinemaTicketCard.ticketAccent, 0.90)
                                                 }
                                             }
                                         }
 
                                         StyledText {
+                                            Layout.fillWidth: true
                                             Layout.alignment: Qt.AlignLeft
                                             text: {
                                                 const imdb = String(baseCardDelegate.modelData.imdbId || "tt0816711");
@@ -821,14 +1072,17 @@ ColumnLayout {
                                             }
                                             font.family: Appearance.font.family.monospace
                                             font.pixelSize: 8
-                                            font.letterSpacing: 1.4
+                                            font.letterSpacing: 0.8
                                             color: settledColors.colSubtext
+                                            elide: Text.ElideRight
                                         }
+
+                                        Item { Layout.fillHeight: true }
                                     }
 
-                                    // Vertical Rotated Status ("FINISHED" / "QUEUE")
+                                    // Vertical Rotated Status ("FINISHED" / "QUEUE") — sized to fit cleanly inside 48px stub height without clipping
                                     Item {
-                                        Layout.preferredWidth: 24
+                                        Layout.preferredWidth: 15
                                         Layout.fillHeight: true
                                         StyledText {
                                             anchors.centerIn: parent
@@ -838,9 +1092,9 @@ ColumnLayout {
                                                 return (st === "watched" || st === "completed" || st === "finished" || st === "done") ? "FINISHED" : "QUEUE";
                                             }
                                             font.family: Appearance.font.family.monospace
-                                            font.pixelSize: 9
+                                            font.pixelSize: 7
                                             font.weight: Font.Black
-                                            font.letterSpacing: 1.5
+                                            font.letterSpacing: 0.4
                                             color: cinemaTicketCard.ticketAccent
                                         }
                                     }
@@ -848,22 +1102,23 @@ ColumnLayout {
                             }
                         }
 
-                        // BACK FACE: Detailed Movie Dossier (Auto-Themed Labels, Monospace Values, Dashed Dividers, Dark Stub)
+                        // BACK FACE: Detailed Movie Dossier (Auto-Themed Labels, Monospace Values, Dashed Dividers, Properly Inset Stub)
                         Item {
                             id: movieBackFace
                             objectName: "nexusCinemaTicketBack_" + String(baseCardDelegate.index)
                             anchors.fill: parent
+                            z: 2
                             visible: baseCardDelegate.showBack
 
                             ColumnLayout {
                                 anchors.top: parent.top
-                                anchors.topMargin: 22
+                                anchors.topMargin: 24
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.bottom: movieBackStub.top
-                                anchors.leftMargin: 18
-                                anchors.rightMargin: 18
-                                anchors.bottomMargin: 10
+                                anchors.leftMargin: 20
+                                anchors.rightMargin: 20
+                                anchors.bottomMargin: 8
                                 spacing: 3
 
                                 Repeater {
@@ -884,7 +1139,7 @@ ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 6
                                             StyledText {
-                                                Layout.preferredWidth: 58
+                                                Layout.preferredWidth: 56
                                                 text: modelData.k
                                                 font.family: Appearance.font.family.monospace
                                                 font.pixelSize: 9
@@ -907,7 +1162,7 @@ ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 3
                                             Repeater {
-                                                model: 28
+                                                model: 26
                                                 delegate: Rectangle {
                                                     width: 4
                                                     height: 1
@@ -928,66 +1183,60 @@ ColumnLayout {
                                     color: settledColors.colSubtext
                                     wrapMode: Text.WordWrap
                                     elide: Text.ElideRight
-                                    maximumLineCount: 6
+                                    maximumLineCount: 5
                                 }
                             }
 
-                            // Full-Width Bottom Dark Auto-Themed Ticket Stub with ★★★★★ Rating + Horizontal Status
-                            Rectangle {
+                            // Inset Back Stub — Rating Stars + Status cleanly inside inner border (pad=10, cr=8 => safe x=[21..w-21], y<=h-16) with ZERO overlap!
+                            Item {
                                 id: movieBackStub
+                                objectName: "nexusCinemaBackStub_" + String(baseCardDelegate.index)
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.bottom: parent.bottom
-                                height: 40
-                                color: cinemaTicketCard.ticketStubBg
-
-                                Rectangle {
-                                    anchors.top: parent.top
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    height: 1
-                                    color: cinemaTicketCard.ticketKeyline
-                                }
+                                anchors.leftMargin: 21
+                                anchors.rightMargin: 21
+                                anchors.bottomMargin: 16
+                                height: 30
 
                                 RowLayout {
                                     anchors.fill: parent
-                                    anchors.leftMargin: 14
-                                    anchors.rightMargin: 14
                                     spacing: 6
 
                                     StyledText {
                                         Layout.fillWidth: true
+                                        verticalAlignment: Text.AlignVCenter
                                         text: collectionViewRoot._starsForScore(baseCardDelegate.modelData.score)
-                                        font.pixelSize: 13
-                                        font.letterSpacing: 2
+                                        font.pixelSize: 12
+                                        font.letterSpacing: 1.5
                                         color: cinemaTicketCard.ticketAccent
+                                        elide: Text.ElideRight
                                     }
 
                                     StyledText {
+                                        verticalAlignment: Text.AlignVCenter
                                         text: {
                                             const st = String(baseCardDelegate.modelData.status ?? "").toLowerCase();
                                             return (st === "watched" || st === "completed" || st === "finished" || st === "done") ? "FINISHED" : "QUEUE";
                                         }
                                         font.family: Appearance.font.family.monospace
-                                        font.pixelSize: 10
+                                        font.pixelSize: 9
                                         font.weight: Font.Black
-                                        font.letterSpacing: 1.5
+                                        font.letterSpacing: 1.2
                                         color: settledColors.colOnLayer1
                                     }
                                 }
                             }
                         }
 
-                        // Concave corner cutouts, top/bottom semicircular notches, side perforations, and inner keyline frame with concave arcs (`02_Components.css` lines 3311-3347)
+                        // UNMODIFIED Inner Keyline Border (exact pad=10, cr=8, nr=9 geometry preserved intact)
                         Canvas {
                             id: cinemaTicketFrameCanvas
                             anchors.fill: parent
                             z: 9
                             readonly property color _keyline: cinemaTicketCard.ticketKeyline
-                            readonly property color _outerBg: cinemaTicketCard.outerCanvasBg
                             readonly property string _themeSig: root.themeSignature
                             on_KeylineChanged: if (visible) requestPaint()
-                            on_OuterBgChanged: if (visible) requestPaint()
                             on_ThemeSigChanged: if (visible) requestPaint()
                             onVisibleChanged: {
                                 if (visible)
@@ -1002,7 +1251,7 @@ ColumnLayout {
                                 const h = height;
                                 if (w < 40 || h < 40) return;
 
-                                // 1. Inner keyline border with concave corner arcs (r=8) and top-center notch arc (r=9)
+                                // Exact inner keyline border with concave corner arcs (r=8) and top-center notch arc (r=9)
                                 const pad = 10;
                                 const cr = 8;
                                 const nr = 9;
@@ -1026,32 +1275,6 @@ ColumnLayout {
                                 ctx.lineTo(pad, pad + cr);
                                 ctx.arc(pad, pad, cr, Math.PI * 0.5, 0, true);
                                 ctx.stroke();
-
-                                // 2. Outer concave corners (R=11), top/bottom center notches (R=9), and side perforations (r=2.3 every 13px)
-                                ctx.fillStyle = cinemaTicketCard.outerCanvasBg;
-                                const outerCornerR = 11;
-                                const corners = [[0, 0], [w, 0], [w, h], [0, h]];
-                                for (let i = 0; i < corners.length; ++i) {
-                                    ctx.beginPath();
-                                    ctx.arc(corners[i][0], corners[i][1], outerCornerR, 0, Math.PI * 2);
-                                    ctx.fill();
-                                }
-                                // Top-center and bottom-center notches
-                                ctx.beginPath();
-                                ctx.arc(cx, 0, 9, 0, Math.PI * 2);
-                                ctx.fill();
-                                ctx.beginPath();
-                                ctx.arc(cx, h, 9, 0, Math.PI * 2);
-                                ctx.fill();
-                                // Side perforations
-                                for (let py = 18; py < h - 16; py += 13) {
-                                    ctx.beginPath();
-                                    ctx.arc(0, py, 2.2, 0, Math.PI * 2);
-                                    ctx.fill();
-                                    ctx.beginPath();
-                                    ctx.arc(w, py, 2.2, 0, Math.PI * 2);
-                                    ctx.fill();
-                                }
                             }
                         }
                     }
@@ -2465,13 +2688,14 @@ ColumnLayout {
                                         color: settledColors.colLayer0Border
                                     }
 
-                                    // 3-Column Footer Bar (`.rc-footer`: Servings | Difficulty | Bookmark/Rating)
+                                    // Footer Bar (`.rc-footer`: Servings + Rating on left; Cooking Difficulty cleanly RIGHT-ALIGNED)
                                     RowLayout {
+                                        objectName: "nexusRecipeFrontFooter_" + String(baseCardDelegate.index)
                                         Layout.fillWidth: true
                                         Layout.topMargin: 4
                                         spacing: 6
 
-                                        // Column 1: Servings
+                                        // Left: Servings
                                         RowLayout {
                                             spacing: 4
                                             MaterialSymbol {
@@ -2480,7 +2704,7 @@ ColumnLayout {
                                                 color: settledColors.colSubtext
                                             }
                                             StyledText {
-                                                text: String(baseCardDelegate.modelData.servings || 2)
+                                                text: String(baseCardDelegate.modelData.servings || 2) + " srv"
                                                 font.family: Appearance.font.family.monospace
                                                 font.pixelSize: 10
                                                 font.weight: Font.DemiBold
@@ -2488,53 +2712,16 @@ ColumnLayout {
                                             }
                                         }
 
-                                        Rectangle {
-                                            width: 1
-                                            height: 12
-                                            color: settledColors.colLayer0Border
-                                        }
-
-                                        // Column 2: Difficulty (centered)
-                                        Item {
-                                            Layout.fillWidth: true
-                                            implicitHeight: 18
-
-                                            RowLayout {
-                                                anchors.centerIn: parent
-                                                spacing: 4
-                                                MaterialSymbol {
-                                                    text: "equalizer"
-                                                    iconSize: 12
-                                                    color: rcBaseCard.rcDifficultyColor
-                                                }
-                                                StyledText {
-                                                    text: rcBaseCard.rcDifficulty
-                                                    font.family: Appearance.font.family.monospace
-                                                    font.pixelSize: 10
-                                                    font.weight: Font.DemiBold
-                                                    color: rcBaseCard.rcDifficultyColor
-                                                }
-                                            }
-                                        }
-
-                                        Rectangle {
-                                            width: 1
-                                            height: 12
-                                            color: settledColors.colLayer0Border
-                                        }
-
-                                        // Column 3: Rating or Bookmark indicator
+                                        // Optional Rating pill beside servings
                                         RowLayout {
-                                            spacing: 3
+                                            visible: Number(baseCardDelegate.modelData.score ?? 0) > 0
+                                            spacing: 2
                                             MaterialSymbol {
-                                                text: Number(baseCardDelegate.modelData.score ?? 0) > 0 ? "star" : "bookmark_border"
+                                                text: "star"
                                                 iconSize: 12
-                                                color: Number(baseCardDelegate.modelData.score ?? 0) > 0
-                                                    ? settledColors.colPrimary
-                                                    : settledColors.colSubtext
+                                                color: settledColors.colPrimary
                                             }
                                             StyledText {
-                                                visible: Number(baseCardDelegate.modelData.score ?? 0) > 0
                                                 text: String(baseCardDelegate.modelData.score ?? "")
                                                 font.family: Appearance.font.family.monospace
                                                 font.pixelSize: 10
@@ -2542,92 +2729,269 @@ ColumnLayout {
                                                 color: settledColors.colPrimary
                                             }
                                         }
+
+                                        Item {
+                                            Layout.fillWidth: true
+                                        }
+
+                                        // Right-Aligned Cooking Difficulty Pill
+                                        Rectangle {
+                                            objectName: "nexusRecipeDifficultyRightPill_" + String(baseCardDelegate.index)
+                                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                                            height: 20
+                                            width: rcDiffRow.implicitWidth + 10
+                                            radius: 6
+                                            color: Qt.alpha(rcBaseCard.rcDifficultyColor, 0.14)
+                                            border.width: 1
+                                            border.color: Qt.alpha(rcBaseCard.rcDifficultyColor, 0.38)
+
+                                            RowLayout {
+                                                id: rcDiffRow
+                                                anchors.centerIn: parent
+                                                spacing: 3
+                                                MaterialSymbol {
+                                                    text: "equalizer"
+                                                    iconSize: 11
+                                                    color: rcBaseCard.rcDifficultyColor
+                                                }
+                                                StyledText {
+                                                    text: rcBaseCard.rcDifficulty
+                                                    font.family: Appearance.font.family.monospace
+                                                    font.pixelSize: 10
+                                                    font.weight: Font.Bold
+                                                    color: rcBaseCard.rcDifficultyColor
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
 
-                        // ── BACK FACE: INGREDIENTS LIST (`.rc-back`) ──
+                        // ── BACK FACE: RICH CULINARY RECIPE DOSSIER (`.rc-back`) ──
                         Rectangle {
+                            id: rcBackFace
+                            objectName: "nexusRecipeBackFace_" + String(baseCardDelegate.index)
                             anchors.fill: parent
-                            anchors.margins: 8
+                            anchors.margins: 6
                             visible: baseCardDelegate.showBack
-                            radius: 8
-                            color: Qt.tint(
-                                Qt.lighter(Qt.color(root.ccStop(0)), 1.24),
-                                Qt.rgba(settledColors.colPrimary.r, settledColors.colPrimary.g, settledColors.colPrimary.b, 0.08)
-                            )
+                            radius: 10
+                            color: settledColors.colLayer1
                             border.width: 1
-                            border.color: Qt.alpha(settledColors.colPrimary, 0.32)
+                            border.color: Qt.alpha(settledColors.colPrimary, 0.40)
+                            clip: true
+
+                            // Subtle top accent band
+                            Rectangle {
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                height: 3
+                                color: settledColors.colPrimary
+                            }
 
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 12
-                                spacing: 6
+                                anchors.leftMargin: 11
+                                anchors.rightMargin: 11
+                                anchors.topMargin: 11
+                                anchors.bottomMargin: 9
+                                spacing: 7
 
+                                // 1. Culinary Header: Title + Category Pill
                                 RowLayout {
                                     Layout.fillWidth: true
                                     spacing: 6
 
+                                    Rectangle {
+                                        Layout.preferredWidth: 26
+                                        Layout.preferredHeight: 26
+                                        radius: 7
+                                        color: Qt.alpha(settledColors.colPrimary, 0.16)
+                                        MaterialSymbol {
+                                            anchors.centerIn: parent
+                                            text: rcBaseCard.rcCategoryIcon
+                                            iconSize: 14
+                                            color: settledColors.colPrimary
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 1
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            text: String(baseCardDelegate.modelData.title ?? "")
+                                            font.family: Appearance.font.family.reading || Appearance.font.family.main
+                                            font.pixelSize: 12
+                                            font.weight: Font.Bold
+                                            color: settledColors.colOnLayer0
+                                            elide: Text.ElideRight
+                                        }
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            text: rcBaseCard.rcCategoryLabel + (rcBaseCard.rcCaloriesNum > 0 ? (" · " + String(Math.round(rcBaseCard.rcCaloriesNum)) + " kcal") : "")
+                                            font.family: Appearance.font.family.monospace
+                                            font.pixelSize: 9
+                                            font.weight: Font.DemiBold
+                                            color: settledColors.colPrimary
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                }
+
+                                // 2. Structured 3-Stat Culinary Strip (Time | Servings | Difficulty)
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    Repeater {
+                                        model: [
+                                            { "icon": "schedule", "lbl": rcBaseCard.rcTimeDisplay, "col": String(settledColors.colOnLayer1) },
+                                            { "icon": "group", "lbl": String(baseCardDelegate.modelData.servings || 2) + " srv", "col": String(settledColors.colOnLayer1) },
+                                            { "icon": "equalizer", "lbl": rcBaseCard.rcDifficulty, "col": String(rcBaseCard.rcDifficultyColor) }
+                                        ]
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 24
+                                            radius: 6
+                                            color: settledColors.colLayer2
+                                            border.width: 1
+                                            border.color: settledColors.colLayer0Border
+
+                                            RowLayout {
+                                                anchors.centerIn: parent
+                                                spacing: 3
+                                                MaterialSymbol {
+                                                    text: modelData.icon
+                                                    iconSize: 11
+                                                    color: Qt.color(modelData.col)
+                                                }
+                                                StyledText {
+                                                    text: modelData.lbl
+                                                    font.family: Appearance.font.family.monospace
+                                                    font.pixelSize: 9
+                                                    font.weight: Font.DemiBold
+                                                    color: Qt.color(modelData.col)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 3. Ingredients Checklist Section with Count Pill
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 5
                                     MaterialSymbol {
                                         text: "shopping_basket"
-                                        iconSize: 14
+                                        iconSize: 12
                                         color: settledColors.colPrimary
                                     }
                                     StyledText {
                                         Layout.fillWidth: true
-                                        text: "Ingredients"
-                                        font.family: Appearance.font.family.reading || Appearance.font.family.main
-                                        font.pixelSize: 12
+                                        text: "INGREDIENTS"
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 9
                                         font.weight: Font.Bold
+                                        font.letterSpacing: 0.9
                                         color: settledColors.colPrimary
                                     }
+                                    Rectangle {
+                                        height: 16
+                                        width: ingCountTxt.implicitWidth + 8
+                                        radius: 8
+                                        color: settledColors.colSecondaryContainer
+                                        StyledText {
+                                            id: ingCountTxt
+                                            anchors.centerIn: parent
+                                            text: String(rcBaseCard.rcIngredientItems.length)
+                                            font.family: Appearance.font.family.monospace
+                                            font.pixelSize: 9
+                                            font.weight: Font.Bold
+                                            color: settledColors.colOnSecondaryContainer
+                                        }
+                                    }
+                                }
+
+                                // Ingredients Container (stepped tonal inset card with word-wrapped entries)
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: 7
+                                    color: settledColors.colLayer0
+                                    border.width: 1
+                                    border.color: settledColors.colLayer0Border
+                                    clip: true
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 8
+                                        spacing: 4
+
+                                        Repeater {
+                                            model: rcBaseCard.rcIngredientItems.slice(0, 7)
+                                            delegate: RowLayout {
+                                                required property var modelData
+                                                Layout.fillWidth: true
+                                                spacing: 6
+
+                                                Rectangle {
+                                                    width: 5
+                                                    height: 5
+                                                    radius: 2.5
+                                                    color: settledColors.colPrimary
+                                                    Layout.alignment: Qt.AlignTop
+                                                    Layout.topMargin: 4
+                                                }
+                                                StyledText {
+                                                    Layout.fillWidth: true
+                                                    text: String(modelData)
+                                                    font.pixelSize: 10
+                                                    color: settledColors.colOnLayer1
+                                                    wrapMode: Text.WordWrap
+                                                    elide: Text.ElideRight
+                                                    maximumLineCount: 2
+                                                }
+                                            }
+                                        }
+
+                                        // Optional Chef Notes / Summary when ingredients list is brief
+                                        StyledText {
+                                            visible: rcBaseCard.rcIngredientItems.length <= 3 && collectionViewRoot._cleanExcerpt(baseCardDelegate.modelData.description || baseCardDelegate.modelData.plot || "").length > 0
+                                            Layout.fillWidth: true
+                                            Layout.topMargin: 4
+                                            text: collectionViewRoot._cleanExcerpt(baseCardDelegate.modelData.description || baseCardDelegate.modelData.plot || "")
+                                            font.pixelSize: 9
+                                            font.italic: true
+                                            color: settledColors.colSubtext
+                                            wrapMode: Text.WordWrap
+                                            elide: Text.ElideRight
+                                            maximumLineCount: 3
+                                        }
+
+                                        Item { Layout.fillHeight: true }
+                                    }
+                                }
+
+                                // 4. Footer Hint
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
                                     StyledText {
-                                        text: rcBaseCard.rcTimeDisplay
+                                        Layout.fillWidth: true
+                                        text: rcBaseCard.rcMacroChips.length > 0 ? rcBaseCard.rcMacroChips.slice(0, 3).join(" · ") : "Open recipe steps & notes"
                                         font.family: Appearance.font.family.monospace
                                         font.pixelSize: 9
                                         color: settledColors.colSubtext
+                                        elide: Text.ElideRight
                                     }
-                                }
-
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    height: 1
-                                    color: settledColors.colLayer0Border
-                                }
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    spacing: 4
-
-                                    Repeater {
-                                        model: rcBaseCard.rcIngredientItems
-                                        delegate: RowLayout {
-                                            required property var modelData
-                                            Layout.fillWidth: true
-                                            spacing: 6
-
-                                            Rectangle {
-                                                width: 5
-                                                height: 5
-                                                radius: 2.5
-                                                color: settledColors.colPrimary
-                                                Layout.alignment: Qt.AlignTop
-                                                Layout.topMargin: 5
-                                            }
-                                            StyledText {
-                                                Layout.fillWidth: true
-                                                text: String(modelData)
-                                                font.pixelSize: 10
-                                                color: settledColors.colOnLayer1
-                                                elide: Text.ElideRight
-                                                maximumLineCount: 1
-                                            }
-                                        }
+                                    MaterialSymbol {
+                                        text: "arrow_forward"
+                                        iconSize: 12
+                                        color: settledColors.colPrimary
                                     }
-
-                                    Item { Layout.fillHeight: true }
                                 }
                             }
                         }
@@ -3089,9 +3453,687 @@ ColumnLayout {
                         }
                     }
 
-                    // ── 8. CONTACTS / CORNELL / ZETTELKASTEN / WEBSITES / CLIPPINGS / FINANCE CARDS ──
+                    // ── 8A. CORNELL STUDY NOTE SHEET CARD (Two-Column Cue | Notes Layout + Summary Footer Band) ──
                     Rectangle {
-                        visible: !baseCardDelegate.isMovieCard && !baseCardDelegate.isTvCard && !baseCardDelegate.isGameCard && !baseCardDelegate.isBookCard && !baseCardDelegate.isRecipeCard && !baseCardDelegate.isExerciseCard && !baseCardDelegate.isPlaceCard
+                        id: cornellBaseCard
+                        objectName: "nexusCornellBaseCard_" + String(baseCardDelegate.index)
+                        visible: baseCardDelegate.isCornellCard
+                        anchors.fill: parent
+                        radius: 11
+                        color: baseCardHover.hovered ? settledColors.colLayer2Hover : settledColors.colLayer1
+                        border.width: 1
+                        border.color: baseCardHover.hovered ? settledColors.colPrimary : settledColors.colLayer0Border
+                        clip: true
+
+                        readonly property var itemTags: Array.isArray(baseCardDelegate.modelData.tags) ? baseCardDelegate.modelData.tags : []
+                        readonly property string _rawMultilineBody: String(baseCardDelegate.modelData.description || baseCardDelegate.modelData.plot || "")
+                        readonly property string _extractedCourse: {
+                            const m = _rawMultilineBody.match(/^\s*(?:[-*]\s*)?(?:\*\*)?(?:Course|Subject|Topic)(?:\*\*)?\s*:\s*(?:\*\*)?([^\n]+)$/im);
+                            return m ? collectionViewRoot._cleanExcerpt(m[1]).slice(0, 48) : "";
+                        }
+                        readonly property string cleanNotes: collectionViewRoot._cleanExcerpt(
+                            _rawMultilineBody.replace(/^\s*(?:[-*]\s*)?(?:\*\*)?(?:Course|Subject|Topic)(?:\*\*)?\s*:\s*[^\n]*(?:\n|$)/im, "")
+                        )
+                        readonly property string cueTopic: String(baseCardDelegate.modelData.category || baseCardDelegate.modelData.genre || _extractedCourse || (itemTags.length > 0 ? ("#" + itemTags[0]) : "Study Cue"))
+                        readonly property int openTaskCnt: Number(baseCardDelegate.modelData.openTasks ?? 0)
+                        readonly property int doneTaskCnt: Number(baseCardDelegate.modelData.doneTasks ?? 0)
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            spacing: 0
+
+                            // Header Band (Course/Topic + Note Title + Review Status Pill)
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 48
+                                color: settledColors.colLayer2
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 10
+                                    spacing: 8
+
+                                    Rectangle {
+                                        Layout.preferredWidth: 28
+                                        Layout.preferredHeight: 28
+                                        radius: 7
+                                        color: Qt.alpha(settledColors.colPrimary, 0.16)
+                                        MaterialSymbol {
+                                            anchors.centerIn: parent
+                                            text: "school"
+                                            iconSize: 15
+                                            color: settledColors.colPrimary
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 1
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            text: String(baseCardDelegate.modelData.title ?? "Cornell Note")
+                                            font.pixelSize: 13
+                                            font.weight: Font.Bold
+                                            color: settledColors.colOnLayer0
+                                            elide: Text.ElideRight
+                                        }
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            text: cornellBaseCard.cueTopic
+                                            font.family: Appearance.font.family.monospace
+                                            font.pixelSize: 9
+                                            color: settledColors.colPrimary
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        visible: String(baseCardDelegate.modelData.status ?? "").length > 0
+                                        height: 19
+                                        width: cornellStTxt.implicitWidth + 10
+                                        radius: 9.5
+                                        color: settledColors.colSecondaryContainer
+                                        StyledText {
+                                            id: cornellStTxt
+                                            anchors.centerIn: parent
+                                            text: String(baseCardDelegate.modelData.status ?? "")
+                                            font.family: Appearance.font.family.monospace
+                                            font.pixelSize: 9
+                                            font.weight: Font.Bold
+                                            color: settledColors.colOnSecondaryContainer
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    height: 1
+                                    color: Qt.alpha(settledColors.colPrimary, 0.34)
+                                }
+                            }
+
+                            // Authentic Two-Column Cornell Body: Left CUES | Accent Vertical Rule | Right NOTES
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                spacing: 0
+
+                                // Left Cues Column (~30% width)
+                                ColumnLayout {
+                                    Layout.preferredWidth: Math.max(72, Math.round(cornellBaseCard.width * 0.30))
+                                    Layout.fillHeight: true
+                                    Layout.margins: 8
+                                    spacing: 4
+
+                                    StyledText {
+                                        text: "CUES"
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 8
+                                        font.weight: Font.Black
+                                        font.letterSpacing: 1.0
+                                        color: settledColors.colPrimary
+                                    }
+
+                                    Repeater {
+                                        model: cornellBaseCard.itemTags.length > 0 ? cornellBaseCard.itemTags.slice(0, 3) : [cornellBaseCard.cueTopic]
+                                        delegate: Rectangle {
+                                            required property string modelData
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 18
+                                            radius: 4
+                                            color: settledColors.colLayer0
+                                            border.width: 1
+                                            border.color: settledColors.colLayer0Border
+                                            StyledText {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 5
+                                                anchors.rightMargin: 5
+                                                verticalAlignment: Text.AlignVCenter
+                                                text: modelData.startsWith("#") ? modelData : ("#" + modelData)
+                                                font.family: Appearance.font.family.monospace
+                                                font.pixelSize: 9
+                                                color: settledColors.colSubtext
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                    }
+
+                                    Item { Layout.fillHeight: true }
+                                }
+
+                                // Iconic Cornell Vertical Margin Rule
+                                Rectangle {
+                                    Layout.preferredWidth: 1.5
+                                    Layout.fillHeight: true
+                                    color: Qt.alpha(settledColors.colPrimary, 0.42)
+                                }
+
+                                // Right Notes Column (~70% width)
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    Layout.margins: 9
+                                    spacing: 4
+
+                                    StyledText {
+                                        text: "NOTES"
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 8
+                                        font.weight: Font.Black
+                                        font.letterSpacing: 1.0
+                                        color: settledColors.colSubtext
+                                    }
+
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        text: cornellBaseCard.cleanNotes.length > 0
+                                            ? cornellBaseCard.cleanNotes
+                                            : "Structured Cornell cues, key definitions, and lecture summary..."
+                                        font.pixelSize: 11
+                                        lineHeight: 1.25
+                                        color: settledColors.colOnLayer1
+                                        wrapMode: Text.WordWrap
+                                        elide: Text.ElideRight
+                                        maximumLineCount: 4
+                                    }
+                                }
+                            }
+
+                            // Bottom Cornell Summary Footer Strip
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 28
+                                color: settledColors.colLayer0
+
+                                Rectangle {
+                                    anchors.top: parent.top
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    height: 1
+                                    color: settledColors.colLayer0Border
+                                }
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 10
+                                    spacing: 8
+
+                                    StyledText {
+                                        text: "SUMMARY"
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 9
+                                        font.weight: Font.Bold
+                                        font.letterSpacing: 0.9
+                                        color: settledColors.colPrimary
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    RowLayout {
+                                        visible: Number(baseCardDelegate.modelData.linkCount ?? 0) > 0
+                                        spacing: 3
+                                        MaterialSymbol { text: "hub"; iconSize: 11; color: settledColors.colSubtext }
+                                        StyledText {
+                                            text: String(baseCardDelegate.modelData.linkCount ?? 0)
+                                            font.family: Appearance.font.family.monospace
+                                            font.pixelSize: 9
+                                            color: settledColors.colSubtext
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        visible: (cornellBaseCard.openTaskCnt + cornellBaseCard.doneTaskCnt) > 0
+                                        spacing: 3
+                                        MaterialSymbol { text: "check_circle"; iconSize: 11; color: settledColors.colTertiary }
+                                        StyledText {
+                                            text: String(cornellBaseCard.doneTaskCnt) + "/" + String(cornellBaseCard.openTaskCnt + cornellBaseCard.doneTaskCnt)
+                                            font.family: Appearance.font.family.monospace
+                                            font.pixelSize: 9
+                                            color: settledColors.colTertiary
+                                        }
+                                    }
+
+                                    StyledText {
+                                        visible: String(baseCardDelegate.modelData.year || baseCardDelegate.modelData.releaseDate || "").length > 0
+                                        text: String(baseCardDelegate.modelData.releaseDate || baseCardDelegate.modelData.year || "")
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 9
+                                        color: settledColors.colSubtext
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── 8B. ZETTELKASTEN SLIP-BOX INDEX CARD (Luhmann Zettel ID Stamp + Type Spine + Links & Tags) ──
+                    Rectangle {
+                        id: zettelBaseCard
+                        objectName: "nexusZettelBaseCard_" + String(baseCardDelegate.index)
+                        visible: baseCardDelegate.isZettelCard
+                        anchors.fill: parent
+                        radius: 10
+                        color: baseCardHover.hovered ? settledColors.colLayer2Hover : settledColors.colLayer1
+                        border.width: 1
+                        border.color: baseCardHover.hovered ? zettelBaseCard.spineColor : settledColors.colLayer0Border
+                        clip: true
+
+                        readonly property string zId: {
+                            const explicit = String(baseCardDelegate.modelData.zettelId ?? "").trim();
+                            if (explicit.length > 0) return explicit;
+                            const p = String(baseCardDelegate.modelData.title ?? baseCardDelegate.modelData.relPath ?? "");
+                            const m = p.match(/\b(\d{8,14})\b/);
+                            return m ? m[1] : ("ZK-" + String(baseCardDelegate.index + 1).padStart(3, "0"));
+                        }
+                        readonly property string zType: {
+                            const raw = String(baseCardDelegate.modelData.zettelType || baseCardDelegate.modelData.status || baseCardDelegate.modelData.category || "Permanent").trim();
+                            return raw.length > 0 ? raw : "Permanent";
+                        }
+                        readonly property color spineColor: {
+                            const t = zType.toLowerCase();
+                            if (t.indexOf("lit") !== -1 || t.indexOf("ref") !== -1)
+                                return settledColors.colTertiary ?? settledColors.colPrimary;
+                            if (t.indexOf("fleet") !== -1 || t.indexOf("draft") !== -1 || t.indexOf("seed") !== -1)
+                                return settledColors.colSecondary ?? settledColors.colPrimary;
+                            return settledColors.colPrimary;
+                        }
+                        readonly property var zTags: Array.isArray(baseCardDelegate.modelData.tags) ? baseCardDelegate.modelData.tags : []
+                        readonly property string zBody: collectionViewRoot._cleanExcerpt(baseCardDelegate.modelData.description || baseCardDelegate.modelData.plot || "")
+
+                        // Left Slip-Box Accent Spine
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: 4
+                            color: zettelBaseCard.spineColor
+                        }
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 14
+                            anchors.rightMargin: 12
+                            anchors.topMargin: 10
+                            anchors.bottomMargin: 10
+                            spacing: 6
+
+                            // Index Card Top Metadata Strip: Zettel ID Stamp + Type Pill + Link Counter
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                Rectangle {
+                                    height: 19
+                                    width: zkIdTxt.implicitWidth + 10
+                                    radius: 4
+                                    color: settledColors.colLayer0
+                                    border.width: 1
+                                    border.color: Qt.alpha(zettelBaseCard.spineColor, 0.42)
+                                    StyledText {
+                                        id: zkIdTxt
+                                        anchors.centerIn: parent
+                                        text: zettelBaseCard.zId
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 9
+                                        font.weight: Font.Bold
+                                        color: zettelBaseCard.spineColor
+                                    }
+                                }
+
+                                Rectangle {
+                                    height: 19
+                                    width: zkTypeTxt.implicitWidth + 10
+                                    radius: 9.5
+                                    color: Qt.alpha(zettelBaseCard.spineColor, 0.16)
+                                    StyledText {
+                                        id: zkTypeTxt
+                                        anchors.centerIn: parent
+                                        text: zettelBaseCard.zType.toUpperCase()
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 8
+                                        font.weight: Font.Black
+                                        font.letterSpacing: 0.6
+                                        color: zettelBaseCard.spineColor
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                RowLayout {
+                                    spacing: 3
+                                    MaterialSymbol {
+                                        text: "link"
+                                        iconSize: 12
+                                        color: settledColors.colSubtext
+                                    }
+                                    StyledText {
+                                        text: String(baseCardDelegate.modelData.linkCount ?? 0)
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 10
+                                        font.weight: Font.DemiBold
+                                        color: settledColors.colSubtext
+                                    }
+                                }
+                            }
+
+                            // Index-Card Ruled Header Line
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 1
+                                color: Qt.alpha(zettelBaseCard.spineColor, 0.30)
+                            }
+
+                            // Atomic Idea Title (avoid repeating the Zettel ID already stamped in the badge)
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: {
+                                    const rawTitle = String(baseCardDelegate.modelData.title ?? "Atomic Note").trim();
+                                    const id = zettelBaseCard.zId;
+                                    if (id.length >= 6 && rawTitle.startsWith(id)) {
+                                        const stripped = rawTitle.slice(id.length).replace(/^[\s\-–—:|]+/, "").trim();
+                                        if (stripped.length > 0) return stripped;
+                                    }
+                                    return rawTitle;
+                                }
+                                font.family: Appearance.font.family.reading || Appearance.font.family.main
+                                font.pixelSize: 13
+                                font.weight: Font.Bold
+                                color: settledColors.colOnLayer0
+                                wrapMode: Text.WordWrap
+                                elide: Text.ElideRight
+                                maximumLineCount: 2
+                                lineHeight: 1.15
+                            }
+
+                            // Clean Atomic Excerpt
+                            StyledText {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                text: zettelBaseCard.zBody.length > 0
+                                    ? zettelBaseCard.zBody
+                                    : "Atomic Zettelkasten concept card — click to inspect connections and literature links."
+                                font.pixelSize: 11
+                                lineHeight: 1.25
+                                color: settledColors.colSubtext
+                                wrapMode: Text.WordWrap
+                                elide: Text.ElideRight
+                                maximumLineCount: 3
+                            }
+
+                            // Bottom Tag Chips & Slip-Box Glyph
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+
+                                Repeater {
+                                    model: zettelBaseCard.zTags.slice(0, 3)
+                                    delegate: Rectangle {
+                                        required property string modelData
+                                        height: 17
+                                        width: Math.min(92, zkTagChipTxt.implicitWidth + 10)
+                                        radius: 8.5
+                                        color: settledColors.colLayer2
+                                        border.width: 1
+                                        border.color: settledColors.colLayer0Border
+                                        StyledText {
+                                            id: zkTagChipTxt
+                                            anchors.centerIn: parent
+                                            width: parent.width - 8
+                                            horizontalAlignment: Text.AlignHCenter
+                                            text: "#" + modelData.replace(/^#+/, "")
+                                            font.family: Appearance.font.family.monospace
+                                            font.pixelSize: 8
+                                            color: settledColors.colPrimary
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                MaterialSymbol {
+                                    text: "psychology"
+                                    iconSize: 14
+                                    color: Qt.alpha(zettelBaseCard.spineColor, 0.55)
+                                }
+                            }
+                        }
+                    }
+
+                    // ── 8C. FINANCE LEDGER CARD (Transactions / Accounts / Subscriptions with Semantic Direction & Tabular Amounts) ──
+                    Rectangle {
+                        id: financeBaseCard
+                        objectName: "nexusFinanceBaseCard_" + String(baseCardDelegate.index)
+                        visible: baseCardDelegate.isFinanceCard
+                        anchors.fill: parent
+                        radius: 11
+                        color: baseCardHover.hovered ? settledColors.colLayer2Hover : settledColors.colLayer1
+                        border.width: 1
+                        border.color: baseCardHover.hovered ? financeBaseCard.finAccent : settledColors.colLayer0Border
+                        clip: true
+
+                        readonly property string finRecordKind: {
+                            const rk = String(baseCardDelegate.modelData.recordKind || baseCardDelegate.modelData.kind || "").toLowerCase();
+                            if (rk === "account" || baseCardDelegate.modelData.balance !== undefined || collectionViewRoot.financeSubTab === "accounts")
+                                return "account";
+                            if (rk === "subscription" || String(baseCardDelegate.modelData.billingCycle || baseCardDelegate.modelData.cycle || "").length > 0 || collectionViewRoot.financeSubTab === "subscriptions")
+                                return "subscription";
+                            return "transaction";
+                        }
+                        readonly property string finTxType: String(baseCardDelegate.modelData.txType || baseCardDelegate.modelData.type || baseCardDelegate.modelData.status || "").toLowerCase()
+                        readonly property real finNumericAmount: {
+                            if (baseCardDelegate.modelData.amount !== undefined && baseCardDelegate.modelData.amount !== null)
+                                return Number(baseCardDelegate.modelData.amount);
+                            if (baseCardDelegate.modelData.balance !== undefined && baseCardDelegate.modelData.balance !== null)
+                                return Number(baseCardDelegate.modelData.balance);
+                            return NaN;
+                        }
+                        readonly property bool isIncome: finRecordKind === "transaction" && (finTxType.indexOf("inc") !== -1 || finTxType.indexOf("sal") !== -1 || finTxType.indexOf("dep") !== -1 || finTxType.indexOf("credit") !== -1)
+                        readonly property bool isExpense: finRecordKind === "transaction" && !isIncome && (finTxType.indexOf("exp") !== -1 || finTxType.indexOf("spend") !== -1 || finTxType.indexOf("out") !== -1 || (Number.isFinite(finNumericAmount) && finNumericAmount < 0))
+                        readonly property color finAccent: {
+                            if (finRecordKind === "account")
+                                return settledColors.colPrimary;
+                            if (finRecordKind === "subscription")
+                                return settledColors.colSecondary ?? settledColors.colPrimary;
+                            if (isIncome)
+                                return settledColors.colTertiary ?? settledColors.colPrimary;
+                            if (isExpense)
+                                return settledColors.colError ?? "#f38ba8";
+                            return settledColors.colPrimary;
+                        }
+                        readonly property string finIcon: {
+                            if (finRecordKind === "account")
+                                return "account_balance";
+                            if (finRecordKind === "subscription")
+                                return "autorenew";
+                            if (isIncome)
+                                return "south_west";
+                            if (isExpense)
+                                return "north_east";
+                            return "payments";
+                        }
+                        readonly property string finAmountText: {
+                            if (!Number.isFinite(finNumericAmount))
+                                return String(baseCardDelegate.modelData.status || "—");
+                            const cur = String(baseCardDelegate.modelData.currency || root.nexus?.financeSummary?.currency || "");
+                            const absFormatted = collectionViewRoot._formatMoney(Math.abs(finNumericAmount), cur);
+                            if (finRecordKind === "transaction") {
+                                if (isIncome) return "+" + absFormatted;
+                                if (isExpense) return "-" + absFormatted;
+                            }
+                            return collectionViewRoot._formatMoney(finNumericAmount, cur);
+                        }
+
+                        // Left semantic color bar
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: 4
+                            color: financeBaseCard.finAccent
+                        }
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 14
+                            anchors.rightMargin: 12
+                            anchors.topMargin: 11
+                            anchors.bottomMargin: 10
+                            spacing: 8
+
+                            // Top Row: Direction Icon Badge + Title/Merchant + Kind/Cycle Pill
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Rectangle {
+                                    Layout.preferredWidth: 32
+                                    Layout.preferredHeight: 32
+                                    radius: 9
+                                    color: Qt.alpha(financeBaseCard.finAccent, 0.16)
+                                    border.width: 1
+                                    border.color: Qt.alpha(financeBaseCard.finAccent, 0.34)
+                                    MaterialSymbol {
+                                        anchors.centerIn: parent
+                                        text: financeBaseCard.finIcon
+                                        iconSize: 16
+                                        color: financeBaseCard.finAccent
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 1
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: {
+                                            const rawTitle = String(baseCardDelegate.modelData.title ?? "").trim();
+                                            const lowerTitle = rawTitle.toLowerCase();
+                                            const isGeneric = lowerTitle.length === 0
+                                                || lowerTitle === "transaction notes"
+                                                || lowerTitle === "transaction note"
+                                                || lowerTitle === "account notes"
+                                                || lowerTitle === "subscription notes"
+                                                || lowerTitle === "finance entry"
+                                                || lowerTitle === "untitled";
+                                            const specific = String(baseCardDelegate.modelData.merchant
+                                                || baseCardDelegate.modelData.description
+                                                || baseCardDelegate.modelData.name
+                                                || "").trim();
+                                            return (!isGeneric ? rawTitle : (specific || rawTitle || "Finance Entry"));
+                                        }
+                                        font.pixelSize: 13
+                                        font.weight: Font.Bold
+                                        color: settledColors.colOnLayer0
+                                        elide: Text.ElideRight
+                                    }
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: {
+                                            const subParts = [];
+                                            if (baseCardDelegate.modelData.category) subParts.push(String(baseCardDelegate.modelData.category));
+                                            if (baseCardDelegate.modelData.account) subParts.push(String(baseCardDelegate.modelData.account));
+                                            if (baseCardDelegate.modelData.billingCycle || baseCardDelegate.modelData.cycle) subParts.push(String(baseCardDelegate.modelData.billingCycle || baseCardDelegate.modelData.cycle));
+                                            if (subParts.length === 0 && baseCardDelegate.modelData.txType) subParts.push(String(baseCardDelegate.modelData.txType));
+                                            return subParts.length > 0 ? subParts.join(" · ") : financeBaseCard.finRecordKind.toUpperCase();
+                                        }
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 10
+                                        color: settledColors.colSubtext
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                Rectangle {
+                                    height: 19
+                                    width: finKindLbl.implicitWidth + 10
+                                    radius: 9.5
+                                    color: Qt.alpha(financeBaseCard.finAccent, 0.16)
+                                    StyledText {
+                                        id: finKindLbl
+                                        anchors.centerIn: parent
+                                        text: {
+                                            if (financeBaseCard.finRecordKind === "account")
+                                                return String(baseCardDelegate.modelData.type || "ACCOUNT").toUpperCase();
+                                            if (financeBaseCard.finRecordKind === "subscription")
+                                                return String(baseCardDelegate.modelData.billingCycle || baseCardDelegate.modelData.cycle || "SUB").toUpperCase();
+                                            return financeBaseCard.isIncome ? "INCOME" : (financeBaseCard.isExpense ? "EXPENSE" : "LEDGER");
+                                        }
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 8
+                                        font.weight: Font.Black
+                                        color: financeBaseCard.finAccent
+                                    }
+                                }
+                            }
+
+                            // Hero Tabular Monetary Figure Pill
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 40
+                                radius: 8
+                                color: settledColors.colLayer0
+                                border.width: 1
+                                border.color: Qt.alpha(financeBaseCard.finAccent, 0.24)
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 10
+                                    spacing: 6
+
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: financeBaseCard.finAmountText
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 16
+                                        font.weight: Font.Bold
+                                        color: financeBaseCard.finAccent
+                                        elide: Text.ElideRight
+                                    }
+
+                                    StyledText {
+                                        visible: String(baseCardDelegate.modelData.status ?? "").length > 0
+                                        text: String(baseCardDelegate.modelData.status ?? "").toUpperCase()
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 9
+                                        font.weight: Font.DemiBold
+                                        color: settledColors.colSubtext
+                                    }
+                                }
+                            }
+
+                            // Bottom Ledger Metadata Row (Notes/Description + Date)
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: collectionViewRoot._cleanExcerpt(baseCardDelegate.modelData.description || baseCardDelegate.modelData.plot || baseCardDelegate.modelData.account || "Open ledger note")
+                                    font.pixelSize: 10
+                                    color: settledColors.colSubtext
+                                    elide: Text.ElideRight
+                                }
+
+                                StyledText {
+                                    visible: String(baseCardDelegate.modelData.date || baseCardDelegate.modelData.releaseDate || baseCardDelegate.modelData.year || "").length > 0
+                                    text: String(baseCardDelegate.modelData.date || baseCardDelegate.modelData.releaseDate || baseCardDelegate.modelData.year || "")
+                                    font.family: Appearance.font.family.monospace
+                                    font.pixelSize: 9
+                                    color: settledColors.colSubtext
+                                }
+                            }
+                        }
+                    }
+
+                    // ── 8D. CONTACTS / WEBSITES / CLIPPINGS GENERIC CARDS ──
+                    Rectangle {
+                        visible: !baseCardDelegate.isMovieCard && !baseCardDelegate.isTvCard && !baseCardDelegate.isGameCard && !baseCardDelegate.isBookCard && !baseCardDelegate.isRecipeCard && !baseCardDelegate.isExerciseCard && !baseCardDelegate.isPlaceCard && !baseCardDelegate.isCornellCard && !baseCardDelegate.isZettelCard && !baseCardDelegate.isFinanceCard
                         anchors.fill: parent
                         radius: 10
                         color: baseCardHover.hovered ? settledColors.colLayer2Hover : settledColors.colLayer0

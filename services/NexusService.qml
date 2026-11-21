@@ -68,6 +68,11 @@ Item {
     property string leftSidebarTab: "files" // "files" | "tags" | "recent" | "search"
     property string rightBottomTab: "schedule" // "schedule" | "outline" | "flashcards"
     property string activeTagFilter: ""
+    property string tagSearchQuery: ""
+    property string tagSortMode: "countDesc" // "countDesc" | "countAsc" | "nameAsc" | "nameDesc"
+    property bool calendarShowWeeklyNote: false
+    property int calendarWordsPerDot: 250
+    property string calendarWeekStart: "monday"
     property string fileFilterQuery: ""
     property bool commandPaletteOpen: false
     property string commandPaletteMode: "commands" // "commands" | "files" | "quickNote" | "quickTask"
@@ -439,8 +444,32 @@ Item {
         root.expandedParentTags = next;
     }
 
+    function expandAllTagGroups(): void {
+        const rawList = Array.isArray(root.tagsList) ? root.tagsList : [];
+        const next = {};
+        for (let i = 0; i < rawList.length; ++i) {
+            const rawName = String(rawList[i]?.name ?? rawList[i]?.tag ?? "").trim().replace(/^#+/, "");
+            const parts = rawName.split("/").filter(p => p.length > 0);
+            for (let d = 0; d < parts.length - 1; ++d)
+                next[parts.slice(0, d + 1).join("/")] = true;
+        }
+        root.expandedParentTags = next;
+    }
+
+    function collapseAllTagGroups(): void {
+        root.expandedParentTags = {};
+    }
+
+    function cycleTagSortMode(): void {
+        const order = ["countDesc", "countAsc", "nameAsc", "nameDesc"];
+        const idx = order.indexOf(root.tagSortMode);
+        root.tagSortMode = order[(idx + 1) % order.length];
+    }
+
     readonly property var hierarchicalTagsList: {
         const rawList = Array.isArray(root.tagsList) ? root.tagsList : [];
+        const q = String(root.tagSearchQuery ?? "").trim().replace(/^#+/, "").toLowerCase();
+        const sortMode = String(root.tagSortMode ?? "countDesc");
         const nodes = Object.create(null);
         const roots = [];
         for (let i = 0; i < rawList.length; ++i) {
@@ -448,6 +477,8 @@ Item {
             if (!item)
                 continue;
             const rawName = String(item.name ?? item.tag ?? "").trim().replace(/^#+/, "");
+            if (rawName.length === 0)
+                continue;
             const parts = rawName.split("/").filter(p => p.length > 0);
             const count = Number(item.count ?? 0);
             const notes = Array.isArray(item.notes) ? item.notes : [];
@@ -478,12 +509,37 @@ Item {
                     node.noteSet[String(notes[nIdx])] = true;
             }
         }
+        function nodeCount(n) {
+            const uniq = Object.keys(n.noteSet).length;
+            return uniq > 0 ? uniq : (n.directCount > 0 ? n.directCount : n.totalCount);
+        }
+        function matchesQuery(node) {
+            if (q.length === 0)
+                return true;
+            if (node.name.toLowerCase().includes(q))
+                return true;
+            for (let i = 0; i < node.children.length; ++i) {
+                if (matchesQuery(node.children[i]))
+                    return true;
+            }
+            return false;
+        }
         function sortNodes(list) {
-            list.sort((a, b) => b.totalCount - a.totalCount || a.name.localeCompare(b.name));
+            list.sort((a, b) => {
+                if (sortMode === "countAsc")
+                    return nodeCount(a) - nodeCount(b) || a.name.localeCompare(b.name);
+                if (sortMode === "nameAsc")
+                    return a.name.localeCompare(b.name);
+                if (sortMode === "nameDesc")
+                    return b.name.localeCompare(a.name);
+                return nodeCount(b) - nodeCount(a) || a.name.localeCompare(b.name);
+            });
         }
         const out = [];
         function appendNode(node) {
-            const expanded = Boolean(root.expandedParentTags[node.name]);
+            if (!matchesQuery(node))
+                return;
+            const expanded = q.length > 0 ? true : Boolean(root.expandedParentTags[node.name]);
             const uniqueNotesCount = Object.keys(node.noteSet).length;
             out.push({
                 "name": node.name,
@@ -802,16 +858,16 @@ Item {
         for (let i = 0; i < firstWd; ++i) {
             const d = daysInPrev - firstWd + 1 + i;
             const ds = String(prevY) + "-" + pad2(prevM) + "-" + pad2(d);
-            cells.push({ "day": d, "month": prevM, "year": prevY, "dateStr": ds, "inMonth": false, "isToday": ds === todayIso, "hasJournal": false, "journalPath": "", "openTasks": 0, "doneTasks": 0 });
+            cells.push({ "day": d, "month": prevM, "year": prevY, "dateStr": ds, "inMonth": false, "isToday": ds === todayIso, "hasJournal": false, "journalPath": "", "openTasks": 0, "doneTasks": 0, "wordCount": 0, "solidDots": 0, "hasOpenTasks": false, "weekNumber": 0 });
         }
         for (let d = 1; d <= daysInCur; ++d) {
             const ds = String(y) + "-" + pad2(m) + "-" + pad2(d);
-            cells.push({ "day": d, "month": m, "year": y, "dateStr": ds, "inMonth": true, "isToday": ds === todayIso, "hasJournal": false, "journalPath": "", "openTasks": 0, "doneTasks": 0 });
+            cells.push({ "day": d, "month": m, "year": y, "dateStr": ds, "inMonth": true, "isToday": ds === todayIso, "hasJournal": false, "journalPath": "", "openTasks": 0, "doneTasks": 0, "wordCount": 0, "solidDots": 0, "hasOpenTasks": false, "weekNumber": 0 });
         }
         let nextD = 1;
         while (cells.length < 42) {
             const ds = String(nextY) + "-" + pad2(nextM) + "-" + pad2(nextD);
-            cells.push({ "day": nextD, "month": nextM, "year": nextY, "dateStr": ds, "inMonth": false, "isToday": ds === todayIso, "hasJournal": false, "journalPath": "", "openTasks": 0, "doneTasks": 0 });
+            cells.push({ "day": nextD, "month": nextM, "year": nextY, "dateStr": ds, "inMonth": false, "isToday": ds === todayIso, "hasJournal": false, "journalPath": "", "openTasks": 0, "doneTasks": 0, "wordCount": 0, "solidDots": 0, "hasOpenTasks": false, "weekNumber": 0 });
             nextD += 1;
         }
         root.calendarCells = cells;
@@ -996,65 +1052,80 @@ Item {
         const rows = [];
         const filter = root.fileFilterQuery.trim().toLowerCase();
 
-        function walk(node, depth, inheritedColor, inheritedTextColor, inheritedPrefix) {
+        function childMatchesFilter(child) {
+            if (!child) return false;
+            if (filter.length === 0) return true;
+            const matchName = String(child.name ?? "").toLowerCase().indexOf(filter) !== -1;
+            const matchPath = String(child.relPath ?? "").toLowerCase().indexOf(filter) !== -1;
+            if (matchName || matchPath) return true;
+            if (child.isDir && Array.isArray(child.children)) {
+                for (let k = 0; k < child.children.length; ++k) {
+                    if (childMatchesFilter(child.children[k]))
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        function walk(node, depth, inheritedColor, inheritedTextColor, inheritedPrefix, parentRelPath, ancestorContinues, ancestorPaths) {
             if (!node || !Array.isArray(node.children))
                 return;
+            const visibleKids = [];
             for (let i = 0; i < node.children.length; ++i) {
-                const child = node.children[i];
-                if (!child)
+                const c = node.children[i];
+                if (!c) continue;
+                if (filter.length > 0 && !c.isDir && !childMatchesFilter(c))
                     continue;
+                visibleKids.push(c);
+            }
+            for (let i = 0; i < visibleKids.length; ++i) {
+                const child = visibleKids[i];
+                const isLastChild = (i === visibleKids.length - 1);
+                const hasNextSibling = !isLastChild;
                 const folderColor = (child.colorHex && String(child.colorHex).length > 0) ? String(child.colorHex) : (inheritedColor || "");
                 const folderText = (child.textColorHex && String(child.textColorHex).length > 0) ? String(child.textColorHex) : (inheritedTextColor || "");
                 const folderPrefix = (child.prefixCode && String(child.prefixCode).length > 0) ? String(child.prefixCode) : (inheritedPrefix || "");
+                const nextAncestors = depth > 0 ? ancestorContinues.concat([hasNextSibling]) : ancestorContinues.slice();
+                const childPath = String(child.relPath ?? "");
                 if (child.isDir) {
-                    if (filter.length > 0) {
-                        rows.push({
-                            "name": child.name,
-                            "relPath": child.relPath,
-                            "isDir": true,
-                            "depth": depth,
-                            "expanded": true,
-                            "category": "folder",
-                            "ext": "",
-                            "noteCount": child.noteCount ?? 0,
-                            "prefixCode": folderPrefix,
-                            "colorHex": folderColor,
-                            "textColorHex": folderText,
-                            "iconName": child.iconName ?? "folder"
-                        });
-                        walk(child, depth + 1, folderColor, folderText, folderPrefix);
-                    } else {
-                        const isExp = Boolean(root.expandedFolders[child.relPath]);
-                        rows.push({
-                            "name": child.name,
-                            "relPath": child.relPath,
-                            "isDir": true,
-                            "depth": depth,
-                            "expanded": isExp,
-                            "category": "folder",
-                            "ext": "",
-                            "noteCount": child.noteCount ?? 0,
-                            "prefixCode": folderPrefix,
-                            "colorHex": folderColor,
-                            "textColorHex": folderText,
-                            "iconName": child.iconName ?? "folder"
-                        });
-                        if (isExp)
-                            walk(child, depth + 1, folderColor, folderText, folderPrefix);
-                    }
-                } else {
-                    if (filter.length > 0) {
-                        const matchName = String(child.name ?? "").toLowerCase().indexOf(filter) !== -1;
-                        const matchPath = String(child.relPath ?? "").toLowerCase().indexOf(filter) !== -1;
-                        if (!matchName && !matchPath)
-                            continue;
-                    }
+                    const isExp = filter.length > 0 ? true : Boolean(root.expandedFolders[childPath]);
                     rows.push({
                         "name": child.name,
-                        "relPath": child.relPath,
+                        "relPath": childPath,
+                        "parentRelPath": parentRelPath,
+                        "isDir": true,
+                        "depth": depth,
+                        "expanded": isExp,
+                        "isLastChild": isLastChild,
+                        "siblingIndex": i,
+                        "siblingCount": visibleKids.length,
+                        "ancestorContinues": ancestorContinues.slice(),
+                        "ancestorPaths": ancestorPaths.slice(),
+                        "category": "folder",
+                        "ext": "",
+                        "noteCount": child.noteCount ?? 0,
+                        "prefixCode": folderPrefix,
+                        "colorHex": folderColor,
+                        "textColorHex": folderText,
+                        "iconName": child.iconName ?? "folder"
+                    });
+                    if (isExp) {
+                        const childAncestorPaths = ancestorPaths.concat([childPath]);
+                        walk(child, depth + 1, folderColor, folderText, folderPrefix, childPath, nextAncestors, childAncestorPaths);
+                    }
+                } else {
+                    rows.push({
+                        "name": child.name,
+                        "relPath": childPath,
+                        "parentRelPath": parentRelPath,
                         "isDir": false,
                         "depth": depth,
                         "expanded": false,
+                        "isLastChild": isLastChild,
+                        "siblingIndex": i,
+                        "siblingCount": visibleKids.length,
+                        "ancestorContinues": ancestorContinues.slice(),
+                        "ancestorPaths": ancestorPaths.slice(),
                         "category": child.category ?? "markdown",
                         "ext": child.ext ?? "",
                         "noteCount": 0,
@@ -1067,7 +1138,7 @@ Item {
             }
         }
 
-        walk(root.tree, 0, "", "", "");
+        walk(root.tree, 0, "", "", "", "", [], []);
         root.visibleTreeRows = rows;
     }
 
@@ -1309,10 +1380,89 @@ Item {
         const m = (month >= 1 && month <= 12) ? month : root.calendarMonth;
         root.calendarYear = y;
         root.calendarMonth = m;
+        const todayIso = Qt.formatDate(new Date(), "yyyy-MM-dd");
         calendarProc.response = "";
-        calendarProc.command = [root.binaryPath, "calendar", "--vault", root.configuredVaultPath, "--year", String(y), "--month", String(m)];
+        calendarProc.command = [root.binaryPath, "calendar", "--vault", root.configuredVaultPath, "--year", String(y), "--month", String(m), "--today", todayIso];
         calendarProc.running = true;
         calendarTimeout.restart();
+    }
+
+    // ─── Tag Wrangler+ Operations (atomic vault-wide rename, merge, remove, tag page) ───
+    function renameTag(fromTag: string, toTag: string, includeSubtags = true): bool {
+        const cleanFrom = String(fromTag ?? "").trim().replace(/^#+/, "");
+        const cleanTo = String(toTag ?? "").trim().replace(/^#+/, "");
+        if (!root.vaultConfigured || cleanFrom.length === 0 || cleanTo.length === 0)
+            return false;
+        root._forceFreshScan = true;
+        root._rescanAfterDoc = true;
+        root._enqueueDocOp({
+            "kind": "tag-rename",
+            "fromTag": cleanFrom,
+            "toTag": cleanTo,
+            "relPath": root.currentPath,
+            "recordHistory": false,
+            "useStdin": false,
+            "args": [
+                root.binaryPath, "tag-rename",
+                "--vault", root.configuredVaultPath,
+                "--from", cleanFrom,
+                "--to", cleanTo,
+                "--include-subtags", includeSubtags ? "true" : "false"
+            ]
+        });
+        return true;
+    }
+
+    function mergeTag(fromTag: string, targetTag: string, includeSubtags = true): bool {
+        return root.renameTag(fromTag, targetTag, includeSubtags);
+    }
+
+    function removeTag(tagName: string, relPath = "", includeSubtags = false): bool {
+        const cleanTag = String(tagName ?? "").trim().replace(/^#+/, "");
+        if (!root.vaultConfigured || cleanTag.length === 0)
+            return false;
+        root._forceFreshScan = true;
+        root._rescanAfterDoc = true;
+        const args = [
+            root.binaryPath, "tag-remove",
+            "--vault", root.configuredVaultPath,
+            "--tag", cleanTag,
+            "--include-subtags", includeSubtags ? "true" : "false"
+        ];
+        const cleanRel = String(relPath ?? "").trim();
+        if (cleanRel.length > 0) {
+            args.push("--path");
+            args.push(cleanRel);
+        }
+        root._enqueueDocOp({
+            "kind": "tag-remove",
+            "tag": cleanTag,
+            "relPath": cleanRel || root.currentPath,
+            "recordHistory": false,
+            "useStdin": false,
+            "args": args
+        });
+        return true;
+    }
+
+    function openOrCreateTagPage(tagName: string): bool {
+        const cleanTag = String(tagName ?? "").trim().replace(/^#+/, "");
+        if (!root.vaultConfigured || cleanTag.length === 0)
+            return false;
+        root._rescanAfterDoc = true;
+        root._enqueueDocOp({
+            "kind": "tag-page",
+            "tag": cleanTag,
+            "relPath": "",
+            "recordHistory": true,
+            "useStdin": false,
+            "args": [
+                root.binaryPath, "tag-page",
+                "--vault", root.configuredVaultPath,
+                "--tag", cleanTag
+            ]
+        });
+        return true;
     }
 
     function prevCalendarMonth(): void {
@@ -3462,6 +3612,26 @@ Item {
                         root.vimStatusMessage = "Linked mention in " + String(payload.sourcePath ?? "");
                         if (root.currentPath.length > 0)
                             root.openFile(root.currentPath, false);
+                    } else if (req && req.kind === "tag-rename") {
+                        const cnt = Number(payload.filesUpdated ?? 0);
+                        root.vimStatusMessage = "Tag #" + String(payload.from ?? "") + " → #" + String(payload.to ?? "") + " (" + String(cnt) + " notes)";
+                        if (root.activeTagFilter.toLowerCase() === String(payload.from ?? "").toLowerCase())
+                            root.activeTagFilter = String(payload.to ?? "");
+                        if (root.currentPath.length > 0 && root.activeView === "document")
+                            root.openFile(root.currentPath, false);
+                    } else if (req && req.kind === "tag-remove") {
+                        const cnt = Number(payload.filesUpdated ?? 0);
+                        root.vimStatusMessage = "Removed #" + String(payload.tag ?? "") + " from " + String(cnt) + " notes";
+                        if (root.activeTagFilter.toLowerCase() === String(payload.tag ?? "").toLowerCase())
+                            root.activeTagFilter = "";
+                        if (root.currentPath.length > 0 && root.activeView === "document")
+                            root.openFile(root.currentPath, false);
+                    } else if (req && req.kind === "tag-page") {
+                        const relP = String(payload.relPath ?? "");
+                        if (relP.length > 0) {
+                            root.vimStatusMessage = (payload.created ? "Created tag page: " : "Opened tag page: ") + relP;
+                            root.openFile(relP, true);
+                        }
                     } else if (payload.category === "external") {
                         const absPath = String(payload.absPath ?? "");
                         root.lastExternalOpenedPath = absPath;
@@ -3590,6 +3760,9 @@ Item {
                 if (payload && payload.ok) {
                     root.calendarHeader = String(payload.headerLabel ?? "");
                     root.calendarCells = payload.cells ?? [];
+                    root.calendarShowWeeklyNote = Boolean(payload.showWeeklyNote ?? false);
+                    root.calendarWordsPerDot = Math.max(1, Number(payload.wordsPerDot ?? 250));
+                    root.calendarWeekStart = String(payload.weekStart ?? "monday");
                     root._calendarLoadedFromCli = true;
                 }
             } catch (e) {}

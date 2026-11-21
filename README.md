@@ -6,7 +6,7 @@ Optional workspace, study, fitness, and hardware integration plugins for the [**
 
 ### Nexus Knowledge Workspace (`nexus`)
 
-Browse your Markdown vault inside Alis with an interactive file tree, folder-colored Canvas Mini-Graph, Homepage overview, Daily Schedule, Calendar & Today timeline, 3D Globe widget, Quicknotes, Todo sync, and adaptive Nexus Vault theming.
+Browse your Markdown vault inside Alis with an Obsidian-style Soft Folder Tree, Tag Wrangler+ sidebar, 2D/3D Vault & Local Graph with virtual `#tag` hubs, Homepage overview, Daily Schedule, Obsidian Calendar with dual word-count & task indicators, interactive 3D Globe with smooth zoomed-in street/building Map mode & Alis auto-theming, redesigned Bases decks, Quicknotes, Todo sync, and adaptive Alis Vault theming.
 
 <p align="center">
   <img src="docs/screenshots/nexus-workspace.png" alt="Nexus Workspace showing file tree, Vault Mini-Graph, Homepage overview, 3D Globe, and Today timeline" width="100%" />
@@ -58,4 +58,3 @@ python3 scripts/install.py uninstall
 ---
 
 - **License:** GPL-3.0-or-later; optional plugin isolation preserved.
-- **Release Schedule:** Maintained alongside Alis `1.0.0` with updates released on a **quarterly, semi-annual, or annual** cadence.

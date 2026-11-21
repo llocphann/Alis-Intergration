@@ -50,6 +50,168 @@ FocusScope {
     property bool renameDialogOpen: false
     property string renameDialogOldPath: ""
     property string renameDialogNewName: ""
+    // Tag Wrangler+ modal state (Rename / Merge tag atomically across vault)
+    property bool tagDialogOpen: false
+    property string tagDialogMode: "rename" // "rename" | "merge"
+    property string tagDialogSourceTag: ""
+    property string tagDialogTargetTag: ""
+    property bool tagDialogIncludeSubtags: true
+    // Calendar optional ISO week numbers toggle (synced with Obsidian calendar plugin setting, overridable via hover tab)
+    property bool calendarShowWeekNumbersOverride: false
+    property bool calendarWeekNumbersUserToggled: false
+    readonly property bool showCalendarWeekNumbers: root.calendarWeekNumbersUserToggled
+        ? root.calendarShowWeekNumbersOverride
+        : Boolean(root.nexus?.calendarShowWeeklyNote ?? false)
+    // Soft Folder Tree hover/focus ancestor path + 1s interval EQ-DSP electric current state
+    property string hoveredTreeRowPath: ""
+    property var hoveredTreeAncestorPaths: []
+    readonly property string activeTreeTargetPath: root.hoveredTreeRowPath.length > 0
+        ? root.hoveredTreeRowPath
+        : ((root.nexus?.activeView === "document" && String(root.nexus?.currentPath ?? "").length > 0)
+            ? String(root.nexus.currentPath)
+            : "")
+    readonly property var activeTreeAncestorPaths: {
+        if (root.hoveredTreeRowPath.length > 0)
+            return root.hoveredTreeAncestorPaths ?? [];
+        const p = root.activeTreeTargetPath;
+        if (!p || !p.includes("/"))
+            return [];
+        const parts = p.split("/");
+        const out = [];
+        for (let i = 0; i < parts.length - 1; ++i)
+            out.push(parts.slice(0, i + 1).join("/"));
+        return out;
+    }
+    // Exact 01_Core.css Soft Folder Tree active chain: maps each ancestor folder path on the
+    // hovered/active chain to its visible row range (parentIdx -> nextHopIdx) so siblings below
+    // any active turn and outer trunks passing past an active folder stay strictly DIM.
+    readonly property var activeTreeChainInfo: {
+        const target = root.activeTreeTargetPath;
+        const rows = root.nexus?.visibleTreeRows ?? [];
+        if (!target || target.length === 0 || !rows || rows.length === 0)
+            return { hops: ({}), firstParentIdx: -1, targetIdx: -1, totalSteps: 1 };
+        const idxByPath = {};
+        let targetIdx = -1;
+        for (let i = 0; i < rows.length; ++i) {
+            const rp = String(rows[i]?.relPath ?? "");
+            if (rp.length > 0) {
+                idxByPath[rp] = i;
+                if (rp === target)
+                    targetIdx = i;
+            }
+        }
+        if (targetIdx < 0)
+            return { hops: ({}), firstParentIdx: -1, targetIdx: -1, totalSteps: 1 };
+        const chain = (root.activeTreeAncestorPaths ?? []).slice();
+        chain.push(target);
+        const hops = {};
+        let firstParentIdx = targetIdx;
+        for (let k = 0; k < chain.length - 1; ++k) {
+            const parentPath = String(chain[k] ?? "");
+            const nextPath = String(chain[k + 1] ?? "");
+            const pIdx = idxByPath[parentPath] !== undefined ? idxByPath[parentPath] : -1;
+            const nIdx = idxByPath[nextPath] !== undefined ? idxByPath[nextPath] : -1;
+            if (parentPath.length > 0 && nIdx >= 0) {
+                hops[parentPath] = { parentIdx: pIdx, nextHopIdx: nIdx, hopOrder: k };
+                if (pIdx >= 0 && pIdx < firstParentIdx)
+                    firstParentIdx = pIdx;
+                else if (pIdx < 0 && firstParentIdx === targetIdx)
+                    firstParentIdx = -1;
+            }
+        }
+        const totalSteps = Math.max(1, targetIdx - firstParentIdx);
+        return { hops: hops, firstParentIdx: firstParentIdx, targetIdx: targetIdx, totalSteps: totalSteps };
+    }
+    property real treeElectricPhase: 0.0
+    property int treeElectricSeq: 0
+    readonly property bool treeElectricCanRun: root.visible
+        && root.surfaceActive
+        && root.transitionSettled
+        && Boolean(root.nexus?.isOpen ?? true)
+        && Boolean(root.nexus?.leftSidebarOpen ?? true)
+        && (root.nexus?.leftSidebarTab ?? "files") === "files"
+        && root.activeTreeTargetPath.length > 0
+        && !Boolean(GlobalStates?.wallpaperSelectorOpen ?? false)
+        && !Boolean(GlobalStates?.screenLocked ?? false)
+        && !Boolean(GlobalStates?.regionSelectorOpen ?? false)
+        && !Boolean(GlobalStates?.annotationEditorOpen ?? false)
+        && !Boolean(Config?.options?.appearance?.reduceAnimations ?? false)
+        && !Boolean(Config?.options?.performance?.reduceAnimations ?? false)
+
+    Timer {
+        id: treeElectricIntervalTimer
+        objectName: "nexusTreeElectricIntervalTimer"
+        interval: 1000
+        repeat: true
+        running: root.treeElectricCanRun
+        onTriggered: {
+            root.treeElectricSeq += 1;
+            root.treeElectricPhase = 0.01;
+            treeElectricSweepTimer.restart();
+        }
+    }
+
+    Timer {
+        id: treeElectricSweepTimer
+        interval: 28
+        repeat: true
+        running: false
+        onTriggered: {
+            if (!root.treeElectricCanRun) {
+                root.treeElectricPhase = 0.0;
+                stop();
+                return;
+            }
+            const next = root.treeElectricPhase + 0.072;
+            if (next >= 1.0) {
+                root.treeElectricPhase = 0.0;
+                stop();
+            } else {
+                root.treeElectricPhase = next;
+            }
+        }
+    }
+
+    function activateGraphNode(nodeData): void {
+        if (!root.nexus || !nodeData)
+            return;
+        if (Boolean(nodeData.isTagNode) || String(nodeData.id ?? "").startsWith("tag:")) {
+            const rawTag = String(nodeData.tagName || String(nodeData.title || "").replace(/^#+/, "")).trim();
+            if (rawTag.length > 0) {
+                const tagQ = "#" + rawTag;
+                root.nexus.leftSidebarOpen = true;
+                root.nexus.leftSidebarTab = "search";
+                fileFilterField.text = tagQ;
+                root.nexus.searchVault(tagQ);
+                root.nexus.vimStatusMessage = "Tag hub: " + tagQ;
+            }
+            return;
+        }
+        if (nodeData.id === "__homepage__")
+            root.nexus.openHomepage();
+        else if (nodeData.relPath)
+            root.nexus.openFile(nodeData.relPath, true);
+    }
+
+    function openTagActionDialog(mode: string, tagName: string): void {
+        root.closeContextMenu();
+        root.renameDialogOpen = false;
+        const clean = String(tagName || "").trim().replace(/^#+/, "");
+        if (clean.length === 0)
+            return;
+        root.tagDialogMode = (mode === "merge") ? "merge" : "rename";
+        root.tagDialogSourceTag = clean;
+        root.tagDialogTargetTag = (mode === "merge") ? "" : clean;
+        root.tagDialogIncludeSubtags = true;
+        root.tagDialogOpen = true;
+        Qt.callLater(() => {
+            if (root.tagDialogOpen && typeof tagActionInput !== "undefined") {
+                tagActionInput.forceActiveFocus();
+                tagActionInput.selectAll();
+            }
+        });
+    }
+
     property bool standardNoteInlineEditing: false
     property string standardNoteInlineDraft: ""
     property bool _cancelingStandardInlineEdit: false
@@ -322,17 +484,60 @@ FocusScope {
                 }
             });
         } else if (t === "tag") {
+            const tagClean = String(d.tag || String(d.fullTag || "").replace(/^#+/, "")).trim();
+            const tagFull = "#" + tagClean;
             actions.push({
                 "id": "search-tag",
                 "icon": "search",
-                "label": "Search Notes with Tag",
+                "label": "Search Notes with " + tagFull,
                 "onTrigger": () => {
                     if (root.nexus) {
                         root.nexus.leftSidebarTab = "search";
-                        const s = d.fullTag || ("#" + d.tag);
-                        root.nexus.searchVault(s);
+                        fileFilterField.text = tagFull;
+                        root.nexus.searchVault(tagFull);
                     }
                     root.closeContextMenu();
+                }
+            });
+            actions.push({
+                "id": "exclude-tag",
+                "icon": "filter_alt_off",
+                "label": "Exclude -" + tagFull,
+                "onTrigger": () => {
+                    if (root.nexus) {
+                        root.nexus.leftSidebarTab = "search";
+                        const excl = "-" + tagFull;
+                        fileFilterField.text = excl;
+                        root.nexus.searchVault(excl);
+                    }
+                    root.closeContextMenu();
+                }
+            });
+            actions.push({
+                "id": "tag-page",
+                "icon": "article",
+                "label": "Open / Create Tag Page",
+                "onTrigger": () => {
+                    if (root.nexus)
+                        root.nexus.openOrCreateTagPage(tagClean);
+                    root.closeContextMenu();
+                }
+            });
+            actions.push({ "separator": true });
+            actions.push({
+                "id": "rename-tag",
+                "icon": "drive_file_rename_outline",
+                "label": "Rename Tag Across Vault...",
+                "onTrigger": () => {
+                    root.openTagActionDialog("rename", tagClean);
+                }
+            });
+            actions.push({
+                "id": "merge-tag",
+                "icon": "merge_type",
+                "label": "Merge Into Another Tag...",
+                "onTrigger": () => {
+                    root.openTagActionDialog("merge", tagClean);
                 }
             });
             actions.push({
@@ -341,7 +546,70 @@ FocusScope {
                 "label": "Copy Tag",
                 "onTrigger": () => {
                     if (root.nexus)
-                        root.nexus.copyToClipboard(d.fullTag || ("#" + d.tag), "Copied tag");
+                        root.nexus.copyToClipboard(tagFull, "Copied tag");
+                    root.closeContextMenu();
+                }
+            });
+            actions.push({ "separator": true });
+            if (root.nexus?.activeView === "document" && String(root.nexus?.currentPath ?? "").length > 0) {
+                actions.push({
+                    "id": "remove-tag-active",
+                    "icon": "label_off",
+                    "label": "Remove from Current Note",
+                    "onTrigger": () => {
+                        if (root.nexus)
+                            root.nexus.removeTag(tagClean, root.nexus.currentPath, false);
+                        root.closeContextMenu();
+                    }
+                });
+            }
+            actions.push({
+                "id": "remove-tag-vault",
+                "icon": "delete_sweep",
+                "label": "Remove Tag from Vault",
+                "isDestructive": true,
+                "onTrigger": () => {
+                    if (root.nexus)
+                        root.nexus.removeTag(tagClean, "", true);
+                    root.closeContextMenu();
+                }
+            });
+        } else if (t === "calendarDay") {
+            const iso = String(d.dateStr || "");
+            actions.push({
+                "id": "open-daily",
+                "icon": "edit_calendar",
+                "label": d.hasJournal ? "Open Daily Note" : "Create Daily Note",
+                "onTrigger": () => {
+                    if (root.nexus && iso.length > 0)
+                        root.nexus.openDailyNote(iso);
+                    root.closeContextMenu();
+                }
+            });
+            actions.push({
+                "id": "show-planner",
+                "icon": "calendar_view_week",
+                "label": "Show in Weekly Planner",
+                "onTrigger": () => {
+                    if (root.nexus && iso.length > 0) {
+                        root.nexus.selectedDateStr = iso;
+                        root.nexus.rightBottomTab = "schedule";
+                        if (GlobalStates.dashboardPlannerBrowser) {
+                            const nextState = Object.assign({}, GlobalStates.dashboardPlannerBrowser);
+                            nextState.selectedDateIso = iso;
+                            GlobalStates.dashboardPlannerBrowser = nextState;
+                        }
+                    }
+                    root.closeContextMenu();
+                }
+            });
+            actions.push({
+                "id": "copy-date",
+                "icon": "content_copy",
+                "label": "Copy Date (" + iso + ")",
+                "onTrigger": () => {
+                    if (root.nexus && iso.length > 0)
+                        root.nexus.copyToClipboard(iso, "Copied date");
                     root.closeContextMenu();
                 }
             });
@@ -818,14 +1086,21 @@ FocusScope {
         const accHex = root._settledPrimary;
         const codeBgHex = root.ccStop(3);
         const codeFgHex = root._settledOnLayer0;
+        const bodyFgHex = root._settledOnLayer1;
+        const borderHex = root.ccStop(6);
         const markBgHex = root.mixColorHex(accHex, root.ccStop(2), 0.30);
         const subHex = root._settledSubtext;
+        const themedHr = "<table width='100%' cellspacing='0' cellpadding='0' style='margin-top:8px;margin-bottom:8px;'><tr><td height='1' style='background-color:" + borderHex + ";font-size:1px;line-height:1px;'></td></tr></table>";
         return s
+            .replace(/<hr\b[^>]*\/?>/gi, themedHr)
             .replace(/#38bdf8/gi, accHex)
             .replace(/#7dd3fc/gi, accHex)
             .replace(/#7dcfff/gi, accHex)
             .replace(/#1e293b/gi, codeBgHex)
+            .replace(/#334155/gi, borderHex)
+            .replace(/#e2e8f0/gi, bodyFgHex)
             .replace(/#f8fafc/gi, codeFgHex)
+            .replace(/#94a3b8/gi, subHex)
             .replace(/#422006/gi, markBgHex)
             .replace(/#fde047/gi, accHex)
             .replace(/#c084fc/gi, subHex);
@@ -878,26 +1153,27 @@ FocusScope {
         return String(textNorm);
     }
 
-    // 7-stop palette swatches (--cc-p04, --cc-p05, --cc-p06, --cc-p07, --cc-p09, --cc-p11, --cc-p13) ordered dark -> light
+    // Live Alis Material Theme Palette Swatches (auto-themed to active Alis wallpaper colors, never flat gray)
     readonly property var homepageThemeSwatches: [
-        root.ccStop(4),
-        root.ccStop(5),
-        root.ccStop(6),
-        root.ccStop(7),
-        root.ccStop(9),
-        root.ccStop(11),
-        root.ccStop(13)
+        String(settledColors.colLayer2),
+        String(settledColors.colSecondaryContainer),
+        String(settledColors.colSecondary),
+        String(settledColors.colPrimary),
+        String(settledColors.colTertiary),
+        root.mixColorHex(root._settledPrimary, root._settledTertiary, 0.50),
+        String(settledColors.colError),
+        String(settledColors.colOnLayer0)
     ]
 
     readonly property var clusterPalette: [
-        root.mixColorHex(root._settledPrimary, "#ffffff", 0.88),
-        root._settledTertiary || root._settledPrimary,
-        "#9ece6a",
-        "#e0af68",
-        "#f7768e",
-        "#73daca",
-        "#ff9e64",
-        "#2ac3de"
+        String(settledColors.colPrimary),
+        String(settledColors.colTertiary),
+        String(settledColors.colSecondary),
+        root.mixColorHex(root._settledPrimary, root._settledTertiary, 0.45),
+        root.mixColorHex(root._settledPrimary, String(settledColors.colError), 0.45),
+        root.mixColorHex(root._settledTertiary, String(settledColors.colOnLayer0), 0.30),
+        root.mixColorHex(root._settledSecondary, root._settledPrimary, 0.50),
+        String(settledColors.colError)
     ]
 
     function cardItemById(cardId: string): var {
@@ -1058,6 +1334,12 @@ FocusScope {
             return false;
         if (root.nexus.newNoteModalOpen) {
             root.nexus.closeNewNoteModal();
+            root.restoreWorkspaceFocus();
+            Qt.callLater(root.restoreWorkspaceFocus);
+            return true;
+        }
+        if (root.tagDialogOpen) {
+            root.tagDialogOpen = false;
             root.restoreWorkspaceFocus();
             Qt.callLater(root.restoreWorkspaceFocus);
             return true;
@@ -1300,6 +1582,7 @@ FocusScope {
 
     Connections {
         target: root.nexus
+        ignoreUnknownSignals: true
         function onIsOpenChanged() {
             if (root.nexus?.isOpen) {
                 root.focusPrimarySurface();
@@ -1416,127 +1699,196 @@ FocusScope {
         }
     }
 
-    component CardReorderPill: RowLayout {
-        id: pillRoot
-        required property string cardId
-        property bool cardHovered: false
-        readonly property bool shown: cardHovered
-            || prevSlotMouse.containsMouse
-            || dragHandleMouse.containsMouse
-            || nextSlotMouse.containsMouse
-            || dragHandleMouse.pressed
-            || root.draggingCardId.length > 0
-        Layout.fillWidth: false
-        spacing: 2
-        opacity: shown ? 1.0 : 0.0
-        Behavior on opacity {
-            NumberAnimation {
-                duration: 150
-                easing.type: Easing.OutCubic
+    // Obsidian-style top-edge hover slide-down icon tab bar for sidebar mini-workspaces
+    // Stays completely collapsed (height 0, zero click blocking) until the top edge is hovered.
+    component WorkspaceHoverTabBar: Item {
+        id: hoverTabRoot
+        property string tabBarObjectName: ""
+        property var tabs: [] // [{ id, icon, label, active }]
+        property string trailingText: ""
+        property var actions: [] // [{ icon, tip, active, onClick }]
+        signal tabSelected(string tabId)
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: hoverTabRoot.revealed ? 30 : 16
+        z: 30
+
+        readonly property bool _directHovered: topEdgeHover.hovered || barHover.hovered
+        property bool _graceHold: false
+        readonly property bool revealed: _directHovered || _graceHold
+
+        on_DirectHoveredChanged: {
+            if (_directHovered) {
+                leaveGraceTimer.stop();
+                _graceHold = true;
+            } else {
+                leaveGraceTimer.restart();
             }
         }
 
-        Rectangle {
-            implicitWidth: 18
-            implicitHeight: 20
-            width: 18
-            height: 20
-            radius: 4
-            color: prevSlotMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
-            MaterialSymbol {
-                anchors.centerIn: parent
-                text: "navigate_before"
-                iconSize: 13
-                color: settledColors.colSubtext
-            }
-            MouseArea {
-                id: prevSlotMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    if (root.nexus)
-                        root.nexus.moveCardStep(pillRoot.cardId, -1);
-                }
+        Timer {
+            id: leaveGraceTimer
+            interval: 140
+            repeat: false
+            onTriggered: hoverTabRoot._graceHold = false
+        }
+
+        // Passive top-edge hover trigger (16px strip, never intercepts clicks/drags)
+        Item {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: 16
+            HoverHandler {
+                id: topEdgeHover
             }
         }
 
-        Rectangle {
-            objectName: "nexusCardDragHandle_" + pillRoot.cardId
-            implicitWidth: 22
-            implicitHeight: 20
-            width: 22
-            height: 20
-            radius: 4
-            color: (root.draggingCardId === pillRoot.cardId)
-                ? settledColors.colPrimary
-                : (dragHandleMouse.containsMouse ? settledColors.colLayer2Hover : "transparent")
+        // Clip viewport for genuine top-edge slide-down animation (bar keeps full 28px height, zero squishing)
+        Item {
+            id: slideViewport
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: 30
+            clip: true
 
-            MaterialSymbol {
-                anchors.centerIn: parent
-                text: "drag_indicator"
-                iconSize: 14
-                color: (root.draggingCardId === pillRoot.cardId) ? settledColors.colOnPrimary : settledColors.colSubtext
-            }
+            Rectangle {
+                id: barBody
+                objectName: hoverTabRoot.tabBarObjectName
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 28
+                y: hoverTabRoot.revealed ? 0 : -height
+                opacity: hoverTabRoot.revealed ? 1.0 : 0.0
+                topLeftRadius: Math.max(0, (Appearance.rounding.normal ?? 12) - 1)
+                topRightRadius: Math.max(0, (Appearance.rounding.normal ?? 12) - 1)
+                color: Qt.rgba(settledColors.colLayer0.r, settledColors.colLayer0.g, settledColors.colLayer0.b, 0.94)
 
-            MouseArea {
-                id: dragHandleMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                preventStealing: true
-                cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                onPressed: mouse => {
-                    root.draggingCardId = pillRoot.cardId;
-                    const p = mapToItem(root, mouse.x, mouse.y);
-                    root.dragRootX = p.x;
-                    root.dragRootY = p.y;
-                    root.dropTargetCardId = root.cardIdAtRootPos(p.x, p.y);
-                }
-                onPositionChanged: mouse => {
-                    if (!pressed || root.draggingCardId !== pillRoot.cardId)
-                        return;
-                    const p = mapToItem(root, mouse.x, mouse.y);
-                    root.dragRootX = p.x;
-                    root.dragRootY = p.y;
-                    root.dropTargetCardId = root.cardIdAtRootPos(p.x, p.y);
-                }
-                onReleased: mouse => {
-                    const p = mapToItem(root, mouse.x, mouse.y);
-                    const targetId = root.cardIdAtRootPos(p.x, p.y) || root.dropTargetCardId;
-                    if (root.nexus && root.draggingCardId.length > 0 && targetId.length > 0 && root.draggingCardId !== targetId) {
-                        root.nexus.swapCards(root.draggingCardId, targetId);
+                Behavior on y {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation {
+                        duration: 180
+                        easing.type: Easing.OutCubic
                     }
-                    root.draggingCardId = "";
-                    root.dropTargetCardId = "";
                 }
-                onCanceled: {
-                    root.draggingCardId = "";
-                    root.dropTargetCardId = "";
+                Behavior on opacity {
+                    enabled: Appearance.animationsEnabled
+                    NumberAnimation {
+                        duration: 140
+                        easing.type: Easing.OutCubic
+                    }
                 }
-            }
-        }
 
-        Rectangle {
-            implicitWidth: 18
-            implicitHeight: 20
-            width: 18
-            height: 20
-            radius: 4
-            color: nextSlotMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
-            MaterialSymbol {
-                anchors.centerIn: parent
-                text: "navigate_next"
-                iconSize: 13
-                color: settledColors.colSubtext
-            }
-            MouseArea {
-                id: nextSlotMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    if (root.nexus)
-                        root.nexus.moveCardStep(pillRoot.cardId, 1);
+                HoverHandler {
+                    id: barHover
+                    enabled: hoverTabRoot.revealed
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 1
+                    color: settledColors.colLayer0Border
+                }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 6
+                    anchors.rightMargin: 6
+                    spacing: 4
+
+                    Repeater {
+                        model: hoverTabRoot.tabs
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool isTabActive: Boolean(modelData.active)
+                            Layout.preferredHeight: 22
+                            Layout.preferredWidth: tabRowInner.implicitWidth + 10
+                            radius: 6
+                            color: isTabActive
+                                ? settledColors.colSecondaryContainer
+                                : (tabItemMouse.containsMouse ? settledColors.colLayer2Hover : "transparent")
+                            border.width: isTabActive ? 1 : 0
+                            border.color: Qt.alpha(settledColors.colPrimary, 0.36)
+
+                            RowLayout {
+                                id: tabRowInner
+                                anchors.centerIn: parent
+                                spacing: 4
+
+                                MaterialSymbol {
+                                    text: String(modelData.icon ?? "tab")
+                                    iconSize: 13
+                                    color: parent.parent.isTabActive ? settledColors.colPrimary : settledColors.colSubtext
+                                }
+                                StyledText {
+                                    visible: String(modelData.label ?? "").length > 0 && hoverTabRoot.tabs.length <= 2
+                                    text: String(modelData.label ?? "")
+                                    font.pixelSize: Appearance.font.pixelSize.smallest
+                                    font.weight: parent.parent.isTabActive ? Font.DemiBold : Font.Normal
+                                    color: parent.parent.isTabActive ? settledColors.colOnSecondaryContainer : settledColors.colSubtext
+                                }
+                            }
+
+                            MouseArea {
+                                id: tabItemMouse
+                                anchors.fill: parent
+                                enabled: hoverTabRoot.revealed
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: hoverTabRoot.tabSelected(String(modelData.id ?? ""))
+                            }
+                        }
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    StyledText {
+                        visible: hoverTabRoot.trailingText.length > 0
+                        text: hoverTabRoot.trailingText
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        color: settledColors.colSubtext
+                    }
+
+                    Repeater {
+                        model: hoverTabRoot.actions
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool isActActive: Boolean(modelData.active)
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            radius: 5
+                            color: isActActive
+                                ? settledColors.colSecondaryContainer
+                                : (actMouse.containsMouse ? settledColors.colLayer2Hover : "transparent")
+
+                            MaterialSymbol {
+                                anchors.centerIn: parent
+                                text: String(modelData.icon ?? "")
+                                iconSize: 13
+                                color: parent.isActActive ? settledColors.colPrimary : settledColors.colSubtext
+                            }
+
+                            MouseArea {
+                                id: actMouse
+                                anchors.fill: parent
+                                enabled: hoverTabRoot.revealed
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (typeof modelData.onClick === "function")
+                                        modelData.onClick();
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2509,10 +2861,194 @@ FocusScope {
             Layout.fillHeight: true
             spacing: 4
 
+            // Left Sidebar Icon Tabs Rail — sits OUTSIDE the Workspace Card in a strictly horizontal single row (never wraps, all actions reachable)
+            Flickable {
+                id: nexusLeftTabRail
+                objectName: "nexusLeftTabRail"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 30
+                Layout.minimumHeight: 30
+                Layout.maximumHeight: 30
+                clip: true
+                interactive: contentWidth > width + 1
+                flickableDirection: Flickable.HorizontalFlick
+                boundsBehavior: Flickable.StopAtBounds
+                contentWidth: Math.max(width, nexusLeftTabRow.implicitWidth + 4)
+                contentHeight: height
+
+                RowLayout {
+                    id: nexusLeftTabRow
+                    objectName: "nexusExplorerToolbar"
+                    x: 2
+                    y: 0
+                    width: Math.max(nexusLeftTabRail.width - 4, implicitWidth)
+                    height: nexusLeftTabRail.height
+                    spacing: 2
+
+                    Repeater {
+                        model: [
+                            {
+                                "id": "files",
+                                "icon": "folder",
+                                "tip": "Files"
+                            },
+                            {
+                                "id": "tags",
+                                "icon": "sell",
+                                "tip": "Tags"
+                            },
+                            {
+                                "id": "recent",
+                                "icon": "schedule",
+                                "tip": "Recent"
+                            },
+                            {
+                                "id": "search",
+                                "icon": "search",
+                                "tip": "Search"
+                            }
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool active: (root.nexus?.leftSidebarTab ?? "files") === modelData.id
+                            Layout.preferredWidth: nexusLeftColumn.width < 208 ? 22 : 26
+                            Layout.preferredHeight: 26
+                            radius: 7
+                            color: active
+                                ? settledColors.colSecondaryContainer
+                                : (leftTabMouse.containsMouse ? settledColors.colLayer2Hover : "transparent")
+                            border.width: active ? 1 : 0
+                            border.color: Qt.alpha(settledColors.colPrimary, 0.35)
+
+                            MaterialSymbol {
+                                anchors.centerIn: parent
+                                text: modelData.icon
+                                iconSize: nexusLeftColumn.width < 208 ? 14 : 15
+                                color: parent.active ? settledColors.colPrimary : settledColors.colSubtext
+                            }
+                            MouseArea {
+                                id: leftTabMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (root.nexus) {
+                                        root.nexus.leftSidebarTab = modelData.id;
+                                        if (modelData.id === "search" && fileFilterField.text.trim().length > 0) {
+                                            root.nexus.searchVault(fileFilterField.text.trim());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    // New Note button
+                    Rectangle {
+                        Layout.preferredWidth: nexusLeftColumn.width < 208 ? 20 : 22
+                        Layout.preferredHeight: 24
+                        radius: 6
+                        color: newNoteMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
+                        MaterialSymbol {
+                            anchors.centerIn: parent
+                            text: "note_add"
+                            iconSize: 14
+                            color: settledColors.colOnLayer1
+                        }
+                        MouseArea {
+                            id: newNoteMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: newNoteBar.visible = !newNoteBar.visible
+                        }
+                    }
+
+                    // Interactive New Note & API Search Modal button
+                    Rectangle {
+                        objectName: "nexusOpenNewNoteModalButton"
+                        Layout.preferredWidth: nexusLeftColumn.width < 208 ? 20 : 22
+                        Layout.preferredHeight: 24
+                        radius: 6
+                        color: newNoteModalMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
+                        MaterialSymbol {
+                            anchors.centerIn: parent
+                            text: "travel_explore"
+                            iconSize: 14
+                            color: settledColors.colPrimary
+                        }
+                        MouseArea {
+                            id: newNoteModalMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (root.nexus)
+                                    root.nexus.openNewNoteModal("standard", "");
+                            }
+                        }
+                    }
+
+                    // Today's Journal button (always accessible on the single horizontal rail)
+                    Rectangle {
+                        Layout.preferredWidth: nexusLeftColumn.width < 208 ? 20 : 22
+                        Layout.preferredHeight: 24
+                        radius: 6
+                        color: dailyMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
+                        MaterialSymbol {
+                            anchors.centerIn: parent
+                            text: "today"
+                            iconSize: 14
+                            color: settledColors.colPrimary
+                        }
+                        MouseArea {
+                            id: dailyMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (root.nexus)
+                                    root.nexus.openDailyNote();
+                            }
+                        }
+                    }
+
+                    // Rescan Vault button (always accessible on the single horizontal rail)
+                    Rectangle {
+                        Layout.preferredWidth: nexusLeftColumn.width < 208 ? 20 : 22
+                        Layout.preferredHeight: 24
+                        radius: 6
+                        color: refreshMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
+                        MaterialSymbol {
+                            anchors.centerIn: parent
+                            text: "refresh"
+                            iconSize: 14
+                            color: settledColors.colSubtext
+                        }
+                        MouseArea {
+                            id: refreshMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (root.nexus) {
+                                    root.nexus.refreshVault();
+                                    root.nexus.refreshCalendar(root.nexus.calendarYear, root.nexus.calendarMonth);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Item {
                 id: leftSlot0
                 objectName: "nexusLeftSlot0"
-                readonly property int targetHeight: Math.max(120, Math.round(Math.max(320, nexusLeftColumn.height - 10) * (root.nexus?.leftSplitRatio ?? 0.62)))
+                readonly property int targetHeight: Math.max(120, Math.round(Math.max(320, nexusLeftColumn.height - 44) * (root.nexus?.leftSplitRatio ?? 0.62)))
                 Layout.fillWidth: true
                 Layout.preferredHeight: targetHeight
                 Layout.minimumHeight: targetHeight
@@ -2525,10 +3061,8 @@ FocusScope {
                 anchors.fill: parent
                 radius: Appearance.rounding.normal ?? 12
                 color: settledColors.colLayer1
-                border.width: (root.dropTargetCardId === "explorer" && root.draggingCardId !== "" && root.draggingCardId !== "explorer") ? 2 : 1
-                border.color: (root.dropTargetCardId === "explorer" && root.draggingCardId !== "" && root.draggingCardId !== "explorer")
-                    ? settledColors.colPrimary
-                    : settledColors.colLayer0Border
+                border.width: 1
+                border.color: settledColors.colLayer0Border
                 clip: true
 
                 HoverHandler {
@@ -2539,175 +3073,6 @@ FocusScope {
                     anchors.fill: parent
                     anchors.margins: 10
                     spacing: 8
-
-                    // Keep every explorer action reachable at the supported sidebar minima.
-                    Flow {
-                        objectName: "nexusExplorerToolbar"
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 0
-                        spacing: 3
-
-                        Repeater {
-                            model: [
-                                {
-                                    "id": "files",
-                                    "icon": "folder",
-                                    "tip": "Files"
-                                },
-                                {
-                                    "id": "tags",
-                                    "icon": "sell",
-                                    "tip": "Tags"
-                                },
-                                {
-                                    "id": "recent",
-                                    "icon": "schedule",
-                                    "tip": "Recent"
-                                },
-                                {
-                                    "id": "search",
-                                    "icon": "search",
-                                    "tip": "Search"
-                                }
-                            ]
-                            delegate: Rectangle {
-                                required property var modelData
-                                readonly property bool active: (root.nexus?.leftSidebarTab ?? "files") === modelData.id
-                                width: 26
-                                height: 26
-                                radius: 7
-                                color: active ? settledColors.colSecondaryContainer : "transparent"
-
-                                MaterialSymbol {
-                                    anchors.centerIn: parent
-                                    text: modelData.icon
-                                    iconSize: 15
-                                    color: parent.active ? settledColors.colOnSecondaryContainer : settledColors.colSubtext
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (root.nexus) {
-                                            root.nexus.leftSidebarTab = modelData.id;
-                                            if (modelData.id === "search" && fileFilterField.text.trim().length > 0) {
-                                                root.nexus.searchVault(fileFilterField.text.trim());
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // New Note button
-                        Rectangle {
-                            implicitWidth: 24
-                            implicitHeight: 24
-                            width: 24
-                            height: 24
-                            radius: 6
-                            color: newNoteMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
-                            MaterialSymbol {
-                                anchors.centerIn: parent
-                                text: "note_add"
-                                iconSize: 15
-                                color: settledColors.colOnLayer1
-                            }
-                            MouseArea {
-                                id: newNoteMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: newNoteBar.visible = !newNoteBar.visible
-                            }
-                        }
-
-                        // Interactive New Note & API Search Modal button
-                        Rectangle {
-                            objectName: "nexusOpenNewNoteModalButton"
-                            implicitWidth: 24
-                            implicitHeight: 24
-                            width: 24
-                            height: 24
-                            radius: 6
-                            color: newNoteModalMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
-                            MaterialSymbol {
-                                anchors.centerIn: parent
-                                text: "travel_explore"
-                                iconSize: 15
-                                color: settledColors.colPrimary
-                            }
-                            MouseArea {
-                                id: newNoteModalMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (root.nexus)
-                                        root.nexus.openNewNoteModal("standard", "");
-                                }
-                            }
-                        }
-
-                        // Today's Journal button
-                        Rectangle {
-                            implicitWidth: 24
-                            implicitHeight: 24
-                            width: 24
-                            height: 24
-                            radius: 6
-                            color: dailyMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
-                            MaterialSymbol {
-                                anchors.centerIn: parent
-                                text: "today"
-                                iconSize: 15
-                                color: settledColors.colPrimary
-                            }
-                            MouseArea {
-                                id: dailyMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (root.nexus)
-                                        root.nexus.openDailyNote();
-                                }
-                            }
-                        }
-
-                        // Rescan Vault button
-                        Rectangle {
-                            implicitWidth: 24
-                            implicitHeight: 24
-                            width: 24
-                            height: 24
-                            radius: 6
-                            color: refreshMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
-                            MaterialSymbol {
-                                anchors.centerIn: parent
-                                text: "refresh"
-                                iconSize: 15
-                                color: settledColors.colSubtext
-                            }
-                            MouseArea {
-                                id: refreshMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (root.nexus) {
-                                        root.nexus.refreshVault();
-                                        root.nexus.refreshCalendar(root.nexus.calendarYear, root.nexus.calendarMonth);
-                                    }
-                                }
-                            }
-                        }
-
-                        CardReorderPill {
-                            cardId: "explorer"
-                            cardHovered: explorerCardHover.hovered
-                        }
-                    }
 
                     // Filter / Search input (flexible width down to 160px sidebar)
                     Rectangle {
@@ -2934,6 +3299,7 @@ FocusScope {
                         delegate: Rectangle {
                             id: treeRowDelegate
                             required property var modelData
+                            required property int index
                             readonly property string folderColor: root.autoThemedFolderColor(modelData.prefixCode, modelData.colorHex)
                             readonly property string folderHoverTextColor: root.autoThemedFolderTextColor(modelData.prefixCode, modelData.colorHex)
                             readonly property bool isCurrent: !modelData.isDir && (root.nexus?.currentPath === modelData.relPath) && (root.nexus?.activeView === "document")
@@ -2956,15 +3322,286 @@ FocusScope {
                             }
                             border.width: 0
 
-                            // Colored vertical tree branch line for nested items (matching 01_Core.css 1px solid color-mix(var(--av-folder-color) 20%, transparent))
-                            Rectangle {
-                                visible: (treeRowDelegate.modelData.depth ?? 0) > 0 && treeRowDelegate.folderColor.length > 0
-                                x: Math.max(4, 10 + ((treeRowDelegate.modelData.depth ?? 1) - 1) * 14)
-                                width: 1
+                            // 100% Obsidian 01_Core.css Soft Folder Tree Lines + 1s Interval Music EQ-DSP Electric Current
+                            Canvas {
+                                id: treeGuideCanvas
+                                objectName: "nexusSoftTreeGuideCanvas"
+                                visible: (treeRowDelegate.modelData.depth ?? 0) > 0
+                                anchors.left: parent.left
                                 anchors.top: parent.top
                                 anchors.bottom: parent.bottom
-                                color: treeRowDelegate.folderColor
-                                opacity: rowMouse.containsMouse ? 0.40 : 0.22
+                                width: Math.max(16, 10 + (treeRowDelegate.modelData.depth ?? 0) * 14)
+                                antialiasing: true
+
+                                readonly property int rowIdx: treeRowDelegate.index
+                                readonly property int rowDepth: Number(treeRowDelegate.modelData.depth ?? 0)
+                                readonly property bool rowIsDir: Boolean(treeRowDelegate.modelData.isDir)
+                                readonly property bool rowIsLast: Boolean(treeRowDelegate.modelData.isLastChild)
+                                readonly property string rowRelPath: String(treeRowDelegate.modelData.relPath ?? "")
+                                readonly property var rowAncestorContinues: treeRowDelegate.modelData.ancestorContinues ?? []
+                                readonly property var rowAncestorPaths: treeRowDelegate.modelData.ancestorPaths ?? []
+                                readonly property bool isTargetRow: root.activeTreeTargetPath.length > 0 && root.activeTreeTargetPath === rowRelPath
+                                // Exact 01_Core.css row-ordered active-segment predicate:
+                                // True ONLY for rows strictly between an active ancestor and its next hop
+                                // OR rows that ARE the next hop (intermediate ancestor folder or final target).
+                                readonly property bool hasActiveAncestorTrail: {
+                                    const info = root.activeTreeChainInfo;
+                                    const hops = info?.hops;
+                                    if (!hops || info.targetIdx < 0 || rowIdx > info.targetIdx)
+                                        return false;
+                                    for (let col = 0; col < rowDepth; ++col) {
+                                        const anc = String(rowAncestorPaths[col] ?? "");
+                                        const hop = anc.length > 0 ? hops[anc] : null;
+                                        if (hop && rowIdx > hop.parentIdx && rowIdx <= hop.nextHopIdx)
+                                            return true;
+                                    }
+                                    return false;
+                                }
+                                readonly property real electricPulse: hasActiveAncestorTrail ? root.treeElectricPhase : 0.0
+
+                                onRowIdxChanged: requestPaint()
+                                onRowDepthChanged: requestPaint()
+                                onRowIsLastChanged: requestPaint()
+                                onIsTargetRowChanged: requestPaint()
+                                onHasActiveAncestorTrailChanged: requestPaint()
+                                onElectricPulseChanged: {
+                                    if (hasActiveAncestorTrail)
+                                        requestPaint();
+                                }
+                                Connections {
+                                    target: root
+                                    function onThemeSignatureChanged() {
+                                        if (treeGuideCanvas.visible)
+                                            treeGuideCanvas.requestPaint();
+                                    }
+                                    function onActiveTreeChainInfoChanged() {
+                                        if (treeGuideCanvas.visible)
+                                            treeGuideCanvas.requestPaint();
+                                    }
+                                }
+
+                                onPaint: {
+                                    const ctx = getContext("2d");
+                                    if (!ctx)
+                                        return;
+                                    const w = width;
+                                    const h = height;
+                                    ctx.clearRect(0, 0, w, h);
+                                    const d = rowDepth;
+                                    if (d <= 0)
+                                        return;
+
+                                    const depthAlphas = [1.0, 0.60, 0.40, 0.30, 0.24, 0.19, 0.15];
+                                    const baseCol = treeRowDelegate.folderColor.length > 0
+                                        ? treeRowDelegate.folderTintBase
+                                        : settledColors.colSubtext;
+                                    const hiCol = settledColors.colPrimary;
+                                    const chainInfo = root.activeTreeChainInfo;
+                                    const hops = chainInfo?.hops ?? ({});
+                                    const firstParentIdx = chainInfo?.firstParentIdx ?? -1;
+                                    const totalSteps = Math.max(1, Number(chainInfo?.totalSteps ?? 1));
+                                    const rowStepStart = Math.max(0.0, Math.min(0.92, (rowIdx - firstParentIdx - 1) / totalSteps));
+                                    const rowStepEnd = Math.max(rowStepStart + 0.08, Math.min(1.0, (rowIdx - firstParentIdx) / totalSteps));
+                                    const cy = h * 0.5;
+                                    const elbowR = 7.0;
+                                    const pulse = electricPulse;
+                                    const pulseOn = pulse > 0.005 && pulse < 0.995;
+
+                                    // Helper to draw Music EQ-DSP 3-stroke glowing electric current along a path
+                                    function strokeElectric(pathFn, segPhaseStart, segPhaseEnd) {
+                                        if (!pulseOn)
+                                            return;
+                                        const localP = (pulse - segPhaseStart) / Math.max(0.08, segPhaseEnd - segPhaseStart);
+                                        if (localP < -0.22 || localP > 1.22)
+                                            return;
+                                        const env = Math.max(0.0, 1.0 - Math.abs(localP - 0.5) * 1.45);
+                                        if (env <= 0.02)
+                                            return;
+                                        ctx.save();
+                                        if (typeof ctx.setLineDash === "function")
+                                            ctx.setLineDash([]);
+                                        ctx.lineCap = "round";
+                                        ctx.lineJoin = "round";
+                                        // 1. Wide outer plasma glow
+                                        ctx.strokeStyle = Qt.rgba(hiCol.r, hiCol.g, hiCol.b, 0.24 * env);
+                                        ctx.lineWidth = 4.2;
+                                        ctx.beginPath();
+                                        pathFn(true);
+                                        ctx.stroke();
+                                        // 2. Bright mid plasma stroke
+                                        ctx.strokeStyle = Qt.rgba(hiCol.r, hiCol.g, hiCol.b, 0.78 * env);
+                                        ctx.lineWidth = 1.9;
+                                        ctx.beginPath();
+                                        pathFn(true);
+                                        ctx.stroke();
+                                        // 3. White-hot core filament
+                                        ctx.strokeStyle = Qt.rgba(
+                                            Math.min(1.0, hiCol.r * 0.35 + 0.65),
+                                            Math.min(1.0, hiCol.g * 0.35 + 0.65),
+                                            Math.min(1.0, hiCol.b * 0.35 + 0.65),
+                                            0.92 * env
+                                        );
+                                        ctx.lineWidth = 0.85;
+                                        ctx.beginPath();
+                                        pathFn(false);
+                                        ctx.stroke();
+                                        ctx.restore();
+                                    }
+
+                                    // 1. Ancestor vertical trunks (cols 0 .. d - 2)
+                                    // Strictly lit ONLY when this row lies between hop.parentIdx and hop.nextHopIdx!
+                                    // Outer trunks passing past an active folder (rowIdx > hop.nextHopIdx) stay DIM.
+                                    for (let col = 0; col < d - 1; ++col) {
+                                        const continues = Boolean(rowAncestorContinues[col]);
+                                        if (!continues)
+                                            continue;
+                                        const x = 10.5 + col * 14;
+                                        const ancPath = String(rowAncestorPaths[col] ?? "");
+                                        const hop = ancPath.length > 0 ? hops[ancPath] : null;
+                                        const onActivePassThrough = Boolean(hop && rowIdx > hop.parentIdx && rowIdx < hop.nextHopIdx);
+                                        const tierAlpha = depthAlphas[Math.min(depthAlphas.length - 1, col)] * 0.38;
+
+                                        ctx.save();
+                                        if (typeof ctx.setLineDash === "function")
+                                            ctx.setLineDash([]);
+                                        ctx.strokeStyle = onActivePassThrough
+                                            ? Qt.rgba(hiCol.r, hiCol.g, hiCol.b, 0.85)
+                                            : Qt.rgba(baseCol.r, baseCol.g, baseCol.b, tierAlpha);
+                                        ctx.lineWidth = onActivePassThrough ? 1.5 : 1.0;
+                                        ctx.beginPath();
+                                        ctx.moveTo(x, 0);
+                                        ctx.lineTo(x, h);
+                                        ctx.stroke();
+                                        ctx.restore();
+
+                                        if (onActivePassThrough && pulseOn) {
+                                            const jitterAmp = 1.35;
+                                            const freq = 0.38;
+                                            const phaseShift = pulse * 14.0 + col * 1.9 + root.treeElectricSeq * 0.7;
+                                            strokeElectric((jitter) => {
+                                                ctx.moveTo(x, 0);
+                                                const steps = 6;
+                                                for (let s = 1; s < steps; ++s) {
+                                                    const yy = (h * s) / steps;
+                                                    const jx = jitter ? Math.sin(yy * freq + phaseShift) * jitterAmp : 0.0;
+                                                    ctx.lineTo(x + jx, yy);
+                                                }
+                                                ctx.lineTo(x, h);
+                                            }, rowStepStart, rowStepEnd);
+                                        }
+                                    }
+
+                                    // 2. Direct parent connector (col = d - 1): 01_Core.css Soft Folder Tree
+                                    // Folders = solid 1px + 7px rounded elbow on last child
+                                    // Files   = dotted [2, 3] + 7px rounded dotted elbow on last child
+                                    const cIdx = d - 1;
+                                    const px = 10.5 + cIdx * 14;
+                                    const branchEndX = px + 10.5;
+                                    const parentPath = String(rowAncestorPaths[cIdx] ?? "");
+                                    const parentHop = parentPath.length > 0 ? hops[parentPath] : null;
+                                    // Exact 3-way classification matching Obsidian 01_Core.css:
+                                    // - isActiveTurn: this row IS hop.nextHopIdx (intermediate ancestor folder OR hovered target)
+                                    // - isActivePassThrough: this row is a sibling strictly ABOVE hop.nextHopIdx
+                                    // - otherwise (including siblings BELOW hop.nextHopIdx): 100% DIM!
+                                    const isActiveTurn = Boolean(parentHop && rowIdx === parentHop.nextHopIdx);
+                                    const isActivePassThrough = Boolean(parentHop && rowIdx > parentHop.parentIdx && rowIdx < parentHop.nextHopIdx);
+                                    const highlightUpper = isActiveTurn || isActivePassThrough;
+                                    const highlightBranch = isActiveTurn;
+                                    const highlightLower = !rowIsLast && isActivePassThrough;
+                                    const baseAlpha = depthAlphas[Math.min(depthAlphas.length - 1, cIdx)] * (rowIsDir ? 0.44 : 0.38);
+
+                                    ctx.save();
+                                    ctx.lineCap = "round";
+                                    ctx.lineJoin = "round";
+                                    if (!rowIsDir && typeof ctx.setLineDash === "function")
+                                        ctx.setLineDash([2.0, 3.0]);
+                                    else if (typeof ctx.setLineDash === "function")
+                                        ctx.setLineDash([]);
+
+                                    if (rowIsLast) {
+                                        // Smooth 7px bottom-left rounded elbow (no downward overhang)
+                                        const r = Math.min(elbowR, cy - 1.0, branchEndX - px - 1.0);
+                                        ctx.strokeStyle = isActiveTurn
+                                            ? Qt.rgba(hiCol.r, hiCol.g, hiCol.b, isTargetRow ? 0.94 : 0.86)
+                                            : Qt.rgba(baseCol.r, baseCol.g, baseCol.b, baseAlpha);
+                                        ctx.lineWidth = isActiveTurn ? 1.6 : 1.0;
+                                        ctx.beginPath();
+                                        ctx.moveTo(px, 0);
+                                        ctx.lineTo(px, Math.max(0, cy - r));
+                                        ctx.quadraticCurveTo(px, cy, px + r, cy);
+                                        ctx.lineTo(branchEndX, cy);
+                                        ctx.stroke();
+                                    } else {
+                                        // Upper trunk (top -> cy)
+                                        ctx.strokeStyle = highlightUpper
+                                            ? Qt.rgba(hiCol.r, hiCol.g, hiCol.b, isActiveTurn ? 0.92 : 0.82)
+                                            : Qt.rgba(baseCol.r, baseCol.g, baseCol.b, baseAlpha);
+                                        ctx.lineWidth = highlightUpper ? 1.55 : 1.0;
+                                        ctx.beginPath();
+                                        ctx.moveTo(px, 0);
+                                        ctx.lineTo(px, cy);
+                                        ctx.stroke();
+
+                                        // Horizontal branch (px -> branchEndX): lit for BOTH intermediate ancestor turn AND final target
+                                        ctx.strokeStyle = highlightBranch
+                                            ? Qt.rgba(hiCol.r, hiCol.g, hiCol.b, isTargetRow ? 0.94 : 0.86)
+                                            : Qt.rgba(baseCol.r, baseCol.g, baseCol.b, baseAlpha);
+                                        ctx.lineWidth = highlightBranch ? 1.6 : 1.0;
+                                        ctx.beginPath();
+                                        ctx.moveTo(px, cy);
+                                        ctx.lineTo(branchEndX, cy);
+                                        ctx.stroke();
+
+                                        // Lower trunk (cy -> bottom): strictly DIM once path turns into this row or below target!
+                                        ctx.strokeStyle = highlightLower
+                                            ? Qt.rgba(hiCol.r, hiCol.g, hiCol.b, 0.80)
+                                            : Qt.rgba(baseCol.r, baseCol.g, baseCol.b, baseAlpha * 0.85);
+                                        ctx.lineWidth = highlightLower ? 1.45 : 1.0;
+                                        ctx.beginPath();
+                                        ctx.moveTo(px, cy);
+                                        ctx.lineTo(px, h);
+                                        ctx.stroke();
+                                    }
+                                    ctx.restore();
+
+                                    // 3. Sequential Top-to-Bottom Electric Current (1s interval EQ-DSP surge)
+                                    if (isActiveTurn && pulseOn) {
+                                        const r = Math.min(elbowR, cy - 1.0, branchEndX - px - 1.0);
+                                        const pShift = pulse * 18.0 + root.treeElectricSeq * 1.1 + cIdx * 1.3;
+                                        strokeElectric((jitter) => {
+                                            ctx.moveTo(px, 0);
+                                            const midY = Math.max(2.0, (cy - r) * 0.5);
+                                            ctx.lineTo(px + (jitter ? Math.sin(pShift) * 1.3 : 0.0), midY);
+                                            ctx.lineTo(px, Math.max(0, cy - r));
+                                            ctx.quadraticCurveTo(px, cy, px + r, cy);
+                                            ctx.lineTo(branchEndX, cy + (jitter ? Math.cos(pShift * 1.3) * 0.9 : 0.0));
+                                        }, rowStepStart, rowStepEnd);
+                                        // Bright plasma spark tip arriving at the hovered/focused folder or note
+                                        if (isTargetRow) {
+                                            const sparkT = Math.max(0.0, Math.min(1.0, (pulse - rowStepStart) / Math.max(0.12, rowStepEnd - rowStepStart)));
+                                            if (sparkT > 0.0 && sparkT < 1.0) {
+                                                const sx = px + (branchEndX - px) * sparkT;
+                                                ctx.save();
+                                                ctx.beginPath();
+                                                ctx.arc(sx, cy, 3.0, 0, Math.PI * 2);
+                                                ctx.fillStyle = Qt.rgba(hiCol.r, hiCol.g, hiCol.b, 0.35 * (1.0 - sparkT * 0.5));
+                                                ctx.fill();
+                                                ctx.beginPath();
+                                                ctx.arc(sx, cy, 1.4, 0, Math.PI * 2);
+                                                ctx.fillStyle = Qt.rgba(1.0, 1.0, 1.0, 0.92 * (1.0 - sparkT * 0.4));
+                                                ctx.fill();
+                                                ctx.restore();
+                                            }
+                                        }
+                                    } else if (isActivePassThrough && pulseOn) {
+                                        const pShift = pulse * 15.0 + cIdx * 1.7 + root.treeElectricSeq * 0.7;
+                                        strokeElectric((jitter) => {
+                                            ctx.moveTo(px, 0);
+                                            ctx.lineTo(px + (jitter ? Math.sin(pShift) * 1.2 : 0.0), cy);
+                                            ctx.lineTo(px, h);
+                                        }, rowStepStart, rowStepEnd);
+                                    }
+                                }
                             }
 
                             RowLayout {
@@ -3045,6 +3682,16 @@ FocusScope {
                                 hoverEnabled: true
                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                                 cursorShape: Qt.PointingHandCursor
+                                onEntered: {
+                                    root.hoveredTreeRowPath = String(treeRowDelegate.modelData.relPath ?? "");
+                                    root.hoveredTreeAncestorPaths = treeRowDelegate.modelData.ancestorPaths ?? [];
+                                }
+                                onExited: {
+                                    if (root.hoveredTreeRowPath === String(treeRowDelegate.modelData.relPath ?? "")) {
+                                        root.hoveredTreeRowPath = "";
+                                        root.hoveredTreeAncestorPaths = [];
+                                    }
+                                }
                                 onClicked: mouse => {
                                     if (!root.nexus)
                                         return;
@@ -3080,119 +3727,344 @@ FocusScope {
                         }
                     }
 
-                    // Tab 2: Tags Explorer (with subtag hierarchy & collapsible dropdown)
-                    ListView {
+                    // Tab 2: Tag Wrangler+ Sidebar (Filter, Sort, Expand/Collapse, Atomic Vault Rename/Merge/Remove & Tag Pages)
+                    ColumnLayout {
+                        id: nexusTagWranglerPane
+                        objectName: "nexusTagWranglerPane"
                         visible: (root.nexus?.leftSidebarTab ?? "files") === "tags"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        clip: true
-                        spacing: 2
-                        model: root.nexus?.hierarchicalTagsList ?? []
+                        spacing: 6
 
-                        delegate: Rectangle {
-                            id: tagRowDelegate
-                            required property var modelData
-                            width: ListView.view.width
-                            height: 30
-                            radius: 6
-                            color: tagMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
 
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 6 + (tagRowDelegate.modelData.depth ?? 0) * 16
-                                anchors.rightMargin: 8
-                                z: 1
-                                spacing: 4
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 26
+                                radius: 6
+                                color: settledColors.colLayer0
+                                border.width: 1
+                                border.color: tagFilterInput.activeFocus ? settledColors.colPrimary : settledColors.colLayer0Border
 
-                                // Chevron dropdown toggle for parent tags with subtags
-                                Rectangle {
-                                    visible: Boolean(tagRowDelegate.modelData.hasChildren)
-                                    Layout.preferredWidth: 20
-                                    Layout.preferredHeight: 20
-                                    radius: 4
-                                    color: chevronMouse.containsMouse ? settledColors.colLayer2 : "transparent"
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 6
+                                    anchors.rightMargin: 4
+                                    spacing: 4
 
                                     MaterialSymbol {
-                                        anchors.centerIn: parent
-                                        text: tagRowDelegate.modelData.expanded ? "expand_more" : "chevron_right"
-                                        iconSize: 15
-                                        color: settledColors.colSubtext
+                                        text: "tag"
+                                        iconSize: 13
+                                        color: tagFilterInput.activeFocus ? settledColors.colPrimary : settledColors.colSubtext
                                     }
-                                    MouseArea {
-                                        id: chevronMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
+                                    TextField {
+                                        id: tagFilterInput
+                                        objectName: "nexusTagFilterInput"
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 24
+                                        topPadding: 0
+                                        bottomPadding: 0
+                                        verticalAlignment: TextInput.AlignVCenter
+                                        placeholderText: "Filter tags..."
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        color: settledColors.colOnLayer0
+                                        background: null
+                                        onTextChanged: {
                                             if (root.nexus)
-                                                root.nexus.toggleTagGroupExpanded(tagRowDelegate.modelData.name);
+                                                root.nexus.tagSearchQuery = text;
+                                        }
+                                        Keys.onEscapePressed: event => {
+                                            text = "";
+                                            focus = false;
+                                            root.restoreWorkspaceFocus();
+                                            event.accepted = true;
                                         }
                                     }
                                 }
+                            }
 
-                                // Indent spacer if tag has no children but is at depth 0
-                                Item {
-                                    visible: !Boolean(tagRowDelegate.modelData.hasChildren) && (tagRowDelegate.modelData.depth ?? 0) === 0
-                                    Layout.preferredWidth: 6
-                                }
-
-                                MaterialSymbol {
-                                    visible: Boolean(tagRowDelegate.modelData.isSubtag)
-                                    text: "subdirectory_arrow_right"
-                                    iconSize: 13
-                                    color: settledColors.colSubtext
-                                }
+                            // Sort cycle button (Count ↓ / Count ↑ / A→Z / Z→A)
+                            Rectangle {
+                                objectName: "nexusTagSortButton"
+                                Layout.preferredHeight: 26
+                                Layout.preferredWidth: tagSortLbl.implicitWidth + 10
+                                radius: 6
+                                color: tagSortMouse.containsMouse ? settledColors.colLayer2Hover : settledColors.colLayer0
+                                border.width: 1
+                                border.color: settledColors.colLayer0Border
 
                                 StyledText {
-                                    Layout.fillWidth: true
-                                    text: tagRowDelegate.modelData.isSubtag
-                                        ? ("/" + String(tagRowDelegate.modelData.subtagLabel ?? ""))
-                                        : ("#" + String(tagRowDelegate.modelData.name ?? ""))
-                                    font.pixelSize: Appearance.font.pixelSize.smaller + 1
-                                    font.weight: tagRowDelegate.modelData.hasChildren ? Font.DemiBold : Font.Normal
-                                    color: tagRowDelegate.modelData.isSubtag
-                                        ? (settledColors.colTertiary ?? settledColors.colPrimary)
-                                        : settledColors.colPrimary
-                                    elide: Text.ElideRight
+                                    id: tagSortLbl
+                                    anchors.centerIn: parent
+                                    font.family: Appearance.font.family.monospace
+                                    font.pixelSize: 9
+                                    font.weight: Font.DemiBold
+                                    color: settledColors.colPrimary
+                                    text: {
+                                        const m = root.nexus?.tagSortMode ?? "countDesc";
+                                        if (m === "countAsc") return "#↑";
+                                        if (m === "nameAsc") return "A-Z";
+                                        if (m === "nameDesc") return "Z-A";
+                                        return "#↓";
+                                    }
                                 }
-
-                                Rectangle {
-                                    Layout.preferredWidth: Math.max(26, tagCountTxt.implicitWidth + 10)
-                                    Layout.preferredHeight: 18
-                                    radius: 9
-                                    color: settledColors.colLayer2
-                                    StyledText {
-                                        id: tagCountTxt
-                                        anchors.centerIn: parent
-                                        text: String(tagRowDelegate.modelData.count ?? 0)
-                                        font.pixelSize: Appearance.font.pixelSize.smallest
-                                        color: settledColors.colSubtext
+                                MouseArea {
+                                    id: tagSortMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (root.nexus)
+                                            root.nexus.cycleTagSortMode();
                                     }
                                 }
                             }
-                            MouseArea {
-                                id: tagMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: mouse => {
-                                    if (!root.nexus)
-                                        return;
-                                    if (mouse.button === Qt.RightButton) {
-                                        const pt = mapToItem(root, mouse.x, mouse.y);
-                                        root.openContextMenu(pt.x, pt.y, {
-                                            "type": "tag",
-                                            "title": tagRowDelegate.modelData.fullTag || ("#" + tagRowDelegate.modelData.name),
-                                            "tag": tagRowDelegate.modelData.name,
-                                            "fullTag": tagRowDelegate.modelData.fullTag || ("#" + tagRowDelegate.modelData.name)
-                                        });
-                                        return;
+
+                            // Expand All subtag groups
+                            Rectangle {
+                                Layout.preferredWidth: 24
+                                Layout.preferredHeight: 26
+                                radius: 6
+                                color: tagExpAllMouse.containsMouse ? settledColors.colLayer2Hover : settledColors.colLayer0
+                                border.width: 1
+                                border.color: settledColors.colLayer0Border
+                                MaterialSymbol {
+                                    anchors.centerIn: parent
+                                    text: "unfold_more"
+                                    iconSize: 13
+                                    color: settledColors.colSubtext
+                                }
+                                MouseArea {
+                                    id: tagExpAllMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (root.nexus)
+                                            root.nexus.expandAllTagGroups();
                                     }
-                                    root.nexus.leftSidebarTab = "search";
-                                    const searchStr = tagRowDelegate.modelData.fullTag || ("#" + tagRowDelegate.modelData.name);
-                                    fileFilterField.text = searchStr;
-                                    root.nexus.searchVault(searchStr);
+                                }
+                            }
+
+                            // Collapse All subtag groups
+                            Rectangle {
+                                Layout.preferredWidth: 24
+                                Layout.preferredHeight: 26
+                                radius: 6
+                                color: tagColAllMouse.containsMouse ? settledColors.colLayer2Hover : settledColors.colLayer0
+                                border.width: 1
+                                border.color: settledColors.colLayer0Border
+                                MaterialSymbol {
+                                    anchors.centerIn: parent
+                                    text: "unfold_less"
+                                    iconSize: 13
+                                    color: settledColors.colSubtext
+                                }
+                                MouseArea {
+                                    id: tagColAllMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (root.nexus)
+                                            root.nexus.collapseAllTagGroups();
+                                    }
+                                }
+                            }
+                        }
+
+                        ListView {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            spacing: 2
+                            model: root.nexus?.hierarchicalTagsList ?? []
+
+                            delegate: Rectangle {
+                                id: tagRowDelegate
+                                required property var modelData
+                                width: ListView.view.width
+                                height: 30
+                                radius: 6
+                                color: (tagMouse.containsMouse || tagRenameQuickMouse.containsMouse || tagPageQuickMouse.containsMouse || tagMenuQuickMouse.containsMouse)
+                                    ? settledColors.colLayer2Hover
+                                    : "transparent"
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 6 + (tagRowDelegate.modelData.depth ?? 0) * 14
+                                    anchors.rightMargin: 6
+                                    z: 2
+                                    spacing: 4
+
+                                    // Chevron dropdown toggle for parent tags with subtags
+                                    Rectangle {
+                                        visible: Boolean(tagRowDelegate.modelData.hasChildren)
+                                        Layout.preferredWidth: 18
+                                        Layout.preferredHeight: 18
+                                        radius: 4
+                                        color: chevronMouse.containsMouse ? settledColors.colLayer2 : "transparent"
+
+                                        MaterialSymbol {
+                                            anchors.centerIn: parent
+                                            text: tagRowDelegate.modelData.expanded ? "expand_more" : "chevron_right"
+                                            iconSize: 14
+                                            color: settledColors.colSubtext
+                                        }
+                                        MouseArea {
+                                            id: chevronMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (root.nexus)
+                                                    root.nexus.toggleTagGroupExpanded(tagRowDelegate.modelData.name);
+                                            }
+                                        }
+                                    }
+
+                                    Item {
+                                        visible: !Boolean(tagRowDelegate.modelData.hasChildren) && (tagRowDelegate.modelData.depth ?? 0) === 0
+                                        Layout.preferredWidth: 4
+                                    }
+
+                                    MaterialSymbol {
+                                        visible: Boolean(tagRowDelegate.modelData.isSubtag)
+                                        text: "subdirectory_arrow_right"
+                                        iconSize: 12
+                                        color: settledColors.colSubtext
+                                    }
+
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: tagRowDelegate.modelData.isSubtag
+                                            ? ("/" + String(tagRowDelegate.modelData.subtagLabel ?? ""))
+                                            : ("#" + String(tagRowDelegate.modelData.name ?? ""))
+                                        font.pixelSize: Appearance.font.pixelSize.smaller + 1
+                                        font.weight: tagRowDelegate.modelData.hasChildren ? Font.DemiBold : Font.Normal
+                                        color: tagRowDelegate.modelData.isSubtag
+                                            ? (settledColors.colTertiary ?? settledColors.colPrimary)
+                                            : settledColors.colPrimary
+                                        elide: Text.ElideRight
+                                    }
+
+                                    // Hover quick Tag Wrangler+ action: Rename Tag
+                                    Rectangle {
+                                        visible: tagMouse.containsMouse || tagRenameQuickMouse.containsMouse || tagPageQuickMouse.containsMouse || tagMenuQuickMouse.containsMouse
+                                        Layout.preferredWidth: 20
+                                        Layout.preferredHeight: 20
+                                        radius: 4
+                                        color: tagRenameQuickMouse.containsMouse ? settledColors.colSecondaryContainer : "transparent"
+                                        MaterialSymbol {
+                                            anchors.centerIn: parent
+                                            text: "edit"
+                                            iconSize: 12
+                                            color: settledColors.colPrimary
+                                        }
+                                        MouseArea {
+                                            id: tagRenameQuickMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.openTagActionDialog("rename", tagRowDelegate.modelData.name)
+                                        }
+                                    }
+
+                                    // Hover quick Tag Wrangler+ action: Open/Create Tag Page
+                                    Rectangle {
+                                        visible: tagMouse.containsMouse || tagRenameQuickMouse.containsMouse || tagPageQuickMouse.containsMouse || tagMenuQuickMouse.containsMouse
+                                        Layout.preferredWidth: 20
+                                        Layout.preferredHeight: 20
+                                        radius: 4
+                                        color: tagPageQuickMouse.containsMouse ? settledColors.colSecondaryContainer : "transparent"
+                                        MaterialSymbol {
+                                            anchors.centerIn: parent
+                                            text: "article"
+                                            iconSize: 12
+                                            color: settledColors.colSubtext
+                                        }
+                                        MouseArea {
+                                            id: tagPageQuickMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (root.nexus)
+                                                    root.nexus.openOrCreateTagPage(tagRowDelegate.modelData.name);
+                                            }
+                                        }
+                                    }
+
+                                    // Hover quick Tag Wrangler+ action: More menu (Merge / Exclude / Remove)
+                                    Rectangle {
+                                        visible: tagMouse.containsMouse || tagRenameQuickMouse.containsMouse || tagPageQuickMouse.containsMouse || tagMenuQuickMouse.containsMouse
+                                        Layout.preferredWidth: 20
+                                        Layout.preferredHeight: 20
+                                        radius: 4
+                                        color: tagMenuQuickMouse.containsMouse ? settledColors.colSecondaryContainer : "transparent"
+                                        MaterialSymbol {
+                                            anchors.centerIn: parent
+                                            text: "more_vert"
+                                            iconSize: 12
+                                            color: settledColors.colSubtext
+                                        }
+                                        MouseArea {
+                                            id: tagMenuQuickMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: mouse => {
+                                                const pt = mapToItem(root, mouse.x, mouse.y);
+                                                root.openContextMenu(pt.x, pt.y, {
+                                                    "type": "tag",
+                                                    "title": tagRowDelegate.modelData.fullTag || ("#" + tagRowDelegate.modelData.name),
+                                                    "tag": tagRowDelegate.modelData.name,
+                                                    "fullTag": tagRowDelegate.modelData.fullTag || ("#" + tagRowDelegate.modelData.name)
+                                                });
+                                            }
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        Layout.preferredWidth: Math.max(24, tagCountTxt.implicitWidth + 10)
+                                        Layout.preferredHeight: 18
+                                        radius: 9
+                                        color: settledColors.colLayer2
+                                        StyledText {
+                                            id: tagCountTxt
+                                            anchors.centerIn: parent
+                                            text: String(tagRowDelegate.modelData.count ?? 0)
+                                            font.pixelSize: Appearance.font.pixelSize.smallest
+                                            color: settledColors.colSubtext
+                                        }
+                                    }
+                                }
+                                MouseArea {
+                                    id: tagMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: mouse => {
+                                        if (!root.nexus)
+                                            return;
+                                        if (mouse.button === Qt.RightButton) {
+                                            const pt = mapToItem(root, mouse.x, mouse.y);
+                                            root.openContextMenu(pt.x, pt.y, {
+                                                "type": "tag",
+                                                "title": tagRowDelegate.modelData.fullTag || ("#" + tagRowDelegate.modelData.name),
+                                                "tag": tagRowDelegate.modelData.name,
+                                                "fullTag": tagRowDelegate.modelData.fullTag || ("#" + tagRowDelegate.modelData.name)
+                                            });
+                                            return;
+                                        }
+                                        root.nexus.leftSidebarTab = "search";
+                                        const searchStr = tagRowDelegate.modelData.fullTag || ("#" + tagRowDelegate.modelData.name);
+                                        fileFilterField.text = searchStr;
+                                        root.nexus.searchVault(searchStr);
+                                    }
                                 }
                             }
                         }
@@ -3456,58 +4328,29 @@ FocusScope {
                     graphData: nexusLocalGraphCard.activeLocalGraph
                     currentPath: String(root.nexus?.currentPath ?? "")
                     clusterPalette: root.clusterPalette
-                    onNodeActivated: nodeData => {
-                        if (!root.nexus || !nodeData)
-                            return;
-                        if (nodeData.id === "__homepage__")
-                            root.nexus.openHomepage();
-                        else if (nodeData.relPath)
-                            root.nexus.openFile(nodeData.relPath, true);
-                    }
+                    onNodeActivated: nodeData => root.activateGraphNode(nodeData)
                 }
 
-                Rectangle {
-                    objectName: "nexusLocalGraphStatusBar"
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: 6
-                    height: 26
-                    radius: 6
-                    color: Qt.rgba(settledColors.colLayer0.r, settledColors.colLayer0.g, settledColors.colLayer0.b, 0.88)
-                    border.width: 1
-                    border.color: settledColors.colLayer0Border
-                    opacity: localGraphCardHover.hovered ? 1.0 : 0.0
-                    Behavior on opacity { NumberAnimation { duration: 150 } }
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 6
-                        anchors.rightMargin: 4
-                        spacing: 6
-
-                        MaterialSymbol {
-                            text: "hub"
-                            iconSize: 14
-                            color: settledColors.colPrimary
+                // Obsidian-style top-edge hover slide-down icon tab bar (collapsed height 0 until top edge hovered)
+                WorkspaceHoverTabBar {
+                    tabBarObjectName: "nexusLocalGraphStatusBar"
+                    tabs: [
+                        {
+                            "id": "localGraph",
+                            "icon": "hub",
+                            "label": "Local Graph",
+                            "active": true
                         }
-                        StyledText {
-                            Layout.fillWidth: true
-                            text: "Local Graph"
-                            font.pixelSize: Appearance.font.pixelSize.smallest
-                            font.weight: Font.DemiBold
-                            color: settledColors.colOnLayer1
+                    ]
+                    trailingText: String((nexusLocalGraphCard.activeLocalGraph?.nodes ?? []).length) + " nodes"
+                    actions: [
+                        {
+                            "icon": "center_focus_strong",
+                            "tip": "Reset View",
+                            "active": false,
+                            "onClick": () => localGraphCanvas.resetView()
                         }
-                        StyledText {
-                            text: String((nexusLocalGraphCard.activeLocalGraph?.nodes ?? []).length) + " nodes"
-                            font.pixelSize: Appearance.font.pixelSize.smallest
-                            color: settledColors.colSubtext
-                        }
-                        CardReorderPill {
-                            cardId: "localGraph"
-                            cardHovered: localGraphCardHover.hovered
-                        }
-                    }
+                    ]
                 }
             }
             }
@@ -3719,12 +4562,12 @@ FocusScope {
                                     if (!vimOn)
                                         return settledColors.colSecondaryContainer;
                                     if (vimState === "INSERT")
-                                        return "#9ece6a";
+                                        return settledColors.colTertiary;
                                     if (vimState === "VISUAL")
-                                        return "#bb9af7";
+                                        return settledColors.colSecondary;
                                     if (vimState === "COMMAND" || vimState === "SEARCH")
-                                        return "#e0af68";
-                                    return "#7dcfff";
+                                        return root.mixColorHex(settledColors.colPrimary, settledColors.colTertiary, 0.50);
+                                    return settledColors.colPrimary;
                                 }
 
                                 RowLayout {
@@ -3734,7 +4577,7 @@ FocusScope {
                                     MaterialSymbol {
                                         text: vimBadge.inEditMode ? "terminal" : "menu_book"
                                         iconSize: 14
-                                        color: (vimBadge.inEditMode && vimBadge.vimOn) ? "#1a1b26" : settledColors.colPrimary
+                                        color: (vimBadge.inEditMode && vimBadge.vimOn) ? settledColors.colOnPrimary : settledColors.colPrimary
                                     }
                                     StyledText {
                                         id: vimBadgeText
@@ -3747,7 +4590,7 @@ FocusScope {
                                         }
                                         font.pixelSize: Appearance.font.pixelSize.smallest
                                         font.weight: vimBadge.inEditMode ? Font.Bold : Font.DemiBold
-                                        color: (vimBadge.inEditMode && vimBadge.vimOn) ? "#1a1b26" : settledColors.colOnLayer1
+                                        color: (vimBadge.inEditMode && vimBadge.vimOn) ? settledColors.colOnPrimary : settledColors.colOnLayer1
                                     }
                                 }
 
@@ -4352,18 +5195,27 @@ FocusScope {
                                                 radius: 6
                                                 color: modelData.primary
                                                     ? settledColors.colPrimary
-                                                    : (heroPillMouse.containsMouse ? Qt.rgba(0.51, 0.76, 0.81, 0.16) : Qt.rgba(0.51, 0.76, 0.81, 0.08))
+                                                    : (heroPillMouse.containsMouse
+                                                        ? settledColors.colSecondaryContainer
+                                                        : settledColors.colLayer2)
                                                 border.width: 1
-                                                border.color: modelData.primary ? settledColors.colPrimary : "#2e82c2cf"
+                                                border.color: modelData.primary
+                                                    ? settledColors.colPrimary
+                                                    : (heroPillMouse.containsMouse
+                                                        ? Qt.alpha(settledColors.colPrimary, 0.65)
+                                                        : Qt.alpha(settledColors.colPrimary, 0.28))
 
                                                 StyledText {
                                                     id: pillLabel
                                                     anchors.centerIn: parent
+                                                    horizontalAlignment: Text.AlignHCenter
                                                     text: modelData.label
                                                     font.family: Appearance.font.family.monospace
                                                     font.pixelSize: Appearance.font.pixelSize.smallest
                                                     font.weight: modelData.primary ? Font.Bold : Font.DemiBold
-                                                    color: modelData.primary ? "#0d1216" : settledColors.colPrimary
+                                                    color: modelData.primary
+                                                        ? settledColors.colOnPrimary
+                                                        : (heroPillMouse.containsMouse ? settledColors.colOnSecondaryContainer : settledColors.colPrimary)
                                                 }
                                                 MouseArea {
                                                     id: heroPillMouse
@@ -4387,13 +5239,14 @@ FocusScope {
                                 }
                             }
 
-                            // Ornamental Diamond Divider (`─── ◇ ───`)
+                            // Ornamental Diamond Divider (`─── ◇ ───`) — auto-themed to Alis
                             RowLayout {
+                                objectName: "nexusOrnamentalSeparator"
                                 Layout.fillWidth: true
                                 spacing: 10
-                                Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#268dc9d6" }
-                                StyledText { text: "◇"; font.pixelSize: 10; color: "#8dc9d6" }
-                                Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#268dc9d6" }
+                                Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Qt.alpha(settledColors.colPrimary, 0.28) }
+                                StyledText { text: "◇"; font.pixelSize: 10; color: settledColors.colPrimary }
+                                Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Qt.alpha(settledColors.colPrimary, 0.28) }
                             }
 
                             // Vertical Splitter for Hero Dashboard Card Height (hover-only)
@@ -5307,7 +6160,7 @@ FocusScope {
                                             "id": "movies",
                                             "title": "Movies Tracker",
                                             "icon": "movie",
-                                            "accent": "#f7768e",
+                                            "accent": String(settledColors.colPrimary),
                                             "count": (root.nexus?.collections?.movies ?? []).length,
                                             "subtitle": "Posters · IMDb · Cast · Plot"
                                         },
@@ -5315,7 +6168,7 @@ FocusScope {
                                             "id": "tvSeries",
                                             "title": "TV-Series Tracker",
                                             "icon": "live_tv",
-                                            "accent": "#ff9e64",
+                                            "accent": root.mixColorHex(settledColors.colPrimary, settledColors.colSecondary, 0.55),
                                             "count": (root.nexus?.collections?.tvseries ?? root.nexus?.collections?.tvSeries ?? []).length,
                                             "subtitle": "Seasons · Status · Ratings"
                                         },
@@ -5323,7 +6176,7 @@ FocusScope {
                                             "id": "games",
                                             "title": "Games Library",
                                             "icon": "sports_esports",
-                                            "accent": "#73daca",
+                                            "accent": String(settledColors.colSecondary),
                                             "count": (root.nexus?.collections?.games ?? []).length,
                                             "subtitle": "Play status · Genres · Steam"
                                         },
@@ -5331,7 +6184,7 @@ FocusScope {
                                             "id": "books",
                                             "title": "Books & Reading",
                                             "icon": "menu_book",
-                                            "accent": "#c0caf5",
+                                            "accent": root.mixColorHex(settledColors.colPrimary, settledColors.colTertiary, 0.50),
                                             "count": (root.nexus?.collections?.books ?? []).length,
                                             "subtitle": "Authors · Progress · Notes"
                                         },
@@ -5339,7 +6192,7 @@ FocusScope {
                                             "id": "recipes",
                                             "title": "Cooking & Recipes",
                                             "icon": "restaurant",
-                                            "accent": "#e0af68",
+                                            "accent": String(settledColors.colTertiary),
                                             "count": (root.nexus?.collections?.recipes ?? []).length,
                                             "subtitle": "Macros · Ingredients · Steps"
                                         },
@@ -5347,7 +6200,7 @@ FocusScope {
                                             "id": "exercises",
                                             "title": "Gym & Calisthenics",
                                             "icon": "fitness_center",
-                                            "accent": "#9ece6a",
+                                            "accent": root.mixColorHex(settledColors.colTertiary, settledColors.colSecondary, 0.50),
                                             "count": (root.nexus?.collections?.exercises ?? []).length,
                                             "subtitle": "Muscles · Sets · Form Guide"
                                         },
@@ -5363,7 +6216,7 @@ FocusScope {
                                             "id": "websites",
                                             "title": "Onion Web-Sites",
                                             "icon": "language",
-                                            "accent": "#2ac3de",
+                                            "accent": String(settledColors.colPrimary),
                                             "count": (root.nexus?.collections?.websites ?? []).length,
                                             "subtitle": ".onion directory · Categories"
                                         },
@@ -5371,7 +6224,7 @@ FocusScope {
                                             "id": "cornell",
                                             "title": "Cornell Study Notes",
                                             "icon": "school",
-                                            "accent": "#e0af68",
+                                            "accent": root.mixColorHex(settledColors.colPrimary, root.ccStop(11), 0.65),
                                             "count": (root.nexus?.collections?.cornell ?? []).length,
                                             "subtitle": "Cues (? ! .) · Marginalia"
                                         },
@@ -5379,7 +6232,7 @@ FocusScope {
                                             "id": "zettelkasten",
                                             "title": "Zettelkasten Hub",
                                             "icon": "psychology",
-                                            "accent": "#9ece6a",
+                                            "accent": String(settledColors.colSecondary),
                                             "count": (root.nexus?.collections?.zettelkasten ?? []).length,
                                             "subtitle": "Literature · Permanent · MOCs"
                                         },
@@ -5387,7 +6240,7 @@ FocusScope {
                                             "id": "finance",
                                             "title": "Finance & Ledger",
                                             "icon": "account_balance_wallet",
-                                            "accent": "#7dcfff",
+                                            "accent": String(settledColors.colTertiary),
                                             "count": (root.nexus?.collections?.finance ?? []).length,
                                             "subtitle": "Income · Spending · Reports"
                                         },
@@ -5395,7 +6248,7 @@ FocusScope {
                                             "id": "clippings",
                                             "title": "Web Clippings",
                                             "icon": "bookmark",
-                                            "accent": "#a6adc8",
+                                            "accent": root.mixColorHex(settledColors.colSecondary, root.ccStop(11), 0.55),
                                             "count": (root.nexus?.collections?.clippings ?? []).length,
                                             "subtitle": "Saved articles · Sources"
                                         }
@@ -5421,9 +6274,9 @@ FocusScope {
                                                 width: 36
                                                 height: 36
                                                 radius: 8
-                                                color: Qt.rgba(0.12, 0.14, 0.20, 0.75)
+                                                color: root.mixColorHex(modelData.accent, settledColors.colLayer1, 0.16)
                                                 border.width: 1
-                                                border.color: modelData.accent
+                                                border.color: Qt.alpha(Qt.color(modelData.accent), 0.65)
 
                                                 MaterialSymbol {
                                                     anchors.centerIn: parent
@@ -5635,6 +6488,7 @@ FocusScope {
                                     workspace: root
                                     isLocal: false
                                     compact: false
+                                    allow3D: true
                                     graphData: ((root.nexus?.activeView ?? "homepage") === "graph")
                                         ? (root.nexus?.vaultGraph ?? {
                                             "nodes": [],
@@ -5648,10 +6502,7 @@ FocusScope {
                                         })
                                     currentPath: String(root.nexus?.currentPath ?? "")
                                     clusterPalette: root.clusterPalette
-                                    onNodeActivated: nodeData => {
-                                        if (root.nexus && nodeData && nodeData.relPath)
-                                            root.nexus.openFile(nodeData.relPath, true);
-                                    }
+                                    onNodeActivated: nodeData => root.activateGraphNode(nodeData)
                                 }
                             }
                         }
@@ -5900,21 +6751,30 @@ FocusScope {
                 Layout.minimumHeight: targetHeight
                 Layout.maximumHeight: targetHeight
 
-            // Top Right Card: Mini Calendar & Daily Journal (Obsidian Calendar visual parity)
+            // Top Right Card: Mini Calendar & Daily Journal (100% Obsidian Calendar Plugin Parity + Full Alis Auto-Theming)
             Rectangle {
                 id: nexusCalendarCard
                 objectName: "nexusCalendarCard"
                 anchors.fill: parent
                 radius: Appearance.rounding.normal ?? 12
                 color: settledColors.colLayer1
-                border.width: (root.dropTargetCardId === "calendar" && root.draggingCardId !== "" && root.draggingCardId !== "calendar") ? 2 : 1
-                border.color: (root.dropTargetCardId === "calendar" && root.draggingCardId !== "" && root.draggingCardId !== "calendar")
-                    ? settledColors.colPrimary
-                    : settledColors.colLayer0Border
+                border.width: 1
+                border.color: settledColors.colLayer0Border
                 clip: true
 
                 HoverHandler {
                     id: calendarCardHover
+                }
+
+                WheelHandler {
+                    onWheel: event => {
+                        if (!root.nexus)
+                            return;
+                        if (event.angleDelta.y > 0)
+                            root.nexus.prevCalendarMonth();
+                        else if (event.angleDelta.y < 0)
+                            root.nexus.nextCalendarMonth();
+                    }
                 }
 
                 readonly property string monthLabel: {
@@ -5927,13 +6787,29 @@ FocusScope {
                     const parts = hdr.split(/\s+/);
                     return parts.length > 1 ? parts[parts.length - 1] : String(root.nexus?.calendarYear || 2026);
                 }
+                readonly property string activeDailyDateIso: {
+                    if ((root.nexus?.activeView ?? "") !== "document")
+                        return "";
+                    const cur = String(root.nexus?.currentPath ?? "");
+                    if (cur.length === 0)
+                        return "";
+                    // Match YYYY-MM-DD anywhere in filename stem (e.g. 2026-11-13.md)
+                    const iso = cur.match(/(\d{4})-(\d{2})-(\d{2})(?:[^/]*)\.md$/i);
+                    if (iso)
+                        return iso[1] + "-" + iso[2] + "-" + iso[3];
+                    // Match DD-MM-YYYY-DayName.md (Obsidian daily note format, e.g. 13-11-2026-Friday.md)
+                    const dmy = cur.match(/(?:^|\/)(\d{2})-(\d{2})-(\d{4})(?:[^/]*)\.md$/i);
+                    if (dmy)
+                        return dmy[3] + "-" + dmy[2] + "-" + dmy[1];
+                    return "";
+                }
 
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 10
                     spacing: 5
 
-                    // Calendar Header: Month (text-normal) + Year (colPrimary) + < TODAY > + Reorder Pill
+                    // Calendar Header: Month (text-normal) + Year (colPrimary) + < TODAY >
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 4
@@ -5992,7 +6868,7 @@ FocusScope {
                                 font.pixelSize: 10
                                 font.weight: Font.Bold
                                 font.letterSpacing: 0.6
-                                color: settledColors.colSubtext
+                                color: todayCalMouse.containsMouse ? settledColors.colPrimary : settledColors.colSubtext
                             }
                             MouseArea {
                                 id: todayCalMouse
@@ -6030,107 +6906,236 @@ FocusScope {
                                 }
                             }
                         }
-
-                        CardReorderPill {
-                            cardId: "calendar"
-                            cardHovered: calendarCardHover.hovered
-                        }
                     }
 
-                    // Weekday Names Row (MON..SUN — uniform muted subtext matching Obsidian Calendar)
-                    GridLayout {
+                    // Weekday Names Row (optional W column + MON..SUN)
+                    RowLayout {
                         Layout.fillWidth: true
-                        columns: 7
-                        columnSpacing: 2
+                        spacing: 2
 
-                        Repeater {
-                            model: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-                            delegate: StyledText {
-                                required property string modelData
-                                required property int index
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignHCenter
-                                text: modelData
-                                font.pixelSize: 9
-                                font.weight: Font.Bold
-                                font.letterSpacing: 0.5
-                                color: settledColors.colSubtext
+                        StyledText {
+                            visible: root.showCalendarWeekNumbers
+                            Layout.preferredWidth: 20
+                            horizontalAlignment: Text.AlignHCenter
+                            text: "W"
+                            font.pixelSize: 9
+                            font.weight: Font.Bold
+                            color: Qt.alpha(settledColors.colSubtext, 0.72)
+                        }
+
+                        GridLayout {
+                            Layout.fillWidth: true
+                            columns: 7
+                            columnSpacing: 2
+
+                            Repeater {
+                                model: (root.nexus?.calendarWeekStart ?? "monday") === "sunday"
+                                    ? ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+                                    : ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+                                delegate: StyledText {
+                                    required property string modelData
+                                    required property int index
+                                    readonly property bool isWeekend: (root.nexus?.calendarWeekStart ?? "monday") === "sunday"
+                                        ? (index === 0 || index === 6)
+                                        : (index >= 5)
+                                    Layout.fillWidth: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: modelData
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 0.5
+                                    color: isWeekend ? Qt.alpha(settledColors.colPrimary, 0.78) : settledColors.colSubtext
+                                }
                             }
                         }
                     }
 
-                    // 42-cell Calendar Day Grid (matching Obsidian Calendar: 1px inset border on Today with transparent background, journal dot indicator below date)
-                    GridLayout {
-                        id: calendarGrid
-                        objectName: "nexusCalendarGrid"
+                    // 42-cell Calendar Day Grid — 100% Obsidian Calendar Plugin Parity:
+                    // - Indicator Type 1: 1..5 filled word-count dots (`•`)
+                    // - Indicator Type 2: hollow open-task circle (`○`)
+                    // - 100% Alis auto-themed borders, active daily note highlight, hover tooltip & right-click menu
+                    RowLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.minimumHeight: 132
-                        columns: 7
-                        columnSpacing: 2
-                        rowSpacing: 2
+                        spacing: 2
 
-                        Repeater {
-                            model: root.nexus?.calendarCells ?? []
-                            delegate: Rectangle {
-                                id: calDayCell
-                                required property var modelData
-                                readonly property bool isSelected: (root.nexus?.selectedDateStr ?? "") === modelData.dateStr
-                                implicitWidth: 28
-                                implicitHeight: 22
-                                Layout.minimumWidth: 22
-                                Layout.minimumHeight: 18
-                                Layout.preferredHeight: Math.max(18, Math.floor((calendarGrid.height - 10) / 6))
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                radius: 6
-                                color: (!modelData.isToday && isSelected)
-                                    ? Qt.rgba(0.51, 0.76, 0.81, 0.12)
-                                    : (dayCellMouse.containsMouse ? settledColors.colLayer2Hover : "transparent")
-                                border.width: (modelData.isToday || isSelected) ? 1 : 0
-                                border.color: modelData.isToday
-                                    ? settledColors.colPrimary
-                                    : (isSelected ? Qt.rgba(0.51, 0.76, 0.81, 0.55) : "transparent")
-                                opacity: modelData.inMonth ? 1.0 : 0.30
+                        // Optional ISO Week Numbers Column
+                        ColumnLayout {
+                            visible: root.showCalendarWeekNumbers
+                            Layout.preferredWidth: 20
+                            Layout.fillHeight: true
+                            spacing: 2
 
-                                ColumnLayout {
-                                    anchors.centerIn: parent
-                                    spacing: 1
-
-                                    StyledText {
-                                        Layout.alignment: Qt.AlignHCenter
-                                        text: String(calDayCell.modelData.day ?? "")
-                                        font.pixelSize: 11
-                                        font.weight: (calDayCell.modelData.isToday || calDayCell.modelData.hasJournal || calDayCell.isSelected) ? Font.DemiBold : Font.Normal
-                                        color: calDayCell.modelData.isToday
-                                            ? settledColors.colPrimary
-                                            : settledColors.colOnLayer1
+                            Repeater {
+                                model: 6
+                                delegate: Item {
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    readonly property var weekCell: {
+                                        const arr = root.nexus?.calendarCells ?? [];
+                                        const idx = index * 7;
+                                        return idx < arr.length ? arr[idx] : null;
                                     }
-
-                                    Item {
-                                        Layout.alignment: Qt.AlignHCenter
-                                        implicitWidth: 10
-                                        implicitHeight: 5
-                                        height: 5
-
-                                        Rectangle {
-                                            anchors.centerIn: parent
-                                            visible: Boolean(calDayCell.modelData.hasJournal)
-                                            width: 4
-                                            height: 4
-                                            radius: 2
-                                            color: settledColors.colPrimary
-                                        }
+                                    StyledText {
+                                        anchors.centerIn: parent
+                                        text: weekCell && Number(weekCell.weekNumber ?? 0) > 0
+                                            ? String(weekCell.weekNumber)
+                                            : ""
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 9
+                                        color: Qt.alpha(settledColors.colSubtext, 0.65)
                                     }
                                 }
+                            }
+                        }
 
-                                MouseArea {
-                                    id: dayCellMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (root.nexus) {
+                        GridLayout {
+                            id: calendarGrid
+                            objectName: "nexusCalendarGrid"
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            columns: 7
+                            columnSpacing: 2
+                            rowSpacing: 2
+
+                            Repeater {
+                                model: root.nexus?.calendarCells ?? []
+                                delegate: Rectangle {
+                                    id: calDayCell
+                                    required property var modelData
+                                    readonly property bool isToday: Boolean(modelData.isToday)
+                                    readonly property bool isActiveDoc: (root.nexus?.activeView === "document") && (
+                                        (String(modelData.journalPath ?? "").length > 0 && String(modelData.journalPath ?? "") === String(root.nexus?.currentPath ?? ""))
+                                        || (nexusCalendarCard.activeDailyDateIso.length > 0 && nexusCalendarCard.activeDailyDateIso === String(modelData.dateStr ?? ""))
+                                    )
+                                    readonly property bool isSelected: (root.nexus?.selectedDateStr ?? "") === String(modelData.dateStr ?? "")
+                                    readonly property int solidDotCount: {
+                                        const raw = Number(modelData.solidDots ?? -1);
+                                        if (raw >= 0)
+                                            return Math.min(5, raw);
+                                        return Boolean(modelData.hasJournal) ? 1 : 0;
+                                    }
+                                    readonly property bool hasOpenTasks: Boolean(modelData.hasOpenTasks) || Number(modelData.openTasks ?? 0) > 0
+                                    implicitWidth: 28
+                                    implicitHeight: 22
+                                    Layout.minimumWidth: 20
+                                    Layout.minimumHeight: 18
+                                    Layout.preferredHeight: Math.max(18, Math.floor((calendarGrid.height - 10) / 6))
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: 6
+                                    color: {
+                                        if (isActiveDoc)
+                                            return settledColors.colSecondaryContainer;
+                                        if (isToday)
+                                            return Qt.alpha(settledColors.colPrimary, 0.14);
+                                        if (isSelected)
+                                            return Qt.alpha(settledColors.colPrimary, 0.12);
+                                        if (dayCellMouse.containsMouse)
+                                            return settledColors.colLayer2Hover;
+                                        return "transparent";
+                                    }
+                                    border.width: (isToday || isSelected || isActiveDoc || dayCellMouse.containsMouse) ? 1 : 0
+                                    border.color: {
+                                        if (isToday)
+                                            return settledColors.colPrimary;
+                                        if (isActiveDoc)
+                                            return Qt.alpha(settledColors.colPrimary, 0.78);
+                                        if (isSelected)
+                                            return Qt.alpha(settledColors.colPrimary, 0.52);
+                                        if (dayCellMouse.containsMouse)
+                                            return settledColors.colLayer0Border;
+                                        return "transparent";
+                                    }
+                                    opacity: modelData.inMonth ? 1.0 : 0.30
+
+                                    ColumnLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 1
+
+                                        StyledText {
+                                            Layout.alignment: Qt.AlignHCenter
+                                            text: String(calDayCell.modelData.day ?? "")
+                                            font.pixelSize: 11
+                                            font.weight: (calDayCell.isToday || calDayCell.isActiveDoc || calDayCell.modelData.hasJournal || calDayCell.isSelected) ? Font.DemiBold : Font.Normal
+                                            color: calDayCell.isToday
+                                                ? settledColors.colPrimary
+                                                : (calDayCell.isActiveDoc ? settledColors.colOnSecondaryContainer : settledColors.colOnLayer1)
+                                        }
+
+                                        // Dual Obsidian Calendar Plugin Indicators:
+                                        // 1) Filled dots (`•`, 1..5 proportional to word count)
+                                        // 2) Hollow circle (`○`) when the daily note has open/incomplete tasks
+                                        Row {
+                                            objectName: "nexusCalendarDualIndicators"
+                                            Layout.alignment: Qt.AlignHCenter
+                                            spacing: 2
+                                            height: 5
+
+                                            Repeater {
+                                                model: calDayCell.solidDotCount
+                                                delegate: Rectangle {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    width: 3.5
+                                                    height: 3.5
+                                                    radius: 2
+                                                    color: calDayCell.isActiveDoc ? settledColors.colOnSecondaryContainer : settledColors.colPrimary
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                objectName: "nexusCalendarHollowTaskDot"
+                                                visible: calDayCell.hasOpenTasks
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: 4.5
+                                                height: 4.5
+                                                radius: 2.25
+                                                color: "transparent"
+                                                border.width: 1.15
+                                                border.color: calDayCell.isActiveDoc
+                                                    ? settledColors.colOnSecondaryContainer
+                                                    : settledColors.colTertiary
+                                            }
+                                        }
+                                    }
+
+                                    ToolTip.visible: dayCellMouse.containsMouse && (calDayCell.solidDotCount > 0 || calDayCell.hasOpenTasks)
+                                    ToolTip.delay: 260
+                                    ToolTip.text: {
+                                        const parts = [String(calDayCell.modelData.dateStr ?? "")];
+                                        const wc = Number(calDayCell.modelData.wordCount ?? 0);
+                                        if (wc > 0)
+                                            parts.push(String(wc) + " words");
+                                        else if (calDayCell.modelData.hasJournal)
+                                            parts.push("Daily note");
+                                        const openT = Number(calDayCell.modelData.openTasks ?? 0);
+                                        const doneT = Number(calDayCell.modelData.doneTasks ?? 0);
+                                        if (openT > 0 || doneT > 0)
+                                            parts.push(String(openT) + " open / " + String(doneT) + " done tasks");
+                                        return parts.join(" · ");
+                                    }
+
+                                    MouseArea {
+                                        id: dayCellMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: mouse => {
+                                            if (!root.nexus)
+                                                return;
+                                            if (mouse.button === Qt.RightButton) {
+                                                const pt = mapToItem(root, mouse.x, mouse.y);
+                                                root.openContextMenu(pt.x, pt.y, {
+                                                    "type": "calendarDay",
+                                                    "title": String(calDayCell.modelData.dateStr ?? ""),
+                                                    "dateStr": String(calDayCell.modelData.dateStr ?? ""),
+                                                    "hasJournal": Boolean(calDayCell.modelData.hasJournal)
+                                                });
+                                                return;
+                                            }
                                             root.nexus.selectedDateStr = calDayCell.modelData.dateStr;
                                             if (GlobalStates.dashboardPlannerBrowser) {
                                                 const nextState = Object.assign({}, GlobalStates.dashboardPlannerBrowser);
@@ -6144,6 +7149,41 @@ FocusScope {
                             }
                         }
                     }
+                }
+
+                // Obsidian-style top-edge hover slide-down icon tab bar
+                WorkspaceHoverTabBar {
+                    tabBarObjectName: "nexusCalendarHoverTabBar"
+                    tabs: [
+                        {
+                            "id": "calendar",
+                            "icon": "calendar_month",
+                            "label": "Calendar",
+                            "active": true
+                        }
+                    ]
+                    actions: [
+                        {
+                            "icon": "view_week",
+                            "tip": "Toggle ISO Week Numbers",
+                            "active": root.showCalendarWeekNumbers,
+                            "onClick": () => {
+                                root.calendarShowWeekNumbersOverride = !root.showCalendarWeekNumbers;
+                                root.calendarWeekNumbersUserToggled = true;
+                            }
+                        },
+                        {
+                            "icon": "today",
+                            "tip": "Jump to Today",
+                            "active": false,
+                            "onClick": () => {
+                                if (root.nexus) {
+                                    root.nexus.jumpCalendarToday();
+                                    root.nexus.openDailyNote();
+                                }
+                            }
+                        }
+                    ]
                 }
             }
             }
@@ -6262,61 +7302,37 @@ FocusScope {
                     graphData: nexusVaultGraphCard.graphData
                     currentPath: String(root.nexus?.currentPath ?? "")
                     clusterPalette: root.clusterPalette
-                    onNodeActivated: nodeData => {
-                        if (root.nexus && nodeData && nodeData.relPath)
-                            root.nexus.openFile(nodeData.relPath, true);
-                    }
+                    onNodeActivated: nodeData => root.activateGraphNode(nodeData)
                 }
 
-                // Floating top header bar (shown on hover)
-                RowLayout {
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 8
-                    spacing: 6
-                    z: 10
-                    opacity: (vaultGraphCardHover.hovered || root.draggingCardId.length > 0) ? 1.0 : 0.0
-                    Behavior on opacity {
-                        NumberAnimation { duration: 150 }
-                    }
-
-                    MaterialSymbol {
-                        text: "scatter_plot"
-                        iconSize: 15
-                        color: settledColors.colPrimary
-                    }
-                    StyledText {
-                        Layout.fillWidth: true
-                        text: "Vault Graph"
-                        font.pixelSize: Appearance.font.pixelSize.smaller
-                        font.weight: Font.DemiBold
-                        color: settledColors.colOnLayer1
-                    }
-                    Rectangle {
-                        width: 20
-                        height: 20
-                        radius: 5
-                        color: settledColors.colLayer0
-                        MaterialSymbol {
-                            anchors.centerIn: parent
-                            text: "open_in_full"
-                            iconSize: 13
-                            color: settledColors.colSubtext
+                // Obsidian-style top-edge hover slide-down icon tab bar
+                WorkspaceHoverTabBar {
+                    tabBarObjectName: "nexusVaultGraphHoverTabBar"
+                    tabs: [
+                        {
+                            "id": "vaultGraph",
+                            "icon": "scatter_plot",
+                            "label": "Vault Graph",
+                            "active": true
                         }
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
+                    ]
+                    actions: [
+                        {
+                            "icon": "center_focus_strong",
+                            "tip": "Reset View",
+                            "active": false,
+                            "onClick": () => vaultGraphCanvas.resetView()
+                        },
+                        {
+                            "icon": "open_in_full",
+                            "tip": "Open Full 2D/3D Graph",
+                            "active": false,
+                            "onClick": () => {
                                 if (root.nexus)
                                     root.nexus.openGraphView();
                             }
                         }
-                    }
-                    CardReorderPill {
-                        cardId: "vaultGraph"
-                        cardHovered: vaultGraphCardHover.hovered
-                    }
+                    ]
                 }
             }
             }
@@ -6665,11 +7681,6 @@ FocusScope {
                                     root.nexus.rightBottomTab = cur === "schedule" ? "outline" : (cur === "outline" ? "flashcards" : "schedule");
                                 }
                             }
-                        }
-
-                        CardReorderPill {
-                            cardId: "context"
-                            cardHovered: contextCardHover.hovered
                         }
                     }
 
@@ -7162,6 +8173,35 @@ FocusScope {
                         }
                     }
                 }
+
+                // Obsidian-style top-edge hover slide-down icon tab bar for Planner / Outline / ZK
+                WorkspaceHoverTabBar {
+                    tabBarObjectName: "nexusContextHoverTabBar"
+                    tabs: [
+                        {
+                            "id": "schedule",
+                            "icon": "calendar_view_week",
+                            "label": "",
+                            "active": (root.nexus?.rightBottomTab ?? "schedule") === "schedule"
+                        },
+                        {
+                            "id": "outline",
+                            "icon": "format_list_bulleted",
+                            "label": "",
+                            "active": (root.nexus?.rightBottomTab ?? "schedule") === "outline"
+                        },
+                        {
+                            "id": "flashcards",
+                            "icon": "style",
+                            "label": "",
+                            "active": (root.nexus?.rightBottomTab ?? "schedule") === "flashcards"
+                        }
+                    ]
+                    onTabSelected: tabId => {
+                        if (root.nexus)
+                            root.nexus.rightBottomTab = tabId;
+                    }
+                }
             }
             }
         }
@@ -7273,12 +8313,14 @@ FocusScope {
         id: nexusContextBackdrop
         anchors.fill: parent
         z: 699
-        visible: root.contextMenuOpen || root.renameDialogOpen
+        visible: root.contextMenuOpen || root.renameDialogOpen || root.tagDialogOpen
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
         onClicked: {
             root.closeContextMenu();
             if (root.renameDialogOpen)
                 root.renameDialogOpen = false;
+            if (root.tagDialogOpen)
+                root.tagDialogOpen = false;
         }
     }
 
@@ -7507,6 +8549,242 @@ FocusScope {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: renameInput.accepted()
+                    }
+                }
+            }
+        }
+    }
+
+    // Tag Wrangler+ Modal Dialog (Atomic Vault-Wide Tag Rename / Merge)
+    Rectangle {
+        id: nexusTagActionDialog
+        objectName: "nexusTagActionDialog"
+        visible: root.tagDialogOpen
+        z: 752
+        anchors.centerIn: parent
+        width: 400
+        implicitHeight: tagActionCol.implicitHeight + 28
+        height: implicitHeight
+        radius: 10
+        color: settledColors.colLayer1
+        border.width: 1
+        border.color: settledColors.colPrimary
+
+        ColumnLayout {
+            id: tagActionCol
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 12
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                MaterialSymbol {
+                    text: root.tagDialogMode === "merge" ? "merge_type" : "drive_file_rename_outline"
+                    iconSize: 18
+                    color: settledColors.colPrimary
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: root.tagDialogMode === "merge" ? "Merge Tag Across Vault" : "Rename Tag Across Vault"
+                    font.pixelSize: Appearance.font.pixelSize.normal
+                    font.weight: Font.Bold
+                    color: settledColors.colPrimary
+                }
+            }
+
+            StyledText {
+                Layout.fillWidth: true
+                text: (root.tagDialogMode === "merge" ? "Merge #" : "Rename #") + root.tagDialogSourceTag + " into:"
+                font.family: Appearance.font.family.monospace
+                font.pixelSize: Appearance.font.pixelSize.smallest
+                color: settledColors.colSubtext
+                elide: Text.ElideMiddle
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 36
+                radius: 6
+                color: settledColors.colLayer0
+                border.width: 1
+                border.color: tagActionInput.activeFocus ? settledColors.colPrimary : settledColors.colLayer0Border
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    spacing: 4
+                    StyledText {
+                        text: "#"
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        font.weight: Font.Bold
+                        color: settledColors.colPrimary
+                    }
+                    TextInput {
+                        id: tagActionInput
+                        objectName: "nexusTagActionInput"
+                        Layout.fillWidth: true
+                        verticalAlignment: TextInput.AlignVCenter
+                        text: root.tagDialogTargetTag
+                        font.family: Appearance.font.family.monospace
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        color: settledColors.colOnLayer1
+                        selectByMouse: true
+                        focus: root.tagDialogOpen
+                        onAccepted: {
+                            const nextTag = text.trim().replace(/^#+/, "");
+                            if (nextTag.length > 0 && nextTag !== root.tagDialogSourceTag && root.nexus) {
+                                if (root.tagDialogMode === "merge")
+                                    root.nexus.mergeTag(root.tagDialogSourceTag, nextTag, root.tagDialogIncludeSubtags);
+                                else
+                                    root.nexus.renameTag(root.tagDialogSourceTag, nextTag, root.tagDialogIncludeSubtags);
+                            }
+                            root.tagDialogOpen = false;
+                            root.restoreWorkspaceFocus();
+                        }
+                        Keys.onEscapePressed: {
+                            root.tagDialogOpen = false;
+                            root.restoreWorkspaceFocus();
+                        }
+                    }
+                }
+            }
+
+            // Existing Tag Quick-Pick Suggestions when Merging
+            Flow {
+                id: tagMergeSuggestions
+                objectName: "nexusTagMergeSuggestions"
+                visible: root.tagDialogMode === "merge" && mergeCandidateTags.length > 0
+                Layout.fillWidth: true
+                spacing: 5
+                readonly property var mergeCandidateTags: {
+                    if (root.tagDialogMode !== "merge")
+                        return [];
+                    const srcLow = root.tagDialogSourceTag.toLowerCase();
+                    const q = tagActionInput.text.trim().replace(/^#+/, "").toLowerCase();
+                    const all = root.nexus?.tags ?? [];
+                    const out = [];
+                    for (let i = 0; i < all.length && out.length < 8; ++i) {
+                        const rawName = String(all[i]?.tag ?? all[i]?.name ?? "").replace(/^#+/, "").trim();
+                        if (rawName.length === 0 || rawName.toLowerCase() === srcLow)
+                            continue;
+                        if (q.length > 0 && rawName.toLowerCase().indexOf(q) === -1)
+                            continue;
+                        out.push(rawName);
+                    }
+                    return out;
+                }
+
+                Repeater {
+                    model: tagMergeSuggestions.mergeCandidateTags
+                    delegate: Rectangle {
+                        required property string modelData
+                        height: 22
+                        width: sugTxt.implicitWidth + 12
+                        radius: 11
+                        color: sugMouse.containsMouse ? settledColors.colSecondaryContainer : settledColors.colLayer2
+                        border.width: 1
+                        border.color: sugMouse.containsMouse ? settledColors.colPrimary : settledColors.colLayer0Border
+                        StyledText {
+                            id: sugTxt
+                            anchors.centerIn: parent
+                            text: "#" + modelData
+                            font.family: Appearance.font.family.monospace
+                            font.pixelSize: 10
+                            color: sugMouse.containsMouse ? settledColors.colPrimary : settledColors.colOnLayer1
+                        }
+                        MouseArea {
+                            id: sugMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                tagActionInput.text = modelData;
+                                root.tagDialogTargetTag = modelData;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Include nested subtags checkbox
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Rectangle {
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
+                    radius: 4
+                    color: root.tagDialogIncludeSubtags ? settledColors.colPrimary : settledColors.colLayer0
+                    border.width: 1
+                    border.color: root.tagDialogIncludeSubtags ? settledColors.colPrimary : settledColors.colLayer0Border
+                    MaterialSymbol {
+                        visible: root.tagDialogIncludeSubtags
+                        anchors.centerIn: parent
+                        text: "check"
+                        iconSize: 12
+                        color: settledColors.colOnPrimary
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.tagDialogIncludeSubtags = !root.tagDialogIncludeSubtags
+                    }
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    text: "Include nested subtags (#" + root.tagDialogSourceTag + "/...)"
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    color: settledColors.colOnLayer1
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                Rectangle {
+                    implicitWidth: 80
+                    implicitHeight: 30
+                    radius: 6
+                    color: cancelTagBtnMouse.containsMouse ? settledColors.colLayer2Hover : settledColors.colLayer2
+                    StyledText {
+                        anchors.centerIn: parent
+                        text: "Cancel"
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: settledColors.colSubtext
+                    }
+                    MouseArea {
+                        id: cancelTagBtnMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            root.tagDialogOpen = false;
+                            root.restoreWorkspaceFocus();
+                        }
+                    }
+                }
+                Rectangle {
+                    implicitWidth: 92
+                    implicitHeight: 30
+                    radius: 6
+                    color: applyTagBtnMouse.containsMouse ? settledColors.colPrimary : settledColors.colSecondaryContainer
+                    StyledText {
+                        anchors.centerIn: parent
+                        text: root.tagDialogMode === "merge" ? "Merge Tag" : "Rename Tag"
+                        font.weight: Font.DemiBold
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: applyTagBtnMouse.containsMouse ? settledColors.colOnPrimary : settledColors.colOnSecondaryContainer
+                    }
+                    MouseArea {
+                        id: applyTagBtnMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: tagActionInput.accepted()
                     }
                 }
             }

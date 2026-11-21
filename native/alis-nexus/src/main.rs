@@ -864,9 +864,10 @@ pub fn render_markdown_block_rich_html(raw: &str) -> String {
             }
         }
 
-        // Horizontal rule
+        // Horizontal rule (Qt RichText ignores CSS color on <hr/>; emit a 1px themed rule table
+        // whose #334155 sentinel is re-themed dynamically by Nexus themeRichHtml)
         if t == "---" || t == "***" || t == "___" {
-            out.push_str("<hr/>");
+            out.push_str("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"margin-top:8px;margin-bottom:8px;\"><tr><td height=\"1\" style=\"background-color:#334155;font-size:1px;line-height:1px;\"></td></tr></table>");
             idx += 1;
             continue;
         }
@@ -3009,15 +3010,72 @@ fn build_note_dossier_with_index(
         }
     };
 
-    let ingredients_val: Vec<String> = frontmatter
+    let mut ingredients_val: Vec<String> = frontmatter
         .get("ingredients")
         .map(|raw| {
-            raw.split(',')
-                .map(|s| strip_wikilink_brackets(s).trim().to_string())
+            raw.split(|c| c == ',' || c == '\n')
+                .map(|s| strip_wikilink_brackets(s).trim().trim_start_matches('-').trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect()
         })
         .unwrap_or_default();
+
+    let zettel_id_val = {
+        let fm_id = get_clean("id");
+        if !fm_id.is_empty() {
+            fm_id
+        } else {
+            let stem_only = Path::new(rel_path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let digits: String = stem_only.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if digits.len() >= 8 { digits } else { String::new() }
+        }
+    };
+    let zettel_type_val = {
+        let raw_t = get_first_non_empty(&["type", "zettel_type", "note_type"]);
+        let first_t = raw_t.split(',').next().unwrap_or("").trim().to_string();
+        if !first_t.is_empty() { first_t } else { "Atomic".to_string() }
+    };
+    let fin_amount_val = get_first_non_empty(&["baseamount", "amount", "openingbalance", "balance"])
+        .replace(',', "")
+        .parse::<f64>()
+        .unwrap_or(0.0);
+    let fin_tx_type = get_first_non_empty(&["transactiontype", "type"]);
+    let fin_record_kind = if lower_path.contains("/transactions/") {
+        "transaction"
+    } else if lower_path.contains("/accounts/") {
+        "account"
+    } else if lower_path.contains("/subscription/") {
+        "subscription"
+    } else {
+        "report"
+    };
+    if ingredients_val.is_empty() && note_kind == "recipe" {
+        if let Ok(raw_md) = fs::read_to_string(vault_canon.join(rel_path)) {
+            let mut in_ing = false;
+            for line in raw_md.lines() {
+                let t = line.trim();
+                if t.starts_with('#') {
+                    let h = t.trim_start_matches('#').trim().to_ascii_lowercase();
+                    in_ing = h.contains("ingredient") || h.contains("nguyên liệu");
+                    continue;
+                }
+                if in_ing {
+                    if let Some(rest) = t.strip_prefix("- [ ] ").or_else(|| t.strip_prefix("- [x] ")).or_else(|| t.strip_prefix("- [X] ")).or_else(|| t.strip_prefix("- ")).or_else(|| t.strip_prefix("* ")) {
+                        let cleaned = strip_wikilink_brackets(rest).trim().to_string();
+                        if !cleaned.is_empty() {
+                            ingredients_val.push(cleaned);
+                            if ingredients_val.len() >= 18 {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     let dossier = json!({
         "kind": note_kind,
@@ -3046,6 +3104,7 @@ fn build_note_dossier_with_index(
         "wantToVisit": want_to_visit_bool,
         "bookmarked": bookmarked_bool,
         "plot": plot_val,
+        "description": get_first_non_empty(&["recipe_description", "description", "summary", "plot"]),
         "director": get_first_non_empty(&["director", "directors"]),
         "cast": cast_val,
         "actors": cast_val,
@@ -3120,6 +3179,15 @@ fn build_note_dossier_with_index(
         "assignments": get_clean("assignments"),
         "unit": get_clean("unit"),
         "source": get_clean("source"),
+        "zettelId": zettel_id_val,
+        "zettelType": zettel_type_val,
+        "amount": fin_amount_val,
+        "currency": get_clean("currency"),
+        "txType": fin_tx_type,
+        "account": get_first_non_empty(&["account", "fromaccount"]),
+        "merchant": get_clean("merchant"),
+        "billingCycle": get_clean("billingcycle"),
+        "recordKind": fin_record_kind,
         "date": get_first_non_empty(&["date", "created", "datecreated", "date_discovered", "published"]),
         "location": location_val,
         "coordinates": coords_str,
@@ -3147,13 +3215,27 @@ fn is_template_note_summary(note: &ParsedNoteSummary) -> bool {
 }
 
 fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, usize>) -> Value {
+    struct GraphNodeSpec {
+        id: String,
+        title: String,
+        rel_path: String,
+        folder: String,
+        top_folder: String,
+        is_journal: bool,
+        is_tag_node: bool,
+        is_virtual: bool,
+        tag_name: String,
+        tags: Vec<String>,
+    }
+
     let graph_notes: Vec<&ParsedNoteSummary> = notes
         .iter()
         .filter(|n| !is_template_note_summary(n))
         .collect();
-    let n = graph_notes.len();
+    let real_n = graph_notes.len();
 
-    let mut graph_lookup: HashMap<String, usize> = HashMap::with_capacity(n * 3);
+    let mut nodes: Vec<GraphNodeSpec> = Vec::with_capacity(real_n + 64);
+    let mut graph_lookup: HashMap<String, usize> = HashMap::with_capacity(real_n * 3);
     for (idx, note) in graph_notes.iter().enumerate() {
         let rel_key = note.rel_path.trim().trim_end_matches(".md").to_ascii_lowercase();
         let stem_key = note.stem.trim().to_ascii_lowercase();
@@ -3169,18 +3251,31 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
                 graph_lookup.entry(ak).or_insert(idx);
             }
         }
+        nodes.push(GraphNodeSpec {
+            id: note.rel_path.clone(),
+            title: note.title.clone(),
+            rel_path: note.rel_path.clone(),
+            folder: note.folder.clone(),
+            top_folder: note.top_folder.clone(),
+            is_journal: note.is_journal,
+            is_tag_node: false,
+            is_virtual: false,
+            tag_name: String::new(),
+            tags: note.tags.clone(),
+        });
     }
 
     let mut edges_set: BTreeSet<(usize, usize)> = BTreeSet::new();
     let mut undirected_seen: HashSet<(usize, usize)> = HashSet::new();
-    let mut in_deg = vec![0usize; n];
-    let mut out_deg = vec![0usize; n];
+    let mut in_deg = vec![0usize; real_n];
+    let mut out_deg = vec![0usize; real_n];
 
     // 1. Direct [[wikilink]] connections between existing non-template notes
-    let mut unresolved_targets: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    let mut unresolved_targets: BTreeMap<String, (String, Vec<usize>)> = BTreeMap::new();
     for (src_idx, note) in graph_notes.iter().enumerate() {
         for (target_raw, _, _) in &note.outgoing_links {
-            let key = target_raw.trim().trim_end_matches(".md").to_ascii_lowercase();
+            let trimmed_raw = target_raw.trim().trim_end_matches(".md");
+            let key = trimmed_raw.to_ascii_lowercase();
             if key.is_empty() || key.contains("<%") {
                 continue;
             }
@@ -3191,101 +3286,127 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
             });
             if let Some(dst_idx) = resolved_idx {
                 if src_idx != dst_idx && edges_set.insert((src_idx, dst_idx)) {
-                    let pair = if src_idx < dst_idx {
-                        (src_idx, dst_idx)
-                    } else {
-                        (dst_idx, src_idx)
-                    };
+                    let pair = if src_idx < dst_idx { (src_idx, dst_idx) } else { (dst_idx, src_idx) };
                     undirected_seen.insert(pair);
                     out_deg[src_idx] += 1;
                     in_deg[dst_idx] += 1;
                 }
             } else {
-                let list = unresolved_targets.entry(key).or_default();
-                if list.last().copied() != Some(src_idx) && !list.contains(&src_idx) {
-                    list.push(src_idx);
+                let short_display = trimmed_raw.rsplit('/').next().unwrap_or(trimmed_raw).trim();
+                let short_key = short_display.to_ascii_lowercase();
+                if !short_key.is_empty() {
+                    let entry = unresolved_targets
+                        .entry(short_key)
+                        .or_insert_with(|| (short_display.to_string(), Vec::new()));
+                    if entry.1.last().copied() != Some(src_idx) && !entry.1.contains(&src_idx) {
+                        entry.1.push(src_idx);
+                    }
                 }
             }
         }
     }
 
-    // 2. Primary shared tag hub connections (assigns each tagged note to its largest tag community so each tag group forms a clean dandelion star)
-    let mut tag_clusters: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    // 2. Virtual Tag Hub Nodes (Obsidian `showTags: true` parity):
+    // When >= 2 notes share a tag (e.g. `Books`), create a virtual tag hub node
+    // (`#Books`) as the true cluster center instead of elevating an arbitrary member note.
+    let mut tag_members: BTreeMap<String, (String, Vec<usize>)> = BTreeMap::new();
     for (idx, note) in graph_notes.iter().enumerate() {
+        let mut seen_for_note: HashSet<String> = HashSet::new();
         for tag in &note.tags {
-            let clean_tag = tag.trim().to_ascii_lowercase();
-            if !clean_tag.is_empty() && !clean_tag.contains("<%") {
-                tag_clusters.entry(clean_tag).or_default().push(idx);
+            let trimmed = tag.trim().trim_start_matches('#');
+            let clean_key = trimmed.to_ascii_lowercase();
+            if clean_key.is_empty() || clean_key.contains("<%") || !seen_for_note.insert(clean_key.clone()) {
+                continue;
             }
+            let entry = tag_members
+                .entry(clean_key)
+                .or_insert_with(|| (trimmed.to_string(), Vec::new()));
+            entry.1.push(idx);
         }
     }
-    let mut primary_tag_groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-    let mut has_tag_hub = vec![false; n];
+
+    // Assign each tagged note to its strongest shared tag hub (keeping clusters clean like Obsidian)
+    let mut virtual_hub_index_by_key: HashMap<String, usize> = HashMap::new();
+    let mut has_tag_hub = vec![false; real_n];
     for (idx, note) in graph_notes.iter().enumerate() {
-        let mut best_tag: Option<&str> = None;
+        let mut best_key: Option<String> = None;
         let mut best_len = 1usize;
         for tag in &note.tags {
-            let clean_tag = tag.trim().to_ascii_lowercase();
-            if let Some(members) = tag_clusters.get(&clean_tag) {
+            let clean_key = tag.trim().trim_start_matches('#').to_ascii_lowercase();
+            if let Some((_, members)) = tag_members.get(&clean_key) {
                 if members.len() > best_len {
                     best_len = members.len();
-                    best_tag = Some(tag.as_str());
+                    best_key = Some(clean_key);
                 }
             }
         }
-        if let Some(chosen) = best_tag {
-            let key = chosen.trim().to_ascii_lowercase();
-            primary_tag_groups.entry(key).or_default().push(idx);
+        if let Some(chosen_key) = best_key {
             has_tag_hub[idx] = true;
-        }
-    }
-    for members in primary_tag_groups.values() {
-        if members.len() >= 2 {
-            let hub = *members
-                .iter()
-                .max_by_key(|&&idx| in_deg[idx] + out_deg[idx])
-                .unwrap_or(&members[0]);
-            for &m in members {
-                if m != hub {
-                    let pair = if hub < m { (hub, m) } else { (m, hub) };
-                    if undirected_seen.insert(pair) && edges_set.insert((hub, m)) {
-                        out_deg[hub] += 1;
-                        in_deg[m] += 1;
-                    }
+            let hub_idx = if let Some(&existing) = graph_lookup.get(&chosen_key) {
+                existing
+            } else if let Some(&existing_v) = virtual_hub_index_by_key.get(&chosen_key) {
+                existing_v
+            } else {
+                let (display_tag, members) = &tag_members[&chosen_key];
+                // Derive top_folder from majority folder of its members
+                let mut f_counts: HashMap<&str, usize> = HashMap::new();
+                for &m in members {
+                    *f_counts.entry(graph_notes[m].top_folder.as_str()).or_insert(0) += 1;
+                }
+                let dom_folder = f_counts
+                    .into_iter()
+                    .max_by_key(|&(_, c)| c)
+                    .map(|(f, _)| f.to_string())
+                    .unwrap_or_default();
+                let new_idx = nodes.len();
+                nodes.push(GraphNodeSpec {
+                    id: format!("tag:{}", chosen_key),
+                    title: format!("#{}", display_tag),
+                    rel_path: String::new(),
+                    folder: String::new(),
+                    top_folder: dom_folder,
+                    is_journal: false,
+                    is_tag_node: true,
+                    is_virtual: true,
+                    tag_name: display_tag.clone(),
+                    tags: vec![display_tag.clone()],
+                });
+                in_deg.push(0);
+                out_deg.push(0);
+                virtual_hub_index_by_key.insert(chosen_key.clone(), new_idx);
+                new_idx
+            };
+
+            if hub_idx != idx {
+                let pair = if hub_idx < idx { (hub_idx, idx) } else { (idx, hub_idx) };
+                if undirected_seen.insert(pair) && edges_set.insert((hub_idx, idx)) {
+                    out_deg[hub_idx] += 1;
+                    in_deg[idx] += 1;
                 }
             }
         }
     }
 
-    // 3. Primary unresolved link/category hub connections for untagged notes
-    let mut primary_unres_groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-    for (target_key, members) in &unresolved_targets {
-        if members.len() >= 2 {
-            for &idx in members {
-                if !has_tag_hub[idx] {
-                    primary_unres_groups
-                        .entry(target_key.clone())
-                        .or_default()
-                        .push(idx);
-                }
-            }
-        }
-    }
-    // Assign each untagged node to its single largest unresolved-target group
+    // 3. Virtual Unresolved Link/Category Hub Nodes for untagged notes sharing >= 2 unresolved links
+    // (e.g. `[[Movies]]`, `[[Books]]`, `[[Recipes]]` in frontmatter `categories:`)
     let mut best_unres_for_node: HashMap<usize, String> = HashMap::new();
-    for (target_key, members) in &primary_unres_groups {
-        if members.len() >= 2 {
-            for &idx in members {
-                let replace = match best_unres_for_node.get(&idx) {
-                    None => true,
-                    Some(prev_key) => {
-                        let prev_len = primary_unres_groups.get(prev_key).map(|v| v.len()).unwrap_or(0);
-                        members.len() > prev_len
-                    }
-                };
-                if replace {
-                    best_unres_for_node.insert(idx, target_key.clone());
+    for (target_key, (_, members)) in &unresolved_targets {
+        if members.len() < 2 {
+            continue;
+        }
+        for &idx in members {
+            if has_tag_hub[idx] {
+                continue;
+            }
+            let replace = match best_unres_for_node.get(&idx) {
+                None => true,
+                Some(prev_key) => {
+                    let prev_len = unresolved_targets.get(prev_key).map(|v| v.1.len()).unwrap_or(0);
+                    members.len() > prev_len
                 }
+            };
+            if replace {
+                best_unres_for_node.insert(idx, target_key.clone());
             }
         }
     }
@@ -3293,59 +3414,59 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
     for (idx, key) in best_unres_for_node {
         filtered_unres_groups.entry(key).or_default().push(idx);
     }
-    for members in filtered_unres_groups.values() {
-        if members.len() >= 2 {
-            let hub = *members
-                .iter()
-                .max_by_key(|&&idx| in_deg[idx] + out_deg[idx])
-                .unwrap_or(&members[0]);
-            for &m in members {
-                if m != hub {
-                    let pair = if hub < m { (hub, m) } else { (m, hub) };
-                    if undirected_seen.insert(pair) && edges_set.insert((hub, m)) {
-                        out_deg[hub] += 1;
-                        in_deg[m] += 1;
-                    }
+    for (target_key, members) in filtered_unres_groups {
+        if members.len() < 2 {
+            continue;
+        }
+        let hub_idx = if let Some(&existing_v) = virtual_hub_index_by_key.get(&target_key) {
+            existing_v
+        } else {
+            let display = unresolved_targets
+                .get(&target_key)
+                .map(|(d, _)| d.clone())
+                .unwrap_or_else(|| target_key.clone());
+            let mut f_counts: HashMap<&str, usize> = HashMap::new();
+            for &m in &members {
+                *f_counts.entry(graph_notes[m].top_folder.as_str()).or_insert(0) += 1;
+            }
+            let dom_folder = f_counts
+                .into_iter()
+                .max_by_key(|&(_, c)| c)
+                .map(|(f, _)| f.to_string())
+                .unwrap_or_default();
+            let new_idx = nodes.len();
+            nodes.push(GraphNodeSpec {
+                id: format!("virtual:{}", target_key),
+                title: display.clone(),
+                rel_path: String::new(),
+                folder: String::new(),
+                top_folder: dom_folder,
+                is_journal: false,
+                is_tag_node: true,
+                is_virtual: true,
+                tag_name: display,
+                tags: Vec::new(),
+            });
+            in_deg.push(0);
+            out_deg.push(0);
+            virtual_hub_index_by_key.insert(target_key.clone(), new_idx);
+            new_idx
+        };
+        for &m in &members {
+            if m != hub_idx {
+                let pair = if hub_idx < m { (hub_idx, m) } else { (m, hub_idx) };
+                if undirected_seen.insert(pair) && edges_set.insert((hub_idx, m)) {
+                    out_deg[hub_idx] += 1;
+                    in_deg[m] += 1;
                 }
             }
         }
     }
 
-    // 4. For remaining isolated notes in large tracker folders (>= 5 notes in same 2-level folder), connect them to their folder's hub
-    if n > 20 {
-        let mut folder2_groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        for (idx, note) in graph_notes.iter().enumerate() {
-            let parts: Vec<&str> = note.rel_path.split('/').collect();
-            let key = if parts.len() >= 3 {
-                format!("{}/{}", parts[0], parts[1])
-            } else {
-                note.top_folder.clone()
-            };
-            if !key.is_empty() {
-                folder2_groups.entry(key).or_default().push(idx);
-            }
-        }
-        for members in folder2_groups.values() {
-            if members.len() >= 5 {
-                let hub = *members
-                    .iter()
-                    .max_by_key(|&&idx| in_deg[idx] + out_deg[idx])
-                    .unwrap_or(&members[0]);
-                for &m in members {
-                    if m != hub && in_deg[m] + out_deg[m] == 0 {
-                        let pair = if hub < m { (hub, m) } else { (m, hub) };
-                        if undirected_seen.insert(pair) && edges_set.insert((hub, m)) {
-                            out_deg[hub] += 1;
-                            in_deg[m] += 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
+    let n = nodes.len();
 
     // Group notes by top_folder for metadata compatibility
-    let mut groups: Vec<String> = graph_notes
+    let mut groups: Vec<String> = nodes
         .iter()
         .map(|item| {
             if item.top_folder.is_empty() {
@@ -3361,110 +3482,125 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
         groups.push("root".to_string());
     }
 
-    // Build undirected adjacency list for connected-component dandelion layout
+    // Build undirected adjacency list for connected-component layout & cluster coloring
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
     for &(u, v) in &undirected_seen {
         adj[u].push(v);
         adj[v].push(u);
     }
 
+    // Discover true connected components via BFS
+    let mut visited = vec![false; n];
+    let mut connected_comps: Vec<Vec<usize>> = Vec::new();
+    let mut orphans: Vec<usize> = Vec::new();
+    for start in 0..n {
+        if visited[start] {
+            continue;
+        }
+        let mut comp = Vec::new();
+        let mut queue = std::collections::VecDeque::new();
+        visited[start] = true;
+        queue.push_back(start);
+        while let Some(curr) = queue.pop_front() {
+            comp.push(curr);
+            for &nxt in &adj[curr] {
+                if !visited[nxt] {
+                    visited[nxt] = true;
+                    queue.push_back(nxt);
+                }
+            }
+        }
+        if comp.len() >= 2 {
+            connected_comps.push(comp);
+        } else {
+            orphans.push(start);
+        }
+    }
+    connected_comps.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a[0].cmp(&b[0])));
+
+    let mut cluster_id_of = vec![-1i32; n];
+    let mut is_orphan_of = vec![true; n];
+    for (c_idx, comp) in connected_comps.iter().enumerate() {
+        for &u in comp {
+            cluster_id_of[u] = c_idx as i32;
+            is_orphan_of[u] = false;
+        }
+    }
+
     let mut pos_x = vec![0.5f64; n];
     let mut pos_y = vec![0.5f64; n];
+    let mut pos_z = vec![0.5f64; n];
     let golden = 2.39996322972865332f64;
 
     if n > 0 && n <= 12 {
-        // Small vault layout: clean ring around center
+        // Small vault layout: clean ring + gentle 3D helix
         for i in 0..n {
             if n == 1 {
                 pos_x[i] = 0.5;
                 pos_y[i] = 0.5;
+                pos_z[i] = 0.5;
             } else {
                 let angle = (i as f64 / n as f64) * std::f64::consts::TAU - std::f64::consts::FRAC_PI_2;
                 pos_x[i] = 0.5 + 0.30 * angle.cos();
                 pos_y[i] = 0.5 + 0.30 * angle.sin();
+                pos_z[i] = 0.5 + 0.22 * (angle * 1.5).sin();
             }
         }
     } else if n > 12 {
-        // Discover connected components via BFS
-        let mut visited = vec![false; n];
-        let mut multi_comps: Vec<Vec<usize>> = Vec::new();
-        let mut singletons: Vec<usize> = Vec::new();
-
-        for start in 0..n {
-            if visited[start] {
-                continue;
+        let mut layout_comps: Vec<Vec<usize>> = connected_comps.clone();
+        // Arrange orphans into tidy outer peripheral mini-groups without creating false edges
+        if !orphans.is_empty() {
+            let mut orphan_buckets: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+            for idx in &orphans {
+                orphan_buckets
+                    .entry(nodes[*idx].top_folder.clone())
+                    .or_default()
+                    .push(*idx);
             }
-            let mut comp = Vec::new();
-            let mut queue = std::collections::VecDeque::new();
-            visited[start] = true;
-            queue.push_back(start);
-            while let Some(curr) = queue.pop_front() {
-                comp.push(curr);
-                for &nxt in &adj[curr] {
-                    if !visited[nxt] {
-                        visited[nxt] = true;
-                        queue.push_back(nxt);
-                    }
-                }
-            }
-            if comp.len() >= 2 {
-                multi_comps.push(comp);
-            } else {
-                singletons.push(start);
+            for (_, grp) in orphan_buckets {
+                layout_comps.push(grp);
             }
         }
 
-        // Group singletons by top_folder so isolated notes form tidy peripheral mini-clusters
-        let mut singleton_map: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        for idx in singletons {
-            singleton_map
-                .entry(graph_notes[idx].top_folder.clone())
-                .or_default()
-                .push(idx);
-        }
-        for (_, grp) in singleton_map {
-            multi_comps.push(grp);
-        }
-
-        multi_comps.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a[0].cmp(&b[0])));
-
-        let num_clusters = multi_comps.len();
+        let num_clusters = layout_comps.len();
         let mut cluster_radii = vec![0.02f64; num_clusters];
         let mut cluster_cx = vec![0.0f64; num_clusters];
         let mut cluster_cy = vec![0.0f64; num_clusters];
+        let mut cluster_cz = vec![0.0f64; num_clusters];
 
-        // Preset balanced constellation anchors matching Obsidian's force equilibrium
-        let preset_anchors: [(f64, f64); 8] = [
-            (0.02, 0.22),   // Largest dandelion: bottom-center
-            (0.27, -0.20),  // 2nd largest: upper-right
-            (-0.29, -0.13), // 3rd largest: upper-left
-            (-0.04, -0.34), // 4th largest: top-center-left
-            (-0.35, 0.14),  // 5th largest: mid-left
-            (0.42, 0.06),   // 6th largest: far-right
-            (-0.22, 0.36),  // 7th largest: lower-left
-            (0.36, 0.32),   // 8th largest: lower-right
+        let preset_anchors: [(f64, f64, f64); 8] = [
+            (0.02, 0.20, 0.08),
+            (0.28, -0.18, -0.16),
+            (-0.28, -0.14, 0.18),
+            (-0.04, -0.34, -0.12),
+            (-0.35, 0.15, -0.20),
+            (0.41, 0.08, 0.22),
+            (-0.22, 0.36, 0.14),
+            (0.35, 0.32, -0.18),
         ];
 
-        for (c_idx, comp) in multi_comps.iter().enumerate() {
+        for (c_idx, comp) in layout_comps.iter().enumerate() {
             let m = comp.len() as f64;
             cluster_radii[c_idx] = if comp.len() == 1 {
                 0.014
             } else {
-                0.020 + 0.0072 * m.sqrt()
+                0.020 + 0.0074 * m.sqrt()
             };
             if c_idx < preset_anchors.len() {
                 cluster_cx[c_idx] = preset_anchors[c_idx].0;
                 cluster_cy[c_idx] = preset_anchors[c_idx].1;
+                cluster_cz[c_idx] = preset_anchors[c_idx].2;
             } else {
                 let k = (c_idx - preset_anchors.len()) as f64;
                 let angle = k * golden - 0.8;
                 let dist = 0.46 + ((c_idx % 3) as f64) * 0.045;
                 cluster_cx[c_idx] = dist * angle.cos();
                 cluster_cy[c_idx] = dist * angle.sin();
+                cluster_cz[c_idx] = 0.26 * ((k * 1.13).sin());
             }
         }
 
-        // Circle-packing relaxation between cluster centers so no two dandelions ever overlap
+        // Circle-packing relaxation between cluster centers
         for _iter in 0..56 {
             for a in 0..num_clusters {
                 for b in (a + 1)..num_clusters {
@@ -3476,14 +3612,7 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
                         let push = (min_dist - dist) * 0.55;
                         let nx = vx / dist;
                         let ny = vy / dist;
-                        // Heavier clusters move less than smaller clusters
-                        let wa = if a == 0 {
-                            0.12
-                        } else if a <= 2 {
-                            0.30
-                        } else {
-                            0.75
-                        };
+                        let wa = if a == 0 { 0.12 } else if a <= 2 { 0.30 } else { 0.75 };
                         let wb = 1.0 - wa;
                         cluster_cx[a] += nx * push * wa;
                         cluster_cy[a] += ny * push * wa;
@@ -3492,57 +3621,65 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
                     }
                 }
             }
-            // Gentle central cohesion for peripheral clusters so they stay within a circular constellation
             for c in 1..num_clusters {
                 cluster_cx[c] *= 0.992;
                 cluster_cy[c] *= 0.992;
             }
         }
 
-        // Lay out nodes inside each cluster in a radial dandelion / phyllotaxis distribution
+        // Radial dandelion + 3D Fibonacci spherical distribution inside each cluster
         let mut local_x = vec![0.0f64; n];
         let mut local_y = vec![0.0f64; n];
+        let mut local_z = vec![0.0f64; n];
 
-        for (c_idx, comp) in multi_comps.iter().enumerate() {
+        for (c_idx, comp) in layout_comps.iter().enumerate() {
             let radius = cluster_radii[c_idx];
             if comp.len() == 1 {
                 local_x[comp[0]] = 0.0;
                 local_y[comp[0]] = 0.0;
+                local_z[comp[0]] = 0.0;
                 continue;
             }
+            // Prefer virtual tag hub node (or highest-degree node) as exact cluster center!
             let hub = *comp
                 .iter()
-                .max_by_key(|&&idx| adj[idx].len())
+                .max_by_key(|&&idx| {
+                    let tag_bonus = if nodes[idx].is_tag_node { 10000 } else { 0 };
+                    tag_bonus + adj[idx].len()
+                })
                 .unwrap_or(&comp[0]);
             local_x[hub] = 0.0;
             local_y[hub] = 0.0;
+            local_z[hub] = 0.0;
 
             let mut satellites: Vec<usize> = comp.iter().copied().filter(|&idx| idx != hub).collect();
             satellites.sort_by(|&a, &b| {
                 adj[b]
                     .len()
                     .cmp(&adj[a].len())
-                    .then_with(|| graph_notes[a].folder.cmp(&graph_notes[b].folder))
+                    .then_with(|| nodes[a].folder.cmp(&nodes[b].folder))
                     .then_with(|| a.cmp(&b))
             });
 
             let sat_count = satellites.len().max(1) as f64;
-            let r_min = (radius * 0.14).max(0.011);
+            let r_min = (radius * 0.16).max(0.012);
             for (rank, &u) in satellites.iter().enumerate() {
                 let k = rank as f64;
                 let theta = k * golden + (c_idx as f64) * 0.61 + 0.065 * ((k * 1.37).cos());
                 let u_norm = ((k + 0.65) / sat_count).sqrt();
                 let jitter = 1.0 + 0.055 * ((k * 1.618).sin()) + 0.035 * ((k * 2.718).cos());
                 let r = if adj[u].len() >= 4 {
-                    radius * (0.24 + 0.36 * u_norm) * jitter
+                    radius * (0.26 + 0.36 * u_norm) * jitter
                 } else {
                     (r_min + u_norm * (radius - r_min)) * jitter
                 };
                 local_x[u] = r * theta.cos();
                 local_y[u] = r * theta.sin();
+                // Fibonacci sphere z elevation for rich 3D constellation volume
+                let z_norm = 1.0 - 2.0 * ((k + 0.5) / sat_count);
+                local_z[u] = radius * 1.15 * z_norm * (0.55 + 0.45 * u_norm);
             }
 
-            // Local sub-hub relaxation for multi-hub communities (e.g. Stickman-History)
             let has_sub_hubs = satellites.iter().any(|&u| adj[u].len() >= 3);
             if has_sub_hubs && comp.len() >= 6 {
                 for _step in 0..6 {
@@ -3550,19 +3687,20 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
                         if adj[u].len() <= 3 {
                             let mut sx = 0.0f64;
                             let mut sy = 0.0f64;
+                            let mut sz = 0.0f64;
                             let mut sc = 0usize;
                             for &nb in &adj[u] {
                                 if nb != hub && adj[nb].len() >= 3 {
                                     sx += local_x[nb];
                                     sy += local_y[nb];
+                                    sz += local_z[nb];
                                     sc += 1;
                                 }
                             }
                             if sc > 0 {
-                                let tx = sx / (sc as f64);
-                                let ty = sy / (sc as f64);
-                                local_x[u] = local_x[u] * 0.86 + tx * 0.14;
-                                local_y[u] = local_y[u] * 0.86 + ty * 0.14;
+                                local_x[u] = local_x[u] * 0.86 + (sx / sc as f64) * 0.14;
+                                local_y[u] = local_y[u] * 0.86 + (sy / sc as f64) * 0.14;
+                                local_z[u] = local_z[u] * 0.86 + (sz / sc as f64) * 0.14;
                             }
                         }
                     }
@@ -3570,37 +3708,45 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
             }
         }
 
-        // Combine cluster center + local offset in unbounded space
-        for (c_idx, comp) in multi_comps.iter().enumerate() {
+        for (c_idx, comp) in layout_comps.iter().enumerate() {
             let cx = cluster_cx[c_idx];
             let cy = cluster_cy[c_idx];
+            let cz = cluster_cz[c_idx];
             for &u in comp {
                 pos_x[u] = cx + local_x[u];
                 pos_y[u] = cy + local_y[u];
+                pos_z[u] = cz + local_z[u];
             }
         }
 
-        // Adaptive aspect-aware normalization into [0.06, 0.94]
         let mut min_x = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
         let mut min_y = f64::INFINITY;
         let mut max_y = f64::NEG_INFINITY;
+        let mut min_z = f64::INFINITY;
+        let mut max_z = f64::NEG_INFINITY;
         for i in 0..n {
             min_x = min_x.min(pos_x[i]);
             max_x = max_x.max(pos_x[i]);
             min_y = min_y.min(pos_y[i]);
             max_y = max_y.max(pos_y[i]);
+            min_z = min_z.min(pos_z[i]);
+            max_z = max_z.max(pos_z[i]);
         }
         let center_x = (min_x + max_x) * 0.5;
         let center_y = (min_y + max_y) * 0.5;
+        let center_z = (min_z + max_z) * 0.5;
         let span_x = (max_x - min_x).max(0.01);
         let span_y = (max_y - min_y).max(0.01);
+        let span_z = (max_z - min_z).max(0.01);
         let span_max = span_x.max(span_y);
         let eff_span_x = span_x * 0.72 + span_max * 0.28;
         let eff_span_y = span_y * 0.72 + span_max * 0.28;
+        let eff_span_z = span_z.max(span_max * 0.45);
         for i in 0..n {
             pos_x[i] = 0.5 + ((pos_x[i] - center_x) / eff_span_x) * 0.88;
             pos_y[i] = 0.5 + ((pos_y[i] - center_y) / eff_span_y) * 0.88;
+            pos_z[i] = 0.5 + ((pos_z[i] - center_z) / eff_span_z) * 0.80;
         }
     }
 
@@ -3633,34 +3779,40 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
         .map(|(i, g)| (g.as_str(), i))
         .collect();
 
-    let nodes_json: Vec<Value> = graph_notes
+    let nodes_json: Vec<Value> = nodes
         .iter()
         .enumerate()
-        .map(|(idx, note)| {
-            let g_name = if note.top_folder.is_empty() {
+        .map(|(idx, node)| {
+            let g_name = if node.top_folder.is_empty() {
                 "root"
             } else {
-                note.top_folder.as_str()
+                node.top_folder.as_str()
             };
             let g_idx = group_index_map.get(g_name).copied().unwrap_or(0);
             let deg = in_deg[idx] + out_deg[idx];
-            let color_hex = graph_group_color(g_name, note.is_journal);
+            let color_hex = graph_group_color(g_name, node.is_journal);
             json!({
-                "id": note.rel_path,
-                "title": note.title,
-                "relPath": note.rel_path,
-                "folder": note.folder,
+                "id": node.id,
+                "title": node.title,
+                "relPath": node.rel_path,
+                "folder": node.folder,
                 "group": g_name,
                 "groupIndex": g_idx,
+                "clusterId": cluster_id_of[idx],
+                "isOrphan": is_orphan_of[idx],
+                "isTagNode": node.is_tag_node,
+                "isVirtual": node.is_virtual,
+                "tagName": node.tag_name,
                 "colorHex": color_hex,
                 "degree": deg,
-                "isHub": deg >= 8,
+                "isHub": node.is_tag_node || deg >= 6,
                 "inDegree": in_deg[idx],
                 "outDegree": out_deg[idx],
-                "isJournal": note.is_journal,
-                "tags": note.tags,
+                "isJournal": node.is_journal,
+                "tags": node.tags,
                 "x": (pos_x[idx] * 10000.0).round() / 10000.0,
                 "y": (pos_y[idx] * 10000.0).round() / 10000.0,
+                "z": (pos_z[idx] * 10000.0).round() / 10000.0,
             })
         })
         .collect();
@@ -3669,10 +3821,11 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
         .iter()
         .map(|&(u, v)| {
             json!({
-                "source": graph_notes[u].rel_path,
-                "target": graph_notes[v].rel_path,
+                "source": nodes[u].id,
+                "target": nodes[v].id,
                 "sourceIndex": u,
                 "targetIndex": v,
+                "clusterId": cluster_id_of[u],
             })
         })
         .collect();
@@ -3681,6 +3834,8 @@ fn compute_vault_graph(notes: &[ParsedNoteSummary], _lookup: &HashMap<String, us
         "nodes": nodes_json,
         "edges": edges_json,
         "groups": groups,
+        "clusterCount": connected_comps.len(),
+        "orphanCount": orphans.len(),
     })
 }
 
@@ -4473,6 +4628,7 @@ pub fn cmd_scan(vault_str: &str) -> Result<Value, String> {
     cmd_scan_for_date_with_cache(vault_str, None, None)
 }
 
+#[cfg(test)]
 fn cmd_scan_for_date(vault_str: &str, date_opt: Option<&str>) -> Result<Value, String> {
     cmd_scan_for_date_with_cache(vault_str, date_opt, None)
 }
@@ -4693,7 +4849,7 @@ pub fn cmd_scan_for_date_with_cache_opts(
             &note.tags,
         );
         let build_dossier = || {
-            build_note_dossier_with_index(
+            let mut d = build_note_dossier_with_index(
                 &vault_canon,
                 kind,
                 &note.rel_path,
@@ -4701,7 +4857,15 @@ pub fn cmd_scan_for_date_with_cache_opts(
                 &note.frontmatter,
                 &note.snippet,
                 &asset_index,
-            )
+            );
+            if let Some(obj) = d.as_object_mut() {
+                obj.insert("tags".to_string(), json!(note.tags));
+                obj.insert("linkCount".to_string(), json!(note.outgoing_links.len()));
+                obj.insert("openTasks".to_string(), json!(note.open_tasks));
+                obj.insert("doneTasks".to_string(), json!(note.done_tasks));
+                obj.insert("mtimeSecs".to_string(), json!(note.mtime_secs));
+            }
+            d
         };
         match kind {
             "movie" => col_movies.push(build_dossier()),
@@ -7364,10 +7528,55 @@ pub fn cmd_daily(
     cmd_daily_with_check_in(vault_str, date_opt, folder_opt, format_opt, None, None, None)
 }
 
+fn read_calendar_plugin_settings(vault_canon: &Path) -> (usize, bool, String) {
+    let mut words_per_dot = 250usize;
+    let mut show_weekly = false;
+    let mut week_start = "monday".to_string();
+    let cfg_path = vault_canon.join(".obsidian/plugins/calendar/data.json");
+    if let Ok(raw) = fs::read_to_string(&cfg_path) {
+        if let Ok(val) = serde_json::from_str::<Value>(&raw) {
+            if let Some(wpd) = val.get("wordsPerDot").and_then(|v| v.as_u64()) {
+                if wpd > 0 {
+                    words_per_dot = (wpd as usize).clamp(1, 10000);
+                }
+            }
+            if let Some(sw) = val.get("showWeeklyNote").and_then(|v| v.as_bool()) {
+                show_weekly = sw;
+            }
+            if let Some(ws) = val.get("weekStart").and_then(|v| v.as_str()) {
+                let low = ws.trim().to_ascii_lowercase();
+                if low == "sunday" || low == "monday" {
+                    week_start = low;
+                }
+            }
+        }
+    }
+    (words_per_dot, show_weekly, week_start)
+}
+
+fn iso_week_number(year: i32, month: u32, day: u32) -> u32 {
+    let days_from_civil = |y: i32, m: u32, d: u32| -> i64 {
+        let y_adj = if m <= 2 { y - 1 } else { y } as i64;
+        let era = if y_adj >= 0 { y_adj } else { y_adj - 399 } / 400;
+        let yoe = (y_adj - era * 400) as u64;
+        let m_adj = if m > 2 { m - 3 } else { m + 9 } as u64;
+        let doy = (153 * m_adj + 2) / 5 + d as u64 - 1;
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        era * 146097 + doe as i64 - 719468
+    };
+    let wd = weekday_monday_zero(year, month, day) as i64; // 0=Mon..6=Sun
+    let thursday_serial = days_from_civil(year, month, day) + (3 - wd);
+    let (iso_year, _, _) = civil_from_days(thursday_serial);
+    let jan4_serial = days_from_civil(iso_year, 1, 4);
+    let jan4_wd = weekday_monday_zero(iso_year, 1, 4) as i64;
+    let week1_mon = jan4_serial - jan4_wd;
+    ((thursday_serial - week1_mon) / 7 + 1).clamp(1, 53) as u32
+}
+
 fn collect_calendar_journal_tasks_recursive(
     vault_canon: &Path,
     dir: &Path,
-    journal_by_date: &mut HashMap<String, (String, usize, usize)>,
+    journal_by_date: &mut HashMap<String, (String, usize, usize, usize)>,
 ) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -7417,6 +7626,7 @@ fn collect_calendar_journal_tasks_recursive(
             let (_, _, _, body_start) = parse_frontmatter(&lines);
             let mut open_tasks = 0usize;
             let mut done_tasks = 0usize;
+            let mut word_count = 0usize;
             let mut in_fence = false;
             for line in lines.iter().skip(body_start) {
                 let t = line.trim();
@@ -7427,6 +7637,10 @@ fn collect_calendar_journal_tasks_recursive(
                 if in_fence || t.is_empty() {
                     continue;
                 }
+                word_count += t
+                    .split_whitespace()
+                    .filter(|w| w.chars().any(|c| c.is_alphanumeric()))
+                    .count();
                 let lb = t.as_bytes();
                 if matches!(lb.first(), Some(b'-' | b'*' | b'+' | b'T' | b'D')) {
                     if let Some((_, todo_st, _)) = parse_list_or_task_line(line) {
@@ -7440,20 +7654,35 @@ fn collect_calendar_journal_tasks_recursive(
                     }
                 }
             }
-            journal_by_date.insert(date_iso, (rel_path, open_tasks, done_tasks));
+            journal_by_date.insert(date_iso, (rel_path, open_tasks, done_tasks, word_count));
         }
     }
 }
 
 pub fn cmd_calendar(vault_str: &str, year: i32, month: u32) -> Result<Value, String> {
+    cmd_calendar_with_today(vault_str, year, month, None)
+}
+
+pub fn cmd_calendar_with_today(
+    vault_str: &str,
+    year: i32,
+    month: u32,
+    today_opt: Option<&str>,
+) -> Result<Value, String> {
     if !(1..=12).contains(&month) {
         return Err("Month must be between 1 and 12".to_string());
     }
     let vault_canon = resolve_vault_root(vault_str)?;
-    let mut journal_by_date: HashMap<String, (String, usize, usize)> = HashMap::new();
+    let (words_per_dot, show_weekly, week_start) = read_calendar_plugin_settings(&vault_canon);
+    let mut journal_by_date: HashMap<String, (String, usize, usize, usize)> = HashMap::new();
     collect_calendar_journal_tasks_recursive(&vault_canon, &vault_canon, &mut journal_by_date);
 
-    let first_wd = weekday_monday_zero(year, month, 1); // 0 = Mon .. 6 = Sun
+    let first_wd_mon = weekday_monday_zero(year, month, 1); // 0 = Mon .. 6 = Sun
+    let first_wd = if week_start == "sunday" {
+        (first_wd_mon + 1) % 7
+    } else {
+        first_wd_mon
+    };
     let dim = days_in_month(year, month);
     let (prev_year, prev_month) = if month == 1 {
         (year - 1, 12)
@@ -7467,66 +7696,58 @@ pub fn cmd_calendar(vault_str: &str, year: i32, month: u32) -> Result<Value, Str
     };
     let prev_dim = days_in_month(prev_year, prev_month);
 
-    let now_secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let (today_y, today_m, today_d) = civil_from_days((now_secs / 86400) as i64);
-    let today_iso = format!("{:04}-{:02}-{:02}", today_y, today_m, today_d);
+    let today_iso = if let Some(t) = today_opt.filter(|s| s.len() == 10 && s.as_bytes()[4] == b'-' && s.as_bytes()[7] == b'-') {
+        t.to_string()
+    } else {
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let (today_y, today_m, today_d) = civil_from_days((now_secs / 86400) as i64);
+        format!("{:04}-{:02}-{:02}", today_y, today_m, today_d)
+    };
+
+    let build_cell = |cy: i32, cm: u32, cd: u32, in_month: bool| -> Value {
+        let date_str = format!("{:04}-{:02}-{:02}", cy, cm, cd);
+        let j = journal_by_date.get(&date_str);
+        let has_journal = j.is_some();
+        let open_tasks = j.map(|x| x.1).unwrap_or(0);
+        let done_tasks = j.map(|x| x.2).unwrap_or(0);
+        let word_count = j.map(|x| x.3).unwrap_or(0);
+        let solid_dots = if has_journal {
+            (word_count / words_per_dot).clamp(1, 5)
+        } else {
+            0
+        };
+        json!({
+            "day": cd,
+            "month": cm,
+            "year": cy,
+            "dateStr": date_str,
+            "inMonth": in_month,
+            "isToday": date_str == today_iso,
+            "hasJournal": has_journal,
+            "journalPath": j.map(|x| x.0.as_str()).unwrap_or(""),
+            "openTasks": open_tasks,
+            "doneTasks": done_tasks,
+            "wordCount": word_count,
+            "solidDots": solid_dots,
+            "hasOpenTasks": open_tasks > 0,
+            "weekNumber": iso_week_number(cy, cm, cd),
+        })
+    };
 
     let mut cells = Vec::with_capacity(42);
-    // Trailing days from previous month
     for idx in 0..first_wd {
         let d = prev_dim - first_wd + 1 + idx;
-        let date_str = format!("{:04}-{:02}-{:02}", prev_year, prev_month, d);
-        let j = journal_by_date.get(&date_str);
-        cells.push(json!({
-            "day": d,
-            "month": prev_month,
-            "year": prev_year,
-            "dateStr": date_str,
-            "inMonth": false,
-            "isToday": date_str == today_iso,
-            "hasJournal": j.is_some(),
-            "journalPath": j.map(|x| x.0.as_str()).unwrap_or(""),
-            "openTasks": j.map(|x| x.1).unwrap_or(0),
-            "doneTasks": j.map(|x| x.2).unwrap_or(0),
-        }));
+        cells.push(build_cell(prev_year, prev_month, d, false));
     }
-    // Current month days
     for d in 1..=dim {
-        let date_str = format!("{:04}-{:02}-{:02}", year, month, d);
-        let j = journal_by_date.get(&date_str);
-        cells.push(json!({
-            "day": d,
-            "month": month,
-            "year": year,
-            "dateStr": date_str,
-            "inMonth": true,
-            "isToday": date_str == today_iso,
-            "hasJournal": j.is_some(),
-            "journalPath": j.map(|x| x.0.as_str()).unwrap_or(""),
-            "openTasks": j.map(|x| x.1).unwrap_or(0),
-            "doneTasks": j.map(|x| x.2).unwrap_or(0),
-        }));
+        cells.push(build_cell(year, month, d, true));
     }
-    // Leading days from next month to fill 42 cells (6 rows x 7 cols)
     let mut next_d = 1u32;
     while cells.len() < 42 {
-        let date_str = format!("{:04}-{:02}-{:02}", next_year, next_month, next_d);
-        let j = journal_by_date.get(&date_str);
-        cells.push(json!({
-            "day": next_d,
-            "month": next_month,
-            "year": next_year,
-            "dateStr": date_str,
-            "inMonth": false,
-            "isToday": date_str == today_iso,
-            "hasJournal": j.is_some(),
-            "journalPath": j.map(|x| x.0.as_str()).unwrap_or(""),
-            "openTasks": j.map(|x| x.1).unwrap_or(0),
-            "doneTasks": j.map(|x| x.2).unwrap_or(0),
-        }));
+        cells.push(build_cell(next_year, next_month, next_d, false));
         next_d += 1;
     }
 
@@ -7538,6 +7759,9 @@ pub fn cmd_calendar(vault_str: &str, year: i32, month: u32) -> Result<Value, Str
         "monthShortName": month_short_name(month),
         "headerLabel": format!("{} {:04}", month_short_name(month), year),
         "todayStr": today_iso,
+        "wordsPerDot": words_per_dot,
+        "showWeeklyNote": show_weekly,
+        "weekStart": week_start,
         "cells": cells,
     }))
 }
@@ -9898,7 +10122,8 @@ fn run_cli() -> Result<Value, String> {
             let month = parse_flag(&args, "--month")
                 .and_then(|s| s.parse::<u32>().ok())
                 .unwrap_or(cur_m);
-            cmd_calendar(vault, year, month)
+            let today_opt = parse_flag(&args, "--today").or_else(|| parse_flag(&args, "--date"));
+            cmd_calendar_with_today(vault, year, month, today_opt)
         }
         "toggle-todo" => {
             let path = parse_flag(&args, "--path").ok_or_else(|| "Missing --path <rel_path>".to_string())?;
@@ -10016,8 +10241,483 @@ fn run_cli() -> Result<Value, String> {
             let account = parse_flag(&args, "--account").unwrap_or("Cash");
             cmd_finance_add(vault, record_type, title, amount, tx_type, category, account)
         }
+        "tag-rename" | "tag-merge" => {
+            let from_tag = parse_flag(&args, "--from")
+                .or_else(|| parse_flag(&args, "--old"))
+                .ok_or_else(|| "Missing --from <tag>".to_string())?;
+            let to_tag = parse_flag(&args, "--to")
+                .or_else(|| parse_flag(&args, "--new"))
+                .ok_or_else(|| "Missing --to <tag>".to_string())?;
+            let include_subtags = parse_flag(&args, "--include-subtags")
+                .map(|s| !s.eq_ignore_ascii_case("false") && s != "0")
+                .unwrap_or(true);
+            cmd_tag_rename(vault, from_tag, to_tag, include_subtags)
+        }
+        "tag-remove" => {
+            let tag = parse_flag(&args, "--tag")
+                .ok_or_else(|| "Missing --tag <tag>".to_string())?;
+            let path_opt = parse_flag(&args, "--path");
+            let include_subtags = parse_flag(&args, "--include-subtags")
+                .map(|s| !s.eq_ignore_ascii_case("false") && s != "0")
+                .unwrap_or(false);
+            cmd_tag_remove(vault, tag, path_opt, include_subtags)
+        }
+        "tag-page" => {
+            let tag = parse_flag(&args, "--tag")
+                .ok_or_else(|| "Missing --tag <tag>".to_string())?;
+            let folder_opt = parse_flag(&args, "--folder");
+            cmd_tag_page(vault, tag, folder_opt)
+        }
         other => Err(format!("Unknown command '{}'", other)),
     }
+}
+
+fn normalize_tag_arg(raw: &str) -> Result<String, String> {
+    let cleaned = raw.trim().trim_start_matches('#').trim_matches('/').trim();
+    if cleaned.is_empty() {
+        return Err("Tag name cannot be empty".to_string());
+    }
+    if cleaned.chars().any(|c| c.is_whitespace() || matches!(c, '#' | '[' | ']' | '{' | '}' | '"' | '\'' | '\\')) {
+        return Err(format!("Invalid tag name '{}'", raw));
+    }
+    Ok(cleaned.to_string())
+}
+
+fn is_tag_body_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '_' | '-' | '/')
+}
+
+fn rewrite_tag_token(token: &str, from_lower: &str, to_clean: Option<&str>, include_subtags: bool) -> (Option<String>, bool) {
+    let stripped = token.trim().trim_start_matches('#');
+    let lower = stripped.to_lowercase();
+    if lower == from_lower {
+        return (to_clean.map(|t| t.to_string()), true);
+    }
+    if include_subtags {
+        let from_segs: Vec<&str> = from_lower.split('/').collect();
+        let orig_segs: Vec<&str> = stripped.split('/').collect();
+        if orig_segs.len() > from_segs.len()
+            && orig_segs
+                .iter()
+                .zip(from_segs.iter())
+                .all(|(o, f)| o.to_lowercase() == *f)
+        {
+            let suffix = orig_segs[from_segs.len()..].join("/");
+            let mapped = to_clean.map(|t| format!("{}/{}", t, suffix));
+            return (mapped, true);
+        }
+    }
+    (Some(stripped.to_string()), false)
+}
+
+fn rewrite_markdown_tags(
+    raw: &str,
+    from_clean: &str,
+    to_clean: Option<&str>,
+    include_subtags: bool,
+) -> (String, usize) {
+    let eol = if raw.contains("\r\n") { "\r\n" } else { "\n" };
+    let trailing_eol = raw.ends_with('\n');
+    let from_lower = from_clean.to_lowercase();
+    let src_lines: Vec<&str> = raw.split('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)).collect();
+    let total = src_lines.len();
+    let mut out_lines: Vec<String> = Vec::with_capacity(total);
+    let mut replacements = 0usize;
+
+    let mut idx = 0usize;
+    // 1. Optional YAML frontmatter block
+    if total >= 2 && src_lines[0].trim() == "---" {
+        let mut fm_end: Option<usize> = None;
+        for (i, line) in src_lines.iter().enumerate().skip(1) {
+            let tr = line.trim();
+            if tr == "---" || tr == "..." {
+                fm_end = Some(i);
+                break;
+            }
+        }
+        if let Some(end_i) = fm_end {
+            out_lines.push(src_lines[0].to_string());
+            let mut in_tags_list = false;
+            let mut seen_fm_tags: HashSet<String> = HashSet::new();
+            for line in src_lines.iter().take(end_i).skip(1) {
+                let trimmed = line.trim();
+                let is_indented = line.starts_with(' ') || line.starts_with('\t');
+                let is_list_item = trimmed.starts_with("- ") || trimmed == "-";
+                if !is_indented && !(in_tags_list && (is_list_item || trimmed.is_empty() || trimmed.starts_with('#'))) {
+                    in_tags_list = false;
+                    if let Some((k, rest)) = line.split_once(':') {
+                        let key_lower = k.trim().to_ascii_lowercase();
+                        if key_lower == "tags" || key_lower == "tag" {
+                            let val_trim = rest.trim();
+                            if val_trim.is_empty() {
+                                in_tags_list = true;
+                                out_lines.push((*line).to_string());
+                                continue;
+                            }
+                            if val_trim.starts_with('[') && val_trim.ends_with(']') {
+                                let inner = &val_trim[1..val_trim.len() - 1];
+                                let mut new_items: Vec<String> = Vec::new();
+                                let mut line_changed = false;
+                                for part in inner.split(',') {
+                                    let p_trim = part.trim();
+                                    if p_trim.is_empty() {
+                                        continue;
+                                    }
+                                    let quote = if (p_trim.starts_with('"') && p_trim.ends_with('"') && p_trim.len() >= 2)
+                                        || (p_trim.starts_with('\'') && p_trim.ends_with('\'') && p_trim.len() >= 2)
+                                    {
+                                        Some(&p_trim[..1])
+                                    } else {
+                                        None
+                                    };
+                                    let unq = if quote.is_some() { &p_trim[1..p_trim.len() - 1] } else { p_trim };
+                                    let had_hash = unq.trim_start().starts_with('#');
+                                    let (mapped_opt, changed) = rewrite_tag_token(unq, &from_lower, to_clean, include_subtags);
+                                    if changed {
+                                        line_changed = true;
+                                        replacements += 1;
+                                    }
+                                    if let Some(mapped) = mapped_opt {
+                                        let dedup_key = mapped.to_lowercase();
+                                        if seen_fm_tags.insert(dedup_key) {
+                                            let formatted = if had_hash { format!("#{}", mapped) } else { mapped };
+                                            if let Some(q) = quote {
+                                                new_items.push(format!("{}{}{}", q, formatted, q));
+                                            } else {
+                                                new_items.push(formatted);
+                                            }
+                                        }
+                                    }
+                                }
+                                if line_changed {
+                                    out_lines.push(format!("{}: [{}]", k, new_items.join(", ")));
+                                } else {
+                                    out_lines.push((*line).to_string());
+                                }
+                                continue;
+                            }
+                            // Single inline scalar `tags: Books` or comma-separated `tags: Books, Fiction`
+                            let mut new_items: Vec<String> = Vec::new();
+                            let mut line_changed = false;
+                            for part in val_trim.split(',') {
+                                let p_trim = part.trim();
+                                if p_trim.is_empty() {
+                                    continue;
+                                }
+                                let unq = p_trim.trim_matches('"').trim_matches('\'');
+                                let (mapped_opt, changed) = rewrite_tag_token(unq, &from_lower, to_clean, include_subtags);
+                                if changed {
+                                    line_changed = true;
+                                    replacements += 1;
+                                }
+                                if let Some(mapped) = mapped_opt {
+                                    if seen_fm_tags.insert(mapped.to_lowercase()) {
+                                        new_items.push(mapped);
+                                    }
+                                }
+                            }
+                            if line_changed {
+                                out_lines.push(format!("{}: {}", k, new_items.join(", ")));
+                            } else {
+                                out_lines.push((*line).to_string());
+                            }
+                            continue;
+                        }
+                    }
+                    out_lines.push((*line).to_string());
+                    continue;
+                }
+                if in_tags_list && is_list_item {
+                    let prefix_len = line.find('-').unwrap_or(0) + 1;
+                    let after_dash = &line[prefix_len..];
+                    let leading_ws: String = after_dash.chars().take_while(|c| c.is_whitespace()).collect();
+                    let val_trim = after_dash.trim();
+                    let quote = if (val_trim.starts_with('"') && val_trim.ends_with('"') && val_trim.len() >= 2)
+                        || (val_trim.starts_with('\'') && val_trim.ends_with('\'') && val_trim.len() >= 2)
+                    {
+                        Some(&val_trim[..1])
+                    } else {
+                        None
+                    };
+                    let unq = if quote.is_some() { &val_trim[1..val_trim.len() - 1] } else { val_trim };
+                    let had_hash = unq.trim_start().starts_with('#');
+                    let (mapped_opt, changed) = rewrite_tag_token(unq, &from_lower, to_clean, include_subtags);
+                    if changed {
+                        replacements += 1;
+                        if let Some(mapped) = mapped_opt {
+                            if seen_fm_tags.insert(mapped.to_lowercase()) {
+                                let formatted = if had_hash { format!("#{}", mapped) } else { mapped };
+                                let rendered = if let Some(q) = quote {
+                                    format!("{}{}{}", q, formatted, q)
+                                } else {
+                                    formatted
+                                };
+                                out_lines.push(format!("{}{}{}", &line[..prefix_len], leading_ws, rendered));
+                            }
+                        }
+                        // else: deleted (removed or deduplicated)
+                    } else {
+                        let keep_key = unq.trim_start_matches('#').to_lowercase();
+                        // Deduplicate when an earlier tag in this list was merged into this tag.
+                        if seen_fm_tags.insert(keep_key) || replacements == 0 {
+                            out_lines.push((*line).to_string());
+                        }
+                    }
+                } else {
+                    out_lines.push((*line).to_string());
+                }
+            }
+            out_lines.push(src_lines[end_i].to_string());
+            idx = end_i + 1;
+        }
+    }
+
+    // 2. Markdown body inline `#tag` tokens (skipping fenced code blocks and inline code spans)
+    let mut in_fence = false;
+    while idx < total {
+        let line = src_lines[idx];
+        idx += 1;
+        let trimmed = line.trim();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            out_lines.push(line.to_string());
+            continue;
+        }
+        if in_fence || !line.contains('#') {
+            out_lines.push(line.to_string());
+            continue;
+        }
+        let chars: Vec<char> = line.chars().collect();
+        let mut rebuilt = String::with_capacity(line.len());
+        let mut i = 0usize;
+        let mut in_inline_code = false;
+        while i < chars.len() {
+            let ch = chars[i];
+            if ch == '`' {
+                in_inline_code = !in_inline_code;
+                rebuilt.push(ch);
+                i += 1;
+                continue;
+            }
+            if !in_inline_code && ch == '#' {
+                let prev_ok = i == 0 || (!chars[i - 1].is_alphanumeric() && chars[i - 1] != '&' && chars[i - 1] != '/' && chars[i - 1] != '#');
+                if prev_ok && i + 1 < chars.len() && is_tag_body_char(chars[i + 1]) {
+                    let mut j = i + 1;
+                    while j < chars.len() && is_tag_body_char(chars[j]) {
+                        j += 1;
+                    }
+                    let token: String = chars[i + 1..j].iter().collect();
+                    // Obsidian allows numeric-prefix tags like #2026/goals or #100days,
+                    // while rejecting pure numbers like #123.
+                    let valid_tag = !token.is_empty()
+                        && !token.starts_with('/')
+                        && !token.ends_with('/')
+                        && !token.contains("//")
+                        && !token.chars().all(|c| c.is_ascii_digit());
+                    if valid_tag {
+                        let (mapped_opt, changed) = rewrite_tag_token(&token, &from_lower, to_clean, include_subtags);
+                        if changed {
+                            replacements += 1;
+                            if let Some(mapped) = mapped_opt {
+                                rebuilt.push('#');
+                                rebuilt.push_str(&mapped);
+                            } else if rebuilt.ends_with(' ') && j < chars.len() && chars[j] == ' ' {
+                                // avoid leaving double spaces on tag removal
+                                rebuilt.pop();
+                            }
+                            i = j;
+                            continue;
+                        }
+                    }
+                }
+            }
+            rebuilt.push(ch);
+            i += 1;
+        }
+        out_lines.push(rebuilt);
+    }
+
+    let mut joined = out_lines.join(eol);
+    if trailing_eol && !joined.ends_with('\n') {
+        joined.push_str(eol);
+    }
+    (joined, replacements)
+}
+
+fn collect_vault_markdown_files_for_tags(vault_canon: &Path, dir: &Path, out: &mut Vec<(PathBuf, String)>) {
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    let mut collected: Vec<_> = entries.flatten().collect();
+    collected.sort_by_key(|e| e.file_name());
+    for entry in collected {
+        let fname = entry.file_name().to_string_lossy().to_string();
+        if should_skip_entry(&fname) {
+            continue;
+        }
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_symlink() {
+            continue;
+        }
+        let full = entry.path();
+        if ft.is_dir() {
+            if full != vault_canon && full.join(".git").exists() {
+                continue;
+            }
+            collect_vault_markdown_files_for_tags(vault_canon, &full, out);
+        } else if ft.is_file() {
+            let ext = full.extension().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            if classify_extension(&ext).0 == FileCategory::Markdown {
+                let rel = full
+                    .strip_prefix(vault_canon)
+                    .map(|p| p.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_default();
+                out.push((full, rel));
+            }
+        }
+    }
+}
+
+fn atomic_write_text(path: &Path, content: &str) -> Result<(), String> {
+    let parent = path.parent().ok_or_else(|| "Invalid target parent".to_string())?;
+    let fname = path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "note.md".to_string());
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp = parent.join(format!(".{}.tmp.{}.{}", fname, std::process::id(), nanos));
+    fs::write(&tmp, content.as_bytes()).map_err(|e| format!("Failed writing temp file: {}", e))?;
+    if let Err(e) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("Failed committing atomic rename: {}", e));
+    }
+    Ok(())
+}
+
+pub fn cmd_tag_rename(
+    vault_str: &str,
+    from_raw: &str,
+    to_raw: &str,
+    include_subtags: bool,
+) -> Result<Value, String> {
+    let from_clean = normalize_tag_arg(from_raw)?;
+    let to_clean = normalize_tag_arg(to_raw)?;
+    if from_clean.eq_ignore_ascii_case(&to_clean) && from_clean == to_clean {
+        return Ok(json!({
+            "ok": true,
+            "action": "tag-rename",
+            "from": from_clean,
+            "to": to_clean,
+            "filesScanned": 0,
+            "filesUpdated": 0,
+            "occurrencesReplaced": 0,
+            "updatedPaths": [],
+        }));
+    }
+    let vault_canon = resolve_vault_root(vault_str)?;
+    let mut files: Vec<(PathBuf, String)> = Vec::new();
+    collect_vault_markdown_files_for_tags(&vault_canon, &vault_canon, &mut files);
+    let files_scanned = files.len();
+    let mut updated_paths: Vec<String> = Vec::new();
+    let mut total_replaced = 0usize;
+
+    for (full, rel) in files {
+        let Ok(meta) = fs::metadata(&full) else { continue };
+        if meta.len() > 4 * 1024 * 1024 {
+            continue;
+        }
+        let Ok(raw) = fs::read_to_string(&full) else { continue };
+        let (rewritten, count) = rewrite_markdown_tags(&raw, &from_clean, Some(&to_clean), include_subtags);
+        if count > 0 && rewritten != raw {
+            atomic_write_text(&full, &rewritten)?;
+            total_replaced += count;
+            updated_paths.push(rel);
+        }
+    }
+
+    Ok(json!({
+        "ok": true,
+        "action": "tag-rename",
+        "from": from_clean,
+        "to": to_clean,
+        "includeSubtags": include_subtags,
+        "filesScanned": files_scanned,
+        "filesUpdated": updated_paths.len(),
+        "occurrencesReplaced": total_replaced,
+        "updatedPaths": updated_paths,
+    }))
+}
+
+pub fn cmd_tag_remove(
+    vault_str: &str,
+    tag_raw: &str,
+    path_opt: Option<&str>,
+    include_subtags: bool,
+) -> Result<Value, String> {
+    let tag_clean = normalize_tag_arg(tag_raw)?;
+    let vault_canon = resolve_vault_root(vault_str)?;
+    let mut targets: Vec<(PathBuf, String)> = Vec::new();
+    if let Some(rel_req) = path_opt.filter(|s| !s.trim().is_empty()) {
+        let (full, rel_norm) = resolve_inside_vault(&vault_canon, rel_req, true)?;
+        targets.push((full, rel_norm));
+    } else {
+        collect_vault_markdown_files_for_tags(&vault_canon, &vault_canon, &mut targets);
+    }
+    let files_scanned = targets.len();
+    let mut updated_paths: Vec<String> = Vec::new();
+    let mut total_removed = 0usize;
+    for (full, rel) in targets {
+        let Ok(raw) = fs::read_to_string(&full) else { continue };
+        let (rewritten, count) = rewrite_markdown_tags(&raw, &tag_clean, None, include_subtags);
+        if count > 0 && rewritten != raw {
+            atomic_write_text(&full, &rewritten)?;
+            total_removed += count;
+            updated_paths.push(rel);
+        }
+    }
+    Ok(json!({
+        "ok": true,
+        "action": "tag-remove",
+        "tag": tag_clean,
+        "filesScanned": files_scanned,
+        "filesUpdated": updated_paths.len(),
+        "occurrencesRemoved": total_removed,
+        "updatedPaths": updated_paths,
+    }))
+}
+
+pub fn cmd_tag_page(
+    vault_str: &str,
+    tag_raw: &str,
+    folder_opt: Option<&str>,
+) -> Result<Value, String> {
+    let tag_clean = normalize_tag_arg(tag_raw)?;
+    let vault_canon = resolve_vault_root(vault_str)?;
+    let safe_stem = tag_clean.replace('/', " - ");
+    let base_folder = folder_opt
+        .map(|s| s.trim().trim_matches('/'))
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Tags");
+    let candidate_rel = format!("{}/{}.md", base_folder, safe_stem);
+    let (target_path, rel_norm) = resolve_inside_vault(&vault_canon, &candidate_rel, false)?;
+    let created = if !target_path.exists() {
+        if let Some(parent) = target_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("Cannot create folder: {}", e))?;
+        }
+        let body = format!(
+            "---\ntitle: \"#{}\"\ntags:\n  - {}\naliases:\n  - \"{}\"\n---\n\n# #{}\n\n> Tag page managed by Nexus Tag Wrangler.\n\n## Notes\n",
+            tag_clean, tag_clean, tag_clean, tag_clean
+        );
+        atomic_write_text(&target_path, &body)?;
+        true
+    } else {
+        false
+    };
+    Ok(json!({
+        "ok": true,
+        "action": "tag-page",
+        "tag": tag_clean,
+        "relPath": rel_norm,
+        "created": created,
+    }))
 }
 
 fn main() {
@@ -10982,6 +11682,185 @@ mod tests {
         }
         let _ = fs::remove_dir_all(&vault);
         let _ = fs::remove_dir_all(&mock_dir);
+    }
+
+    #[test]
+    fn test_vault_graph_virtual_tag_hubs_clusters_and_orphans() {
+        let vault = make_temp_vault("virtual_tag_hub");
+        let v_str = vault.to_str().unwrap();
+
+        // Three notes sharing tag `Books` (NO note named Books.md exists)
+        cmd_write(v_str, "Library/Dune.md", "---\ntags: [Books]\n---\n# Dune\nSci-fi classic.\n").unwrap();
+        cmd_write(v_str, "Library/Foundation.md", "---\ntags: [Books]\n---\n# Foundation\nAsimov.\n").unwrap();
+        cmd_write(v_str, "Library/Hyperion.md", "---\ntags: [Books]\n---\n# Hyperion\nDan Simmons.\n").unwrap();
+        // True orphan note with no tags and no links
+        cmd_write(v_str, "Scratch/Lonely.md", "# Lonely\nStandalone thought.\n").unwrap();
+
+        let scan = cmd_scan(v_str).unwrap();
+        let nodes = scan["graph"]["nodes"].as_array().unwrap();
+        let edges = scan["graph"]["edges"].as_array().unwrap();
+
+        let books_hub = nodes
+            .iter()
+            .find(|n| n["isTagNode"] == true && n["tagName"] == "Books")
+            .expect("Expected virtual #Books tag hub node");
+        assert_eq!(books_hub["isVirtual"], true);
+        assert_eq!(books_hub["isHub"], true);
+        assert_eq!(books_hub["isOrphan"], false);
+        assert_eq!(books_hub["degree"], 3);
+        assert!(books_hub["z"].as_f64().is_some());
+
+        let lonely = nodes
+            .iter()
+            .find(|n| n["relPath"] == "Scratch/Lonely.md")
+            .expect("Expected Lonely orphan node");
+        assert_eq!(lonely["isOrphan"], true);
+        assert_eq!(lonely["clusterId"], -1);
+        assert_eq!(lonely["degree"], 0);
+
+        // Every book note connects directly to the virtual #Books hub, NOT to another random book
+        assert_eq!(edges.len(), 3);
+        assert!(edges.iter().all(|e| e["source"] == "tag:books"));
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn test_calendar_obsidian_plugin_dual_indicators_and_words_per_dot() {
+        let vault = make_temp_vault("cal_dual_dots");
+        let v_str = vault.to_str().unwrap();
+        let cal_cfg = vault.join(".obsidian/plugins/calendar");
+        fs::create_dir_all(&cal_cfg).unwrap();
+        fs::write(cal_cfg.join("data.json"), r#"{"wordsPerDot": 10, "showWeeklyNote": true}"#).unwrap();
+
+        // Day with ~35 words and 1 open task -> solidDots=3, hasOpenTasks=true
+        let body_35: String = (0..35).map(|i| format!("word{}", i)).collect::<Vec<_>>().join(" ");
+        cmd_write(
+            v_str,
+            "00_Capture/01_Journal/2026/November/05-11-2026-Thursday.md",
+            &format!("---\nmood: Good\n---\n{}\n- [ ] Finish calendar parity\n", body_35),
+        )
+        .unwrap();
+        // Day with 3 words and only completed tasks -> solidDots=1 (min 1 when note exists), hasOpenTasks=false
+        cmd_write(
+            v_str,
+            "00_Capture/01_Journal/2026/November/06-11-2026-Friday.md",
+            "Short note\n- [x] All done\n",
+        )
+        .unwrap();
+
+        let cal = cmd_calendar_with_today(v_str, 2026, 11, Some("2026-11-05")).unwrap();
+        assert_eq!(cal["wordsPerDot"], 10);
+        assert_eq!(cal["showWeeklyNote"], true);
+        let cells = cal["cells"].as_array().unwrap();
+        let d5 = cells.iter().find(|c| c["dateStr"] == "2026-11-05").unwrap();
+        assert_eq!(d5["isToday"], true);
+        assert_eq!(d5["hasJournal"], true);
+        assert_eq!(d5["solidDots"], 3);
+        assert_eq!(d5["hasOpenTasks"], true);
+        assert_eq!(d5["openTasks"], 1);
+        assert!(d5["weekNumber"].as_u64().unwrap() >= 1);
+
+        let d6 = cells.iter().find(|c| c["dateStr"] == "2026-11-06").unwrap();
+        assert_eq!(d6["isToday"], false);
+        assert_eq!(d6["solidDots"], 1);
+        assert_eq!(d6["hasOpenTasks"], false);
+
+        let d7 = cells.iter().find(|c| c["dateStr"] == "2026-11-07").unwrap();
+        assert_eq!(d7["hasJournal"], false);
+        assert_eq!(d7["solidDots"], 0);
+        assert_eq!(d7["hasOpenTasks"], false);
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn test_tag_wrangler_rename_merge_remove_and_page_preserve_unrelated_bytes() {
+        let vault = make_temp_vault("tag_wrangler");
+        let v_str = vault.to_str().unwrap();
+
+        let note_a = "---\r\ntitle: Note A\r\ntags:\r\n  - Books\r\n  - Books/SciFi\r\n  - Reading\r\n---\r\nBody #Books and #Books/SciFi and `#Books` in code.\r\n```\r\n#Books inside fence stays untouched\r\n```\r\nLink https://example.com/#Books stays untouched.\r\n";
+        fs::write(vault.join("NoteA.md"), note_a).unwrap();
+        let note_b = "---\ntags: [Books, Reading]\n---\nInline #Books mention.\n";
+        fs::write(vault.join("NoteB.md"), note_b).unwrap();
+
+        // Rename Books -> Literature (with subtags)
+        let ren = cmd_tag_rename(v_str, "Books", "Literature", true).unwrap();
+        assert_eq!(ren["ok"], true);
+        assert_eq!(ren["filesUpdated"], 2);
+
+        let after_a = fs::read_to_string(vault.join("NoteA.md")).unwrap();
+        assert!(after_a.contains("\r\n"));
+        assert!(after_a.contains("  - Literature\r\n"));
+        assert!(after_a.contains("  - Literature/SciFi\r\n"));
+        assert!(after_a.contains("Body #Literature and #Literature/SciFi and `#Books` in code."));
+        assert!(after_a.contains("#Books inside fence stays untouched"));
+        assert!(after_a.contains("https://example.com/#Books stays untouched."));
+
+        // Merge Literature -> Reading (must deduplicate frontmatter tags in BOTH NoteA block list and NoteB inline array!)
+        let merged = cmd_tag_rename(v_str, "Literature", "Reading", false).unwrap();
+        assert_eq!(merged["ok"], true);
+        let after_a_merged = fs::read_to_string(vault.join("NoteA.md")).unwrap();
+        assert_eq!(
+            after_a_merged.matches("  - Reading\r\n").count(),
+            1,
+            "Block YAML list merge must deduplicate when merged tag precedes existing target tag:\n{}",
+            after_a_merged
+        );
+        let after_b = fs::read_to_string(vault.join("NoteB.md")).unwrap();
+        assert!(after_b.contains("tags: [Reading]\n"));
+        assert!(after_b.contains("Inline #Reading mention."));
+
+        // Remove tag from single note
+        let rem = cmd_tag_remove(v_str, "Reading", Some("NoteB.md"), false).unwrap();
+        assert_eq!(rem["filesUpdated"], 1);
+        let after_rem = fs::read_to_string(vault.join("NoteB.md")).unwrap();
+        assert!(!after_rem.contains("#Reading"));
+        assert!(after_rem.contains("tags: []\n"));
+
+        // Create Tag Page MOC
+        let page = cmd_tag_page(v_str, "Literature/SciFi", None).unwrap();
+        assert_eq!(page["created"], true);
+        assert_eq!(page["relPath"], "Tags/Literature - SciFi.md");
+        assert!(vault.join("Tags/Literature - SciFi.md").exists());
+        let page2 = cmd_tag_page(v_str, "Literature/SciFi", None).unwrap();
+        assert_eq!(page2["created"], false);
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn test_tag_wrangler_unicode_zero_indent_yaml_and_numeric_prefix_tags() {
+        let vault = make_temp_vault("tag_wrangler_edge");
+        let v_str = vault.to_str().unwrap();
+
+        // Zero-indent YAML tag list + Vietnamese Unicode tag + numeric-prefix tag + pure number
+        let note = "---\ntags:\n- Sách/Tâm-Lý\n- 2026/goals\n---\nĐọc #sách/Tâm-Lý và #2026/goals nhưng giữ nguyên #123.\n";
+        fs::write(vault.join("Edge.md"), note).unwrap();
+
+        let r1 = cmd_tag_rename(v_str, "Sách", "Thư-Viện", true).unwrap();
+        assert_eq!(r1["filesUpdated"], 1);
+        let r2 = cmd_tag_rename(v_str, "2026", "Year2026", true).unwrap();
+        assert_eq!(r2["filesUpdated"], 1);
+
+        let after = fs::read_to_string(vault.join("Edge.md")).unwrap();
+        assert!(after.contains("- Thư-Viện/Tâm-Lý\n"), "Zero-indent YAML + Unicode subtag failed:\n{}", after);
+        assert!(after.contains("- Year2026/goals\n"), "Zero-indent numeric tag failed:\n{}", after);
+        assert!(after.contains("#Thư-Viện/Tâm-Lý"), "Inline Unicode case-insensitive match failed:\n{}", after);
+        assert!(after.contains("#Year2026/goals"), "Inline numeric-prefix tag failed:\n{}", after);
+        assert!(after.contains("#123"), "Pure numeric token #123 must remain untouched:\n{}", after);
+
+        // Calendar weekStart=sunday check
+        let cal_cfg = vault.join(".obsidian/plugins/calendar");
+        fs::create_dir_all(&cal_cfg).unwrap();
+        fs::write(cal_cfg.join("data.json"), r#"{"weekStart": "sunday", "wordsPerDot": 250}"#).unwrap();
+        // Nov 1, 2026 is a Sunday -> with weekStart=sunday, cell[0] must be 2026-11-01!
+        let cal = cmd_calendar_with_today(v_str, 2026, 11, Some("2026-11-01")).unwrap();
+        assert_eq!(cal["weekStart"], "sunday");
+        let cells = cal["cells"].as_array().unwrap();
+        assert_eq!(cells[0]["dateStr"], "2026-11-01");
+
+        let _ = fs::remove_dir_all(&vault);
     }
 }
 
