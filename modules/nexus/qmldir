@@ -1,5 +1,6 @@
 NexusGraphCanvas 1.0 NexusGraphCanvas.qml
 NexusGlobeWidget 1.0 NexusGlobeWidget.qml
+NexusSeparator 1.0 NexusSeparator.qml
 NexusCustomViews 1.0 NexusCustomViews.qml
 NexusCollectionsView 1.0 NexusCollectionsView.qml
 NexusDocumentView 1.0 NexusDocumentView.qml

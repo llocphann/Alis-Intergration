@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.widgets
 import qs.modules.common.perimeter
 import qs.modules.settings
 
@@ -84,7 +85,7 @@ Item {
             WlrLayershell.layer: (GlobalStates.settingsNativeDialogOpen || GlobalStates.regionSelectorOpen || GlobalStates.annotationEditorOpen || PolkitService.active) ? WlrLayer.Bottom : WlrLayer.Overlay
             WlrLayershell.keyboardFocus: root.overlayOpen
                 && !GlobalStates.settingsNativeDialogOpen && !GlobalStates.regionSelectorOpen && !GlobalStates.annotationEditorOpen && !PolkitService.active
-                ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+                ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
             color: "transparent"
             anchors {
                 top: true
@@ -212,6 +213,19 @@ Item {
                         }
                     }
                 }
+
+                AlisLoadingScreen {
+                    objectName: "nexusOverlayLoadingScreen"
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    z: 20
+                    loading: root.overlayOpen && overlayWorkspaceLoader.status !== Loader.Ready
+                    title: Translation.tr("Nexus")
+                    icon: "hub"
+                    fillSurface: true
+                    backdropOpacity: 0.88
+                    surfaceRadius: Math.max(0, overlayCard.radius - 4)
+                }
             }
             readonly property bool workspaceLoaded: overlayWorkspaceLoader.status === Loader.Ready && overlayWorkspaceLoader.item !== null
         }
@@ -264,6 +278,18 @@ Item {
                             item.forceActiveFocus();
                         }
                     }
+                }
+
+                AlisLoadingScreen {
+                    objectName: "nexusFloatingLoadingScreen"
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    z: 20
+                    loading: root.floatingOpen && floatingWorkspaceLoader.status !== Loader.Ready
+                    title: Translation.tr("Nexus")
+                    icon: "hub"
+                    fillSurface: true
+                    backdropOpacity: 0.90
                 }
             }
             readonly property bool workspaceLoaded: floatingWorkspaceLoader.status === Loader.Ready && floatingWorkspaceLoader.item !== null

@@ -252,9 +252,19 @@ Rectangle {
                         color: settledColors.colOnLayer1
                         background: null
                         Keys.onEscapePressed: event => {
+                            if (inputMethodComposing) {
+                                event.accepted = false;
+                                return;
+                            }
                             if (root.nexus)
                                 root.nexus.closeNewNoteModal();
                             event.accepted = true;
+                        }
+                        Keys.onPressed: event => {
+                            if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                event.accepted = false;
+                                return;
+                            }
                         }
                     }
                 }
@@ -293,7 +303,7 @@ Rectangle {
                         color: settledColors.colOnLayer1
                         background: null
                         onTextChanged: {
-                            if (!nexusNewNoteApiModal.visible || !root.nexus)
+                            if (!nexusNewNoteApiModal.visible || !root.nexus || inputMethodComposing)
                                 return;
                             if (nexusNewNoteApiModal.apiBacked) {
                                 if (text.trim().length >= 2)
@@ -306,7 +316,7 @@ Rectangle {
                             }
                         }
                         onAccepted: {
-                            if (!root.nexus)
+                            if (!root.nexus || inputMethodComposing)
                                 return;
                             root.nexus.createManualModalNote(
                                 nexusNewNoteApiModal.activeKind,
@@ -315,6 +325,10 @@ Rectangle {
                             );
                         }
                         Keys.onEscapePressed: event => {
+                            if (inputMethodComposing) {
+                                event.accepted = false;
+                                return;
+                            }
                             if (root.nexus)
                                 root.nexus.closeNewNoteModal();
                             event.accepted = true;

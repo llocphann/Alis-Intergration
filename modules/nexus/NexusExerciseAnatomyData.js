@@ -303,10 +303,10 @@ function paintAnatomyMap(ctx, width, height, primaryList, secondaryList, palette
     ctx.clearRect(0, 0, width, height);
     if (width <= 4 || height <= 4) return;
 
-    // SVG viewBox is 0 0 72 98
-    const vbW = 72.0;
+    // SVG viewBox is 0 0 72 98, actual front+back body geometry spans x=0.4..68.4, y=0.5..97.5
+    const vbW = 68.8;
     const vbH = 98.0;
-    const scale = Math.min((width - 8) / vbW, (height - 8) / vbH);
+    const scale = Math.min((width - 4) / vbW, (height - 4) / vbH);
     const ox = (width - vbW * scale) * 0.5;
     const oy = (height - vbH * scale) * 0.5;
 

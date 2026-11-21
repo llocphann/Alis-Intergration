@@ -513,7 +513,6 @@ ColumnLayout {
                             visible: standardNotePaperCard.isStandardSheet && root.standardNoteInlineEditing
                             Layout.fillWidth: true
                             Layout.preferredHeight: Math.max(260, contentHeight + 36)
-                            text: root.standardNoteInlineDraft
                             wrapMode: TextEdit.Wrap
                             font.family: Appearance.font.family.main
                             font.pixelSize: Appearance.font.pixelSize.small + 1
@@ -521,6 +520,7 @@ ColumnLayout {
                             selectionColor: settledColors.colSecondaryContainer
                             selectedTextColor: settledColors.colOnSecondaryContainer
                             selectByMouse: true
+                            inputMethodHints: Qt.ImhMultiLine
                             background: null
                             onVisibleChanged: {
                                 if (visible) {
@@ -528,12 +528,15 @@ ColumnLayout {
                                     forceActiveFocus();
                                     cursorPosition = text.length;
                                 } else {
+                                    if (inputMethodComposing)
+                                        Qt.inputMethod.commit();
                                     focus = false;
                                 }
                             }
                             onActiveFocusChanged: {
                                 if (!activeFocus
                                     && visible
+                                    && !inputMethodComposing
                                     && root.standardNoteInlineEditing
                                     && !root._cancelingStandardInlineEdit
                                     && !standardCancelMouse.containsMouse
@@ -542,6 +545,11 @@ ColumnLayout {
                                 }
                             }
                             Keys.onEscapePressed: event => {
+                                if (inputMethodComposing) {
+                                    event.accepted = false;
+                                    return;
+                                }
+                                Qt.inputMethod.commit();
                                 root.commitStandardNoteInlineEdit();
                                 focus = false;
                                 root.restoreWorkspaceFocus();
@@ -549,8 +557,13 @@ ColumnLayout {
                                 event.accepted = true;
                             }
                             Keys.onPressed: event => {
+                                if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                    event.accepted = false;
+                                    return;
+                                }
                                 if ((event.modifiers & Qt.ControlModifier)
                                     && (event.key === Qt.Key_S || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+                                    Qt.inputMethod.commit();
                                     root.commitStandardNoteInlineEdit();
                                     focus = false;
                                     root.restoreWorkspaceFocus();
@@ -615,21 +628,30 @@ ColumnLayout {
                                     objectName: "nexusInlineBlockEditor_" + String(blockDelegate.modelData.id)
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
-                                    text: root.nexus?.editingBlockText ?? blockDelegate.modelData.rawText
                                     font.family: Appearance.font.family.monospace
                                     font.pixelSize: Appearance.font.pixelSize.smaller
                                     color: settledColors.colOnLayer1
+                                    inputMethodHints: Qt.ImhMultiLine
                                     background: null
                                     onVisibleChanged: {
                                         if (visible) {
+                                            text = String(root.nexus?.editingBlockText ?? blockDelegate.modelData.rawText ?? "");
                                             forceActiveFocus();
+                                            cursorPosition = text.length;
                                         } else {
+                                            if (inputMethodComposing)
+                                                Qt.inputMethod.commit();
                                             inlineBlockEditor.focus = false;
                                             root.restoreWorkspaceFocus();
                                             Qt.callLater(root.restoreWorkspaceFocus);
                                         }
                                     }
                                     Keys.onEscapePressed: event => {
+                                        if (inputMethodComposing) {
+                                            event.accepted = false;
+                                            return;
+                                        }
+                                        Qt.inputMethod.commit();
                                         if (root.nexus)
                                             root.nexus.editingBlockId = -1;
                                         inlineBlockEditor.focus = false;
@@ -638,7 +660,12 @@ ColumnLayout {
                                         event.accepted = true;
                                     }
                                     Keys.onPressed: event => {
+                                        if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                            event.accepted = false;
+                                            return;
+                                        }
                                         if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                                            Qt.inputMethod.commit();
                                             if (root.nexus)
                                                 root.nexus.updateBlockContent(blockDelegate.modelData.lineStart, blockDelegate.modelData.lineEnd, inlineBlockEditor.text);
                                             inlineBlockEditor.focus = false;
@@ -822,14 +849,15 @@ ColumnLayout {
                                         }
                                     }
 
-                                    // Horizontal Rule / Divider Block (kind === "divider")
-                                    Rectangle {
+                                    // Horizontal Rule / Divider Block (100% parity with Obsidian 03_Compatibility.css hr)
+                                    NexusSeparator {
                                         visible: blockDelegate.modelData.kind === "divider" || blockDelegate.modelData.kind === "hr"
                                         Layout.fillWidth: true
-                                        Layout.preferredHeight: 1
-                                        Layout.topMargin: 6
-                                        Layout.bottomMargin: 6
-                                        color: settledColors.colLayer0Border
+                                        Layout.preferredHeight: visible ? 34 : 0
+                                        Layout.topMargin: visible ? 6 : 0
+                                        Layout.bottomMargin: visible ? 6 : 0
+                                        accentColor: settledColors.colPrimary
+                                        mutedColor: settledColors.colSubtext
                                     }
 
                                     // Inline Embedded Image Block (kind === "image")
@@ -1199,22 +1227,54 @@ ColumnLayout {
                 TextArea {
                     id: vimEditorArea
                     objectName: "nexusVimEditorArea"
-                    text: root.nexus?.draftContent ?? ""
+                    property bool _syncingFromEditor: false
                     font.family: Appearance.font.family.monospace
                     font.pixelSize: Appearance.font.pixelSize.small + 1
                     color: settledColors.colOnLayer1
                     selectionColor: settledColors.colPrimary
                     selectedTextColor: settledColors.colOnPrimary
                     wrapMode: TextEdit.Wrap
+                    inputMethodHints: Qt.ImhMultiLine
                     background: null
                     cursorVisible: vimEditorPane.visible
                     readOnly: (root.nexus?.vimEnabled ?? true) && (root.nexus?.vimMode ?? "NORMAL") !== "INSERT"
+
+                    function syncFromService(forceSync: bool): void {
+                        if (!root.nexus)
+                            return;
+                        if (_syncingFromEditor)
+                            return;
+                        if (!forceSync && inputMethodComposing)
+                            return;
+                        const nextText = String(root.nexus.draftContent ?? "");
+                        if (text !== nextText) {
+                            const prevCursor = cursorPosition;
+                            _syncingFromEditor = true;
+                            text = nextText;
+                            cursorPosition = Math.max(0, Math.min(nextText.length, prevCursor));
+                            _syncingFromEditor = false;
+                        }
+                    }
+
+                    Component.onCompleted: syncFromService(true)
+
+                    Connections {
+                        target: root.nexus
+                        function onDraftContentChanged(): void {
+                            vimEditorArea.syncFromService(false);
+                        }
+                        function onCurrentDocChanged(): void {
+                            vimEditorArea.syncFromService(true);
+                        }
+                    }
 
                     onActiveFocusChanged: {
                         if (activeFocus && vimEditorPane.visible)
                             cursorVisible = true;
                     }
                     onReadOnlyChanged: {
+                        if (readOnly && inputMethodComposing)
+                            Qt.inputMethod.commit();
                         if (vimEditorPane.visible)
                             cursorVisible = true;
                     }
@@ -1249,14 +1309,28 @@ ColumnLayout {
                         z: 5
                     }
 
-                    onTextChanged: {
+                    function _syncEditorTextToService(): void {
+                        if (_syncingFromEditor || inputMethodComposing)
+                            return;
                         if (root.nexus && text !== root.nexus.draftContent) {
+                            _syncingFromEditor = true;
                             root.nexus.draftContent = text;
                             root.nexus.isDirty = (text !== String(root.nexus.currentDoc?.content ?? ""));
+                            _syncingFromEditor = false;
                         }
                     }
 
+                    onTextChanged: _syncEditorTextToService()
+                    onInputMethodComposingChanged: {
+                        if (!inputMethodComposing)
+                            _syncEditorTextToService();
+                    }
+
                     Keys.onPressed: event => {
+                        if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                            event.accepted = false;
+                            return;
+                        }
                         if ((event.modifiers & (Qt.ControlModifier | Qt.AltModifier)) !== 0 && root.nexus && root.nexus.handleKeyEvent(event)) {
                             event.accepted = true;
                             return;

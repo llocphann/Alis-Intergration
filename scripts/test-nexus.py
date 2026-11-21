@@ -597,8 +597,8 @@ ShellRoot {{
                 check(findChild(ws, "nexusLeftCardSplitter") !== null, "missing nexusLeftCardSplitter")
                 check(findChild(ws, "nexusRightTopCardSplitter") !== null, "missing nexusRightTopCardSplitter")
                 check(findChild(ws, "nexusRightMidCardSplitter") !== null, "missing nexusRightMidCardSplitter")
-                check(findChild(ws, "nexusHomepageHeroSplitter") !== null, "missing nexusHomepageHeroSplitter")
-                check(findChild(ws, "nexusHomepageScheduleSplitter") !== null, "missing nexusHomepageScheduleSplitter")
+                check(findChild(ws, "nexusHomepageHeroSplitter") === null, "nexusHomepageHeroSplitter should be removed from Nexus Dashboard")
+                check(findChild(ws, "nexusHomepageScheduleSplitter") === null, "nexusHomepageScheduleSplitter should be removed from Nexus Dashboard")
                 check(findChild(ws, "nexusCardDragPreview") !== null, "missing nexusCardDragPreview")
 
                 // Verify sidebar & card resizing updates both service property AND actual visual ColumnLayout width 1:1
@@ -820,8 +820,8 @@ ShellRoot {{
                 check(findChild(ws, "nexusLeftCardSplitter").opacity === 0, "nexusLeftCardSplitter should be hidden when not hovered")
                 check(findChild(ws, "nexusRightTopCardSplitter").opacity === 0, "nexusRightTopCardSplitter should be hidden when not hovered")
                 check(findChild(ws, "nexusRightMidCardSplitter").opacity === 0, "nexusRightMidCardSplitter should be hidden when not hovered")
-                check(findChild(ws, "nexusHomepageHeroSplitter").opacity === 0, "nexusHomepageHeroSplitter should be hidden when not hovered")
-                check(findChild(ws, "nexusHomepageScheduleSplitter").opacity === 0, "nexusHomepageScheduleSplitter should be hidden when not hovered")
+                check(findChild(ws, "nexusHomepageHeroSplitter") === null, "nexusHomepageHeroSplitter should stay removed")
+                check(findChild(ws, "nexusHomepageScheduleSplitter") === null, "nexusHomepageScheduleSplitter should stay removed")
 
                 const statusBar = findChild(ws, "nexusStatusBar")
                 check(statusBar !== null, "missing nexusStatusBar")

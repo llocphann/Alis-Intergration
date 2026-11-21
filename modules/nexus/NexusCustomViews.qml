@@ -454,8 +454,11 @@ Item {
         }
     }
 
-    function forwardWorkspaceShortcut(event): bool {
-        if (!event)
+    function forwardWorkspaceShortcut(event, inputItem = null): bool {
+        if (!event || event.key === 0 || event.key === Qt.Key_unknown)
+            return false;
+        const activeInp = inputItem || Window.activeFocusItem;
+        if (activeInp && activeInp.inputMethodComposing === true)
             return false;
         if ((event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) !== 0
             && root.service
@@ -1144,12 +1147,10 @@ Item {
         }
     }
 
-    component OrnamentalDivider: RowLayout {
+    component OrnamentalDivider: NexusSeparator {
         Layout.fillWidth: true
-        spacing: 8
-        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.borderAccent }
-        Text { text: "◇"; font.pixelSize: 9; color: root.accentColor }
-        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.borderAccent }
+        accentColor: root.accentColor
+        mutedColor: root.textMuted
     }
 
     ColumnLayout {
@@ -1481,6 +1482,8 @@ Item {
                                                 border.color: root.accentColor
                                             }
                                             onAccepted: {
+                                                if (inputMethodComposing)
+                                                    Qt.inputMethod.commit();
                                                 const v = Math.max(0, Number(text) || 0);
                                                 root.editingPlaytime = false;
                                                 if (root.service)
@@ -1488,12 +1491,19 @@ Item {
                                                 root.restoreWorkspaceFocus();
                                             }
                                             Keys.onEscapePressed: event => {
+                                                if (inputMethodComposing) {
+                                                    event.accepted = false;
+                                                    return;
+                                                }
                                                 root.editingPlaytime = false;
                                                 root.restoreWorkspaceFocus();
                                                 event.accepted = true;
                                             }
-                                            Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
-                                            onEditingFinished: root.editingPlaytime = false
+                                            Keys.onPressed: event => root.forwardWorkspaceShortcut(event, playtimeInput)
+                                            onEditingFinished: {
+                                                if (!inputMethodComposing)
+                                                    root.editingPlaytime = false;
+                                            }
                                         }
                                     }
                                 }
@@ -1578,6 +1588,8 @@ Item {
                                         border.color: root.accentColor
                                     }
                                     onAccepted: {
+                                        if (inputMethodComposing)
+                                            Qt.inputMethod.commit();
                                         const v = Math.max(0, Math.min(100, Math.round(Number(text) || 0)));
                                         root.editingCompletion = false;
                                         if (root.service)
@@ -1585,12 +1597,19 @@ Item {
                                         root.restoreWorkspaceFocus();
                                     }
                                     Keys.onEscapePressed: event => {
+                                        if (inputMethodComposing) {
+                                            event.accepted = false;
+                                            return;
+                                        }
                                         root.editingCompletion = false;
                                         root.restoreWorkspaceFocus();
                                         event.accepted = true;
                                     }
-                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
-                                    onEditingFinished: root.editingCompletion = false
+                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event, compInput)
+                                    onEditingFinished: {
+                                        if (!inputMethodComposing)
+                                            root.editingCompletion = false;
+                                    }
                                 }
                             }
 
@@ -1852,26 +1871,36 @@ Item {
                                     objectName: "nexusGameBodyEditor"
                                     Layout.fillWidth: true
                                     Layout.minimumHeight: 260
-                                    text: root.service ? root.service.getNoteBodyMarkdown() : ""
                                     placeholderText: "Write your game journal & notes here..."
                                     placeholderTextColor: root.textMuted
                                     color: root.textPrimary
                                     font.family: Appearance.font.family.main
                                     font.pixelSize: 13
                                     wrapMode: TextEdit.Wrap
+                                    inputMethodHints: Qt.ImhMultiLine
                                     background: Item {}
+                                    Component.onCompleted: text = root.service ? root.service.getNoteBodyMarkdown() : ""
                                     onVisibleChanged: {
-                                        if (visible)
+                                        if (visible) {
+                                            text = root.service ? root.service.getNoteBodyMarkdown() : "";
                                             Qt.callLater(() => { if (gameBodyEditor.visible) gameBodyEditor.forceActiveFocus(); });
+                                        } else if (inputMethodComposing) {
+                                            Qt.inputMethod.commit();
+                                        }
                                     }
                                     onActiveFocusChanged: {
-                                        if (!activeFocus && visible && root.editingNoteBody && root.noteKind === "game" && !gameCancelBtnMouse.containsMouse && !gameCancelBtnMouse.pressed) {
+                                        if (!activeFocus && visible && !inputMethodComposing && root.editingNoteBody && root.noteKind === "game" && !gameCancelBtnMouse.containsMouse && !gameCancelBtnMouse.pressed) {
                                             if (root.service)
                                                 root.service.saveNoteBodyMarkdown(gameBodyEditor.text);
                                             root.editingNoteBody = false;
                                         }
                                     }
                                     Keys.onEscapePressed: event => {
+                                        if (inputMethodComposing) {
+                                            event.accepted = false;
+                                            return;
+                                        }
+                                        Qt.inputMethod.commit();
                                         if (root.service)
                                             root.service.saveNoteBodyMarkdown(gameBodyEditor.text);
                                         gameBodyEditor.focus = false;
@@ -1880,7 +1909,12 @@ Item {
                                         event.accepted = true;
                                     }
                                     Keys.onPressed: event => {
+                                        if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                            event.accepted = false;
+                                            return;
+                                        }
                                         if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                                            Qt.inputMethod.commit();
                                             if (root.service)
                                                 root.service.saveNoteBodyMarkdown(gameBodyEditor.text);
                                             gameBodyEditor.focus = false;
@@ -1889,7 +1923,7 @@ Item {
                                             event.accepted = true;
                                             return;
                                         }
-                                        root.forwardWorkspaceShortcut(event);
+                                        root.forwardWorkspaceShortcut(event, gameBodyEditor);
                                     }
                                 }
 
@@ -2336,11 +2370,12 @@ Item {
 
                     // Poster / Cover thumbnail
                     Rectangle {
+                        objectName: root.noteKind === "book" ? "nexusBookCoverArtCard" : "nexusDossierPosterCard"
                         visible: String(root.dossier.posterUrl ?? "").length > 0 || root.noteKind === "movie" || root.noteKind === "tvseries" || root.noteKind === "book"
-                        Layout.preferredWidth: root.noteKind === "place" || root.noteKind === "clipping" ? 136 : 104
-                        Layout.preferredHeight: root.noteKind === "place" || root.noteKind === "clipping" ? 100 : 150
+                        Layout.preferredWidth: root.noteKind === "book" ? 180 : (root.noteKind === "place" || root.noteKind === "clipping" ? 136 : 104)
+                        Layout.preferredHeight: root.noteKind === "book" ? 268 : (root.noteKind === "place" || root.noteKind === "clipping" ? 100 : 150)
                         Layout.alignment: Qt.AlignTop
-                        radius: 7
+                        radius: root.noteKind === "book" ? 10 : 8
                         color: root.cardRaisedBg
                         border.width: 1
                         border.color: root.borderSubtle
@@ -2350,7 +2385,7 @@ Item {
                             id: dossierPosterImg
                             anchors.fill: parent
                             source: String(root.dossier.posterUrl ?? "")
-                            sourceSize: Qt.size(480, 640)
+                            sourceSize: Qt.size(540, 800)
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
                             cache: false
@@ -3103,14 +3138,12 @@ Item {
                         }
                         Item { Layout.fillWidth: true }
                         Text {
-                            visible: !(root.noteKind === "movie" || root.noteKind === "tvseries") || root.mediaActiveTab === "journal"
-                            Layout.fillWidth: true
-                            Layout.minimumWidth: 0
-                            wrapMode: Text.Wrap
-                            text: root.editingNoteBody ? "Editing · Esc to finish" : "Click to edit notes"
+                            visible: root.editingNoteBody && (!(root.noteKind === "movie" || root.noteKind === "tvseries") || root.mediaActiveTab === "journal")
+                            Layout.fillWidth: false
+                            text: "Editing · Esc to finish"
                             font.family: Appearance.font.family.monospace
                             font.pixelSize: 10
-                            color: (dossierEditHintMouse.containsMouse || root.editingNoteBody) ? root.accentColor : root.textMuted
+                            color: root.accentColor
                             MouseArea {
                                 id: dossierEditHintMouse
                                 anchors.fill: parent
@@ -3122,9 +3155,6 @@ Item {
                                             root.service.saveNoteBodyMarkdown(dossierBodyEditor.text);
                                         root.editingNoteBody = false;
                                         root.restoreWorkspaceFocus();
-                                    } else {
-                                        dossierBodyEditor.text = root.service ? root.service.getNoteBodyMarkdown() : "";
-                                        root.editingNoteBody = true;
                                     }
                                 }
                             }
@@ -3280,26 +3310,36 @@ Item {
                             objectName: "nexusDossierBodyEditor"
                             Layout.fillWidth: true
                             Layout.minimumHeight: Math.max(220, dossierLeftCard.minNoteCardHeight - 136)
-                            text: root.service ? root.service.getNoteBodyMarkdown() : ""
                             placeholderText: "Write your personal review & notes here..."
                             placeholderTextColor: root.textMuted
                             color: root.textPrimary
                             font.family: Appearance.font.family.main
                             font.pixelSize: 13
                             wrapMode: TextEdit.Wrap
+                            inputMethodHints: Qt.ImhMultiLine
                             background: Item {}
+                            Component.onCompleted: text = root.service ? root.service.getNoteBodyMarkdown() : ""
                             onVisibleChanged: {
-                                if (visible)
+                                if (visible) {
+                                    text = root.service ? root.service.getNoteBodyMarkdown() : "";
                                     Qt.callLater(() => { if (dossierBodyEditor.visible) dossierBodyEditor.forceActiveFocus(); });
+                                } else if (inputMethodComposing) {
+                                    Qt.inputMethod.commit();
+                                }
                             }
                             onActiveFocusChanged: {
-                                if (!activeFocus && visible && root.editingNoteBody && root.isDossierBannerNote && root.noteKind !== "settings" && root.noteKind !== "exercise" && root.noteKind !== "game" && !dossierCancelBtnMouse.containsMouse && !dossierCancelBtnMouse.pressed) {
+                                if (!activeFocus && visible && !inputMethodComposing && root.editingNoteBody && root.isDossierBannerNote && root.noteKind !== "settings" && root.noteKind !== "exercise" && root.noteKind !== "game" && !dossierCancelBtnMouse.containsMouse && !dossierCancelBtnMouse.pressed) {
                                     if (root.service)
                                         root.service.saveNoteBodyMarkdown(dossierBodyEditor.text);
                                     root.editingNoteBody = false;
                                 }
                             }
                             Keys.onEscapePressed: event => {
+                                if (inputMethodComposing) {
+                                    event.accepted = false;
+                                    return;
+                                }
+                                Qt.inputMethod.commit();
                                 if (root.service)
                                     root.service.saveNoteBodyMarkdown(dossierBodyEditor.text);
                                 root.editingNoteBody = false;
@@ -3307,9 +3347,14 @@ Item {
                                 event.accepted = true;
                             }
                             Keys.onPressed: event => {
-                                if (root.forwardWorkspaceShortcut(event))
+                                if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                    event.accepted = false;
+                                    return;
+                                }
+                                if (root.forwardWorkspaceShortcut(event, dossierBodyEditor))
                                     return;
                                 if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                                    Qt.inputMethod.commit();
                                     if (root.service)
                                         root.service.saveNoteBodyMarkdown(dossierBodyEditor.text);
                                     root.editingNoteBody = false;
@@ -4179,7 +4224,7 @@ Item {
                 // Left Column: `.cv-exercise-instructions` Lined Notebook Sheet with Corner Tape & Interactive Step Checklist + Live Preview Edit
                 Item {
                     Layout.fillWidth: true
-                    Layout.preferredWidth: 560
+                    Layout.preferredWidth: 480
                     Layout.alignment: Qt.AlignTop
                     implicitHeight: exNotebookPaper.implicitHeight
 
@@ -4523,26 +4568,36 @@ Item {
                                             objectName: "nexusExerciseBodyEditor"
                                             anchors.fill: parent
                                             anchors.margins: 8
-                                            text: root.service ? root.service.getNoteBodyMarkdown() : ""
                                             placeholderText: "Write your training notes & instructions here..."
                                             placeholderTextColor: root.textMuted
                                             color: root.textPrimary
                                             font.family: Appearance.font.family.main
                                             font.pixelSize: 13
                                             wrapMode: TextEdit.Wrap
+                                            inputMethodHints: Qt.ImhMultiLine
                                             background: Item {}
+                                            Component.onCompleted: text = root.service ? root.service.getNoteBodyMarkdown() : ""
                                             onVisibleChanged: {
-                                                if (visible)
+                                                if (visible) {
+                                                    text = root.service ? root.service.getNoteBodyMarkdown() : "";
                                                     Qt.callLater(() => { if (exBodyEditor.visible) exBodyEditor.forceActiveFocus(); });
+                                                } else if (inputMethodComposing) {
+                                                    Qt.inputMethod.commit();
+                                                }
                                             }
                                             onActiveFocusChanged: {
-                                                if (!activeFocus && visible && root.editingNoteBody && root.noteKind === "exercise" && !exCancelBtnMouse.containsMouse && !exCancelBtnMouse.pressed) {
+                                                if (!activeFocus && visible && !inputMethodComposing && root.editingNoteBody && root.noteKind === "exercise" && !exCancelBtnMouse.containsMouse && !exCancelBtnMouse.pressed) {
                                                     if (root.service)
                                                         root.service.saveNoteBodyMarkdown(exBodyEditor.text);
                                                     root.editingNoteBody = false;
                                                 }
                                             }
                                             Keys.onEscapePressed: event => {
+                                                if (inputMethodComposing) {
+                                                    event.accepted = false;
+                                                    return;
+                                                }
+                                                Qt.inputMethod.commit();
                                                 if (root.service)
                                                     root.service.saveNoteBodyMarkdown(exBodyEditor.text);
                                                 exBodyEditor.focus = false;
@@ -4551,9 +4606,14 @@ Item {
                                                 event.accepted = true;
                                             }
                                             Keys.onPressed: event => {
-                                                if (root.forwardWorkspaceShortcut(event))
+                                                if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                                    event.accepted = false;
+                                                    return;
+                                                }
+                                                if (root.forwardWorkspaceShortcut(event, exBodyEditor))
                                                     return;
                                                 if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                                                    Qt.inputMethod.commit();
                                                     if (root.service)
                                                         root.service.saveNoteBodyMarkdown(exBodyEditor.text);
                                                     exBodyEditor.focus = false;
@@ -4673,8 +4733,8 @@ Item {
                 ColumnLayout {
                     id: exSideCol
                     Layout.fillWidth: true
-                    Layout.preferredWidth: 310
-                    Layout.minimumWidth: 270
+                    Layout.preferredWidth: 400
+                    Layout.minimumWidth: 320
                     Layout.alignment: Qt.AlignTop
                     spacing: 10
 
@@ -4777,19 +4837,20 @@ Item {
                                 }
                             }
 
-                            // `.cv-exercise-bodymap` Front & Back Human Anatomy Vector Map
+                            // `.cv-exercise-bodymap` Front & Back Human Anatomy Vector Map (sized generously to fill card width)
                             Item {
+                                objectName: "nexusExerciseAnatomyStage"
                                 Layout.fillWidth: true
                                 implicitHeight: Math.max(
-                                    184,
-                                    Math.min(226, exerciseCustomView.minLowerRowHeight - 44 - exSideCol.spacing - exProfileCard.implicitHeight)
+                                    430,
+                                    Math.min(580, Math.round((exAnatomyCard.width > 0 ? exAnatomyCard.width : 360) * 1.44))
                                 )
 
                                 Canvas {
                                     id: exAnatomyCanvas
                                     objectName: "nexusExerciseBodyMapCanvas"
                                     anchors.fill: parent
-                                    anchors.margins: 8
+                                    anchors.margins: 2
                                     readonly property var primaryMuscles: (root.eView.primaryMuscles && root.eView.primaryMuscles.length > 0)
                                         ? root.eView.primaryMuscles
                                         : (root.dossier.muscleGroup ? String(root.dossier.muscleGroup).split(",") : [])
@@ -5051,121 +5112,1709 @@ Item {
         }
 
         // =====================================================================
-        // 1D. SETTINGS CUSTOM VIEW (`Settings.html` 6-Section Configuration Grid)
+        // 1D. SETTINGS CUSTOM VIEW (Obsidian Settings.html/.css/.js 1:1 Parity + Globe Map API)
         // =====================================================================
         Rectangle {
             id: settingsCustomView
             objectName: "nexusSettingsCustomView"
             visible: root.noteKind === "settings"
             Layout.fillWidth: true
-            implicitHeight: settingsGridCol.implicitHeight + 28
-            radius: 10
+            Layout.minimumWidth: 0
+            implicitHeight: Math.max(root.minDocumentSurfaceHeight, settingsRootCol.implicitHeight + 32)
+            radius: 12
             color: root.cardBg
             border.width: 1
             border.color: root.borderSubtle
+            clip: true
 
-            ColumnLayout {
-                id: settingsGridCol
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 16
-                spacing: 12
+            property string activeTabId: "general"
+            property string searchQuery: ""
+            property bool showPropertyKeys: false
+            property string saveStateLabel: "Saved"
+            property var revealedSecrets: ({})
+            property bool addTabOpen: false
+            property string newTabLabelDraft: ""
+            property bool addHeadingOpen: false
+            property string newHeadingLabelDraft: ""
+            property bool addSettingOpen: false
+            property string newSettingKeyDraft: ""
+            property string newSettingValDraft: ""
+            property int _localRevision: 0
+            property var _localOverrides: ({})
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    Text {
-                        text: "VAULT CONFIGURATION · API KEYS & SCHEDULE BINDINGS"
-                        font.pixelSize: 11
-                        font.weight: Font.Bold
-                        font.letterSpacing: 1.5
-                        color: root.accentColor
+            onVisibleChanged: {
+                if (visible) {
+                    _localOverrides = ({});
+                    _localRevision += 1;
+                }
+            }
+
+            Connections {
+                target: root
+                function onDocChanged(): void {
+                    settingsCustomView._localOverrides = ({});
+                    settingsCustomView._localRevision += 1;
+                }
+            }
+
+            Timer {
+                id: settingsSavedPulseTimer
+                interval: 900
+                repeat: false
+                onTriggered: settingsCustomView.saveStateLabel = "Saved"
+            }
+
+            // Parse raw YAML frontmatter cleanly (preserving case, arrays, colon-containing keys like `heading:heading-zoom:`, and nested `_settings_layout_v1`)
+            function _unquoteYaml(raw): string {
+                const s = String(raw ?? "").trim();
+                if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) {
+                    return s.substring(1, s.length - 1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                }
+                return s;
+            }
+
+            function _findYamlKeySeparator(trimmed: string): int {
+                if (trimmed.length === 0)
+                    return -1;
+                const first = trimmed.charAt(0);
+                if (first === '"' || first === "'") {
+                    for (let i = 1; i < trimmed.length; ++i) {
+                        const ch = trimmed.charAt(i);
+                        if (ch === "\\" && first === '"') {
+                            i += 1;
+                            continue;
+                        }
+                        if (ch === first) {
+                            let j = i + 1;
+                            while (j < trimmed.length && (trimmed.charAt(j) === " " || trimmed.charAt(j) === "\t"))
+                                j += 1;
+                            if (j < trimmed.length && trimmed.charAt(j) === ":")
+                                return j;
+                            return -1;
+                        }
                     }
-                    Item { Layout.fillWidth: true }
-                    Text {
-                        text: "90_System/93_Configuration/settings.md"
-                        font.pixelSize: 10
-                        font.family: Appearance.font.family.monospace
-                        color: root.textMuted
+                    return -1;
+                }
+                for (let i = 0; i < trimmed.length; ++i) {
+                    if (trimmed.charAt(i) === ":") {
+                        if (i === trimmed.length - 1)
+                            return i;
+                        const nxt = trimmed.charAt(i + 1);
+                        if (nxt === " " || nxt === "\t")
+                            return i;
+                    }
+                }
+                return -1;
+            }
+
+            function _parseSimpleNestedYaml(lines): var {
+                const rootObj = {};
+                const stack = [{ "indent": -1, "container": rootObj, "isArray": false }];
+                for (let i = 0; i < lines.length; ++i) {
+                    const line = lines[i];
+                    if (!line || line.trim().length === 0 || line.trim().startsWith("#"))
+                        continue;
+                    let indent = 0;
+                    while (indent < line.length && line.charAt(indent) === " ")
+                        indent += 1;
+                    const trimmed = line.trim();
+                    while (stack.length > 1 && indent <= stack[stack.length - 1].indent)
+                        stack.pop();
+                    const top = stack[stack.length - 1];
+                    if (trimmed.startsWith("- ")) {
+                        const itemStr = _unquoteYaml(trimmed.substring(2));
+                        if (Array.isArray(top.container)) {
+                            top.container.push(itemStr);
+                        }
+                        continue;
+                    }
+                    const colonIdx = _findYamlKeySeparator(trimmed);
+                    if (colonIdx <= 0)
+                        continue;
+                    const key = _unquoteYaml(trimmed.substring(0, colonIdx).trim());
+                    const rest = trimmed.substring(colonIdx + 1).trim();
+                    if (rest.length === 0) {
+                        let nextIsArr = false;
+                        for (let j = i + 1; j < lines.length; ++j) {
+                            const nt = lines[j].trim();
+                            if (nt.length === 0 || nt.startsWith("#"))
+                                continue;
+                            let ni = 0;
+                            while (ni < lines[j].length && lines[j].charAt(ni) === " ")
+                                ni += 1;
+                            if (ni > indent && nt.startsWith("- "))
+                                nextIsArr = true;
+                            break;
+                        }
+                        const child = nextIsArr ? [] : {};
+                        if (top.container && typeof top.container === "object" && !Array.isArray(top.container)) {
+                            top.container[key] = child;
+                            stack.push({ "indent": indent, "container": child, "isArray": nextIsArr });
+                        }
+                    } else if (rest === "[]") {
+                        if (top.container && !Array.isArray(top.container))
+                            top.container[key] = [];
+                    } else if (rest === "{}") {
+                        if (top.container && !Array.isArray(top.container))
+                            top.container[key] = {};
+                    } else if (rest === "true" || rest === "false") {
+                        if (top.container && !Array.isArray(top.container))
+                            top.container[key] = (rest === "true");
+                    } else if (rest === "null" || rest === "~") {
+                        if (top.container && !Array.isArray(top.container))
+                            top.container[key] = "";
+                    } else if (!(rest.startsWith('"') || rest.startsWith("'")) && rest.length <= 12 && !/^0\d/.test(rest) && /^-?\d+(\.\d+)?$/.test(rest)) {
+                        if (top.container && !Array.isArray(top.container))
+                            top.container[key] = Number(rest);
+                    } else {
+                        if (top.container && !Array.isArray(top.container))
+                            top.container[key] = _unquoteYaml(rest);
+                    }
+                }
+                return rootObj;
+            }
+
+            readonly property var parsedFrontmatter: {
+                const _rev = settingsCustomView._localRevision;
+                const merged = {};
+                const fm = root.doc?.frontmatter;
+                if (fm && typeof fm === "object") {
+                    const ks = Object.keys(fm);
+                    for (let i = 0; i < ks.length; ++i)
+                        merged[ks[i]] = fm[ks[i]];
+                }
+                const raw = String(root.doc?.content ?? "");
+                if (raw.startsWith("---")) {
+                    const lines = raw.split(/\r?\n/);
+                    let endIdx = -1;
+                    for (let i = 1; i < lines.length; ++i) {
+                        const t = lines[i].trim();
+                        if (t === "---" || t === "...") {
+                            endIdx = i;
+                            break;
+                        }
+                    }
+                    if (endIdx > 1) {
+                        const parsed = _parseSimpleNestedYaml(lines.slice(1, endIdx));
+                        const pKeys = Object.keys(parsed);
+                        for (let i = 0; i < pKeys.length; ++i)
+                            merged[pKeys[i]] = parsed[pKeys[i]];
+                    }
+                }
+                const ov = settingsCustomView._localOverrides;
+                if (ov && typeof ov === "object") {
+                    const ok = Object.keys(ov);
+                    for (let i = 0; i < ok.length; ++i)
+                        merged[ok[i]] = ov[ok[i]];
+                }
+                return merged;
+            }
+
+            function _getVal(key: string): var {
+                const fm = parsedFrontmatter;
+                if (fm[key] !== undefined)
+                    return fm[key];
+                const low = key.toLowerCase();
+                if (fm[low] !== undefined)
+                    return fm[low];
+                return "";
+            }
+
+            function _saveKey(key: string, value): void {
+                const nextOv = Object.assign({}, settingsCustomView._localOverrides || {});
+                nextOv[key] = value;
+                settingsCustomView._localOverrides = nextOv;
+                settingsCustomView._localRevision += 1;
+                settingsCustomView.saveStateLabel = "Saving…";
+                if (root.service) {
+                    const patch = {};
+                    patch[key] = value;
+                    root.service.updateNoteFrontmatter(patch);
+                }
+                settingsSavedPulseTimer.restart();
+            }
+
+            function _toggleSecretReveal(key: string): void {
+                const next = Object.assign({}, settingsCustomView.revealedSecrets || {});
+                next[key] = !Boolean(next[key]);
+                settingsCustomView.revealedSecrets = next;
+            }
+
+            readonly property var fieldMetaCatalog: ({
+                "vault_name":             { "label": "Vault Name",             "hint": "Display name used in headers and Homepage identity.", "type": "text", "placeholder": "Obsidian-Vault" },
+                "username":               { "label": "Username",               "hint": "Owner handle shown in status prompt and greetings.", "type": "text", "placeholder": "username" },
+                "start_date":             { "label": "Start Date",             "hint": "Vault creation date (YYYY-MM-DD) for Vault Age counter.", "type": "date", "placeholder": "2024-06-08" },
+                "callout_path":           { "label": "Daily Schedule Folder",  "hint": "Folder storing weekday schedule notes.", "type": "text", "placeholder": "90_System/97_Daily_Schedule" },
+                "schedule_heading":       { "label": "Schedule Heading",       "hint": "Markdown heading parsed for daily schedule.", "type": "text", "placeholder": "Daily Schedule" },
+                "exercise_heading":       { "label": "Exercise Heading",       "hint": "Markdown heading parsed for strength/calisthenics blocks.", "type": "text", "placeholder": "Calisthenics" },
+                "cardio_heading":         { "label": "Cardio Heading",         "hint": "Markdown heading parsed for cardio routines.", "type": "text", "placeholder": "Cardio" },
+                "openweathermap_key":     { "label": "OpenWeatherMap API Key", "hint": "Shared API credential for weather widgets and Places Weather.", "type": "secret", "placeholder": "Paste API key..." },
+                "openweathermap_city":    { "label": "Default Weather City",   "hint": "Default city for Homepage & Journal weather.", "type": "text", "placeholder": "Can Tho, VN" },
+                "openweathermap_unit":    { "label": "Temperature Units",      "hint": "Units for temperature and wind speed.", "type": "select", "options": ["metric", "imperial", "standard"] },
+                "tmdb_key":               { "label": "TMDB API Key",           "hint": "Movie and TV Series metadata & poster importer.", "type": "secret", "placeholder": "Paste TMDB key..." },
+                "omdb_key":               { "label": "OMDb API Key",           "hint": "Fallback IMDb/Rotten Tomatoes rating metadata.", "type": "secret", "placeholder": "Paste OMDb key..." },
+                "spoonacular_key":        { "label": "Spoonacular API Key",    "hint": "Recipe search, ingredients, and nutrition importer.", "type": "secret", "placeholder": "Paste Spoonacular key..." },
+                "youtube_key":            { "label": "YouTube Data API Key",   "hint": "Optional trailer and video lookup credential.", "type": "secret", "placeholder": "Paste YouTube key..." },
+                "rawg_api_key":           { "label": "RAWG API Key",           "hint": "Video game catalog and metadata import fallback.", "type": "secret", "placeholder": "Paste RAWG key..." },
+                "steam_api_key":          { "label": "Steam Web API Key",      "hint": "Required for Steam playtime and achievement sync.", "type": "secret", "placeholder": "Paste Steam API key..." },
+                "steam_id":               { "label": "Steam ID (64-bit)",      "hint": "Your 17-digit SteamID64 profile identifier.", "type": "text", "placeholder": "76561198..." },
+                "gog_heroic_auth_path":   { "label": "Heroic GOG Auth Path",   "hint": "Local path to Heroic Launcher GOG auth.json.", "type": "text", "placeholder": "~/.config/heroic/gog_store/auth.json" },
+                "gog_locale":             { "label": "GOG Locale",             "hint": "Locale requested for GOG achievement data.", "type": "text", "placeholder": "en-US" },
+                "FinanceBook":            { "label": "Finance Book",           "hint": "Active ledger book name.", "type": "text", "placeholder": "default" },
+                "BookCurrency":           { "label": "Book Currency",          "hint": "ISO 4217 3-letter default currency code.", "type": "text", "placeholder": "VND" },
+                "DisplayLocale":          { "label": "Display Locale",         "hint": "Number & currency locale or 'auto'.", "type": "text", "placeholder": "auto" },
+                "CurrencyDisplay":        { "label": "Currency Display",       "hint": "How currency indicators are rendered.", "type": "select", "options": ["symbol", "narrowSymbol", "code", "name"] },
+                "NegativeFormat":         { "label": "Negative Format",        "hint": "Formatting style for expenses & negative totals.", "type": "select", "options": ["standard", "accounting"] },
+                "WeekStartsOn":           { "label": "Week Starts On",         "hint": "First day of the week in calendars and planners.", "type": "select", "options": ["monday", "sunday"] },
+                "FiscalYearStartMonth":   { "label": "Fiscal Year Start Month","hint": "Starting calendar month (1–12).", "type": "number", "placeholder": "1" },
+                "Budgets":                { "label": "Category Budgets",       "hint": "JSON/YAML mapping of category names to limits.", "type": "json", "placeholder": "{}" },
+                "type":                   { "label": "Note Type",              "hint": "Identifies this note as vault settings.", "type": "text", "placeholder": "vault-settings" },
+                "FinanceSchema":          { "label": "Finance Schema Version", "hint": "Internal ledger schema version.", "type": "number", "placeholder": "1" },
+                "mega_recovery_key":      { "label": "MEGA Recovery Key",      "hint": "Protected cloud backup recovery credential.", "type": "secret", "placeholder": "Recovery key..." },
+                "globe_map_provider":     { "label": "Globe Map API Provider", "hint": "Tile provider when zooming from 3D Globe into detailed Street Map.", "type": "select", "options": ["carto", "maptiler", "mapbox", "stadia", "custom"] },
+                "globe_api_key":          { "label": "Globe Map API Key",      "hint": "API key / access token for MapTiler, Mapbox, Stadia, or custom tile URL.", "type": "secret", "placeholder": "Paste MapTiler / Mapbox / Stadia key..." },
+                "globe_tile_url":         { "label": "Custom Tile URL",        "hint": "Template for 'custom' provider: supports {z}, {x}, {y}, {s}, {key}.", "type": "text", "placeholder": "https://tile.example.com/{z}/{x}/{y}@2x.png?key={key}" },
+                "globe_source_folders":   { "label": "Source Folders",         "hint": "Vault folders scanned for geolocated Place pins.", "type": "list", "placeholder": "20_Personal_Life/23_Places" },
+                "globe_size":             { "label": "Globe Size",             "hint": "Target widget dimensions (WxH).", "type": "text", "placeholder": "500x500" },
+                "globe_style":            { "label": "Globe Visual Style",     "hint": "Predefined globe theme preset.", "type": "select", "options": ["abyssal", "minimal", "monochrome", "satellite", "ocean"] },
+                "globe_monochrome_color": { "label": "Monochrome Accent",      "hint": "Hex tint when using monochrome globe style.", "type": "color", "placeholder": "#10181b" },
+                "location_pins":          { "label": "Location Pins Style",    "hint": "How pinned Places are drawn on the globe.", "type": "select", "options": ["line", "dot", "flag", "none"] },
+                "globe_min_zoom":         { "label": "Min Zoom",               "hint": "Minimum zoom-out factor.", "type": "number", "placeholder": "0.72" },
+                "globe_max_zoom":         { "label": "Max Zoom",               "hint": "Maximum deep-zoom factor.", "type": "number", "placeholder": "32" },
+                "globe_default_zoom":     { "label": "Default Zoom",           "hint": "Initial zoom when Homepage opens.", "type": "number", "placeholder": "0.92" },
+                "globe_base_scale":       { "label": "Base Scale",             "hint": "Sphere radius ratio inside the Globe frame.", "type": "number", "placeholder": "0.84" },
+                "globe_texture_width":    { "label": "Texture Width",          "hint": "Hi-res globe projection texture width (px).", "type": "number", "placeholder": "4096" },
+                "globe_texture_height":   { "label": "Texture Height",         "hint": "Hi-res globe projection texture height (px).", "type": "number", "placeholder": "4096" },
+                "globe_display_min":      { "label": "Display Min (px)",       "hint": "Minimum displayed canvas dimension.", "type": "number", "placeholder": "250" },
+                "globe_display_max":      { "label": "Display Max (px)",       "hint": "Maximum displayed canvas dimension.", "type": "number", "placeholder": "2000" },
+                "globe_render_min":       { "label": "Render Min (px)",        "hint": "Minimum internal render resolution.", "type": "number", "placeholder": "500" },
+                "globe_render_max":       { "label": "Render Max (px)",        "hint": "Maximum internal render resolution.", "type": "number", "placeholder": "2000" }
+            })
+
+            function _metaForKey(key: string): var {
+                const c = fieldMetaCatalog[key];
+                if (c)
+                    return c;
+                const kl = key.toLowerCase();
+                const isSecret = kl.includes("key") || kl.includes("token") || kl.includes("secret") || kl.includes("password");
+                const pretty = key.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2")
+                    .replace(/\b\w/g, ch => ch.toUpperCase());
+                return {
+                    "label": pretty,
+                    "hint": isSecret ? "Protected credential stored in settings.md." : "Custom vault configuration property.",
+                    "type": isSecret ? "secret" : "text",
+                    "placeholder": ""
+                };
+            }
+
+            readonly property var resolvedTabs: {
+                const fm = parsedFrontmatter;
+                const layout = (fm._settings_layout_v1 && typeof fm._settings_layout_v1 === "object")
+                    ? fm._settings_layout_v1
+                    : ({});
+                const customTabsMap = (layout.tabs && typeof layout.tabs === "object") ? layout.tabs : ({});
+                const customHeadingsMap = (layout.headings && typeof layout.headings === "object") ? layout.headings : ({});
+                const headingTabs = (layout.headingTabs && typeof layout.headingTabs === "object") ? layout.headingTabs : ({});
+                const headingOrder = (layout.headingOrder && typeof layout.headingOrder === "object") ? layout.headingOrder : ({});
+                const settingPlacement = (layout.settingPlacement && typeof layout.settingPlacement === "object") ? layout.settingPlacement : ({});
+                const settingOrder = (layout.settingOrder && typeof layout.settingOrder === "object") ? layout.settingOrder : ({});
+
+                const builtInTabs = [
+                    {
+                        "id": "general",
+                        "label": "General",
+                        "icon": "person",
+                        "eyebrow": "VAULT",
+                        "description": "Vault identity, owner handle, and start date.",
+                        "sections": [
+                            { "id": "identity", "label": "Identity", "keys": ["vault_name", "username", "start_date"] }
+                        ]
+                    },
+                    {
+                        "id": "homepage",
+                        "label": "Homepage & Daily",
+                        "icon": "home",
+                        "eyebrow": "HOMEPAGE & DAILY",
+                        "description": "Schedule note locations and daily workout headings.",
+                        "sections": [
+                            { "id": "schedule", "label": "Schedule & Workouts", "keys": ["callout_path", "schedule_heading", "exercise_heading", "cardio_heading"] }
+                        ]
+                    },
+                    {
+                        "id": "services",
+                        "label": "Services",
+                        "icon": "cloud",
+                        "eyebrow": "SERVICES",
+                        "description": "Weather, media, food, and external API providers.",
+                        "sections": [
+                            { "id": "weather", "label": "Weather", "keys": ["openweathermap_key", "openweathermap_city", "openweathermap_unit"] },
+                            { "id": "media_apis", "label": "Media & Food APIs", "keys": ["tmdb_key", "omdb_key", "spoonacular_key", "youtube_key"] }
+                        ]
+                    },
+                    {
+                        "id": "games",
+                        "label": "Games",
+                        "icon": "sports_esports",
+                        "eyebrow": "GAMES",
+                        "description": "Steam, RAWG, and Heroic GOG metadata and playtime sync.",
+                        "sections": [
+                            { "id": "game_platforms", "label": "Game Platforms", "keys": ["rawg_api_key", "steam_api_key", "steam_id", "gog_heroic_auth_path", "gog_locale"] }
+                        ]
+                    },
+                    {
+                        "id": "finance",
+                        "label": "Finance & Locale",
+                        "icon": "payments",
+                        "eyebrow": "FINANCE & LOCALE",
+                        "description": "Default currency, formatting rules, week start, and budgets.",
+                        "sections": [
+                            { "id": "accounting", "label": "Accounting & Display", "keys": ["FinanceBook", "BookCurrency", "DisplayLocale", "CurrencyDisplay", "NegativeFormat", "WeekStartsOn", "FiscalYearStartMonth", "Budgets"] }
+                        ]
+                    },
+                    {
+                        "id": "advanced",
+                        "label": "Advanced",
+                        "icon": "tune",
+                        "eyebrow": "ADVANCED",
+                        "description": "Schema metadata and recovery credentials.",
+                        "sections": [
+                            { "id": "technical", "label": "Technical", "keys": ["type", "FinanceSchema"] },
+                            { "id": "recovery", "label": "Recovery", "keys": ["mega_recovery_key"] }
+                        ]
+                    }
+                ];
+
+                const assignedKeys = Object.create(null);
+                function _collectCustomHeadingsForTab(tid, targetSections) {
+                    const hIds = [];
+                    if (Array.isArray(headingOrder[tid])) {
+                        for (let hi = 0; hi < headingOrder[tid].length; ++hi)
+                            hIds.push(String(headingOrder[tid][hi]));
+                    }
+                    const htKeys = Object.keys(headingTabs);
+                    for (let hi = 0; hi < htKeys.length; ++hi) {
+                        if (String(headingTabs[htKeys[hi]]) === tid && hIds.indexOf(htKeys[hi]) === -1)
+                            hIds.push(htKeys[hi]);
+                    }
+                    for (let hi = 0; hi < hIds.length; ++hi) {
+                        const hid = hIds[hi];
+                        const hmeta = customHeadingsMap[hid] || {};
+                        if (hmeta.hidden === true)
+                            continue;
+                        const sKeys = [];
+                        const ord = settingOrder["heading:" + hid];
+                        if (Array.isArray(ord)) {
+                            for (let k = 0; k < ord.length; ++k) {
+                                const sk = String(ord[k]);
+                                if (!assignedKeys[sk] && sKeys.indexOf(sk) === -1)
+                                    sKeys.push(sk);
+                            }
+                        }
+                        const spKeys = Object.keys(settingPlacement);
+                        for (let k = 0; k < spKeys.length; ++k) {
+                            const sk = spKeys[k];
+                            if (String(settingPlacement[sk]?.heading ?? "") === hid && !assignedKeys[sk] && sKeys.indexOf(sk) === -1)
+                                sKeys.push(sk);
+                        }
+                        for (let k = 0; k < sKeys.length; ++k)
+                            assignedKeys[sKeys[k]] = true;
+                        targetSections.push({
+                            "id": hid,
+                            "label": String(hmeta.label ?? hid),
+                            "keys": sKeys
+                        });
+                    }
+                    // Also collect any custom settings placed directly onto this tab without a heading
+                    const rootKeys = [];
+                    const rootOrd = settingOrder["tab:" + tid + ":root"];
+                    if (Array.isArray(rootOrd)) {
+                        for (let k = 0; k < rootOrd.length; ++k) {
+                            const sk = String(rootOrd[k]);
+                            if (!assignedKeys[sk] && rootKeys.indexOf(sk) === -1)
+                                rootKeys.push(sk);
+                        }
+                    }
+                    const spAll = Object.keys(settingPlacement);
+                    for (let k = 0; k < spAll.length; ++k) {
+                        const sk = spAll[k];
+                        const pl = settingPlacement[sk];
+                        if (pl && String(pl.tab ?? "") === tid && String(pl.heading ?? "").length === 0 && !assignedKeys[sk] && rootKeys.indexOf(sk) === -1)
+                            rootKeys.push(sk);
+                    }
+                    if (rootKeys.length > 0) {
+                        for (let k = 0; k < rootKeys.length; ++k)
+                            assignedKeys[rootKeys[k]] = true;
+                        targetSections.push({
+                            "id": "custom_" + tid,
+                            "label": "Custom",
+                            "keys": rootKeys
+                        });
                     }
                 }
 
-                OrnamentalDivider {}
+                for (let ti = 0; ti < builtInTabs.length; ++ti) {
+                    const secs = builtInTabs[ti].sections;
+                    for (let si = 0; si < secs.length; ++si) {
+                        for (let ki = 0; ki < secs[si].keys.length; ++ki)
+                            assignedKeys[secs[si].keys[ki]] = true;
+                    }
+                    _collectCustomHeadingsForTab(builtInTabs[ti].id, secs);
+                }
 
+                // Append custom tabs from _settings_layout_v1 (e.g., tab-globe-widget) OR fallback Globe Widget tab
+                const customTabIds = Array.isArray(layout.tabOrder) && layout.tabOrder.length > 0
+                    ? layout.tabOrder.slice()
+                    : Object.keys(customTabsMap);
+                const cMapKeys = Object.keys(customTabsMap);
+                for (let i = 0; i < cMapKeys.length; ++i) {
+                    if (customTabIds.indexOf(cMapKeys[i]) === -1)
+                        customTabIds.push(cMapKeys[i]);
+                }
+
+                let hasGlobeTab = false;
+                for (let ci = 0; ci < customTabIds.length; ++ci) {
+                    const tid = String(customTabIds[ci]);
+                    const tmeta = customTabsMap[tid] || {};
+                    const isGlobe = tid.toLowerCase().includes("globe") || String(tmeta.label ?? "").toLowerCase().includes("globe");
+                    if (isGlobe)
+                        hasGlobeTab = true;
+                    const sections = [];
+                    if (isGlobe) {
+                        sections.push({
+                            "id": "heading-globe-api",
+                            "label": "Map & Tile API",
+                            "keys": ["globe_map_provider", "globe_api_key", "globe_tile_url"]
+                        });
+                        assignedKeys["globe_map_provider"] = true;
+                        assignedKeys["globe_api_key"] = true;
+                        assignedKeys["globe_tile_url"] = true;
+                    }
+                    _collectCustomHeadingsForTab(tid, sections);
+                    builtInTabs.push({
+                        "id": tid,
+                        "label": String(tmeta.label ?? tid),
+                        "icon": isGlobe ? "public" : "extension",
+                        "eyebrow": String(tmeta.eyebrow ?? "CUSTOM").toUpperCase(),
+                        "description": String(tmeta.description ?? "Custom settings tab."),
+                        "sections": sections
+                    });
+                }
+
+                if (!hasGlobeTab) {
+                    const globeSecs = [
+                        { "id": "heading-globe-api", "label": "Map & Tile API", "keys": ["globe_map_provider", "globe_api_key", "globe_tile_url"] },
+                        { "id": "heading-globe-general", "label": "Globe General", "keys": ["globe_source_folders", "globe_size", "globe_style", "globe_texture_width", "globe_texture_height", "globe_monochrome_color", "globe_base_scale", "location_pins"] },
+                        { "id": "heading-zoom", "label": "Zoom", "keys": ["globe_min_zoom", "globe_max_zoom", "globe_default_zoom"] },
+                        { "id": "heading-render", "label": "Render", "keys": ["globe_render_min", "globe_render_max"] },
+                        { "id": "heading-display", "label": "Display", "keys": ["globe_display_min", "globe_display_max"] }
+                    ];
+                    for (let si = 0; si < globeSecs.length; ++si) {
+                        for (let ki = 0; ki < globeSecs[si].keys.length; ++ki)
+                            assignedKeys[globeSecs[si].keys[ki]] = true;
+                    }
+                    builtInTabs.push({
+                        "id": "tab-globe-widget",
+                        "label": "Globe Widget",
+                        "icon": "public",
+                        "eyebrow": "CUSTOM",
+                        "description": "Settings for Homepage Globe & detailed Map API.",
+                        "sections": globeSecs
+                    });
+                }
+
+                // Gather any remaining non-internal user keys into Advanced -> Custom Properties
+                const skipInternal = { "_settings_layout_v1": true, "_settings_custom_meta": true, "steam_key": true, "rawg_key": true, "default_currency": true };
+                const extraKeys = [];
+                const allFmKeys = Object.keys(fm);
+                for (let i = 0; i < allFmKeys.length; ++i) {
+                    const fk = allFmKeys[i];
+                    if (fk.startsWith("_") || skipInternal[fk] || assignedKeys[fk])
+                        continue;
+                    if (assignedKeys[fk.toLowerCase()])
+                        continue;
+                    // Avoid showing duplicate lowercased aliases of camelCase keys already present
+                    let dupCase = false;
+                    for (let ak in assignedKeys) {
+                        if (ak.toLowerCase() === fk.toLowerCase()) {
+                            dupCase = true;
+                            break;
+                        }
+                    }
+                    if (dupCase)
+                        continue;
+                    extraKeys.push(fk);
+                }
+                if (extraKeys.length > 0) {
+                    builtInTabs[5].sections.push({
+                        "id": "extra_custom",
+                        "label": "Additional Properties",
+                        "keys": extraKeys
+                    });
+                }
+
+                // Compute counts per tab
+                for (let ti = 0; ti < builtInTabs.length; ++ti) {
+                    let count = 0;
+                    const secs = builtInTabs[ti].sections;
+                    for (let si = 0; si < secs.length; ++si)
+                        count += secs[si].keys.length;
+                    builtInTabs[ti].count = count;
+                }
+                return builtInTabs;
+            }
+
+            readonly property var settingsSummaryCounts: {
+                let total = 0;
+                let protectedCount = 0;
+                const tabs = resolvedTabs;
+                for (let ti = 0; ti < tabs.length; ++ti) {
+                    const secs = tabs[ti].sections;
+                    for (let si = 0; si < secs.length; ++si) {
+                        const ks = secs[si].keys;
+                        for (let ki = 0; ki < ks.length; ++ki) {
+                            total += 1;
+                            if (_metaForKey(ks[ki]).type === "secret")
+                                protectedCount += 1;
+                        }
+                    }
+                }
+                return { "total": total, "protectedCount": protectedCount };
+            }
+
+            readonly property var activeTabObj: {
+                const tabs = resolvedTabs;
+                for (let i = 0; i < tabs.length; ++i) {
+                    if (tabs[i].id === activeTabId)
+                        return tabs[i];
+                }
+                return tabs.length > 0 ? tabs[0] : ({ "id": "general", "label": "General", "eyebrow": "GENERAL", "description": "", "sections": [], "count": 0 });
+            }
+
+            readonly property var visibleSections: {
+                const q = String(searchQuery ?? "").trim().toLowerCase();
+                if (q.length === 0)
+                    return activeTabObj.sections || [];
+                const matched = [];
+                const tabs = resolvedTabs;
+                for (let ti = 0; ti < tabs.length; ++ti) {
+                    const secs = tabs[ti].sections || [];
+                    for (let si = 0; si < secs.length; ++si) {
+                        const sec = secs[si];
+                        const hitKeys = [];
+                        for (let ki = 0; ki < sec.keys.length; ++ki) {
+                            const k = sec.keys[ki];
+                            const m = _metaForKey(k);
+                            if (k.toLowerCase().includes(q)
+                                || String(m.label ?? "").toLowerCase().includes(q)
+                                || String(m.hint ?? "").toLowerCase().includes(q)
+                                || String(sec.label ?? "").toLowerCase().includes(q)
+                                || String(tabs[ti].label ?? "").toLowerCase().includes(q)) {
+                                hitKeys.push(k);
+                            }
+                        }
+                        if (hitKeys.length > 0) {
+                            matched.push({
+                                "id": tabs[ti].id + ":" + sec.id,
+                                "label": tabs[ti].label + " · " + sec.label,
+                                "keys": hitKeys
+                            });
+                        }
+                    }
+                }
+                return matched;
+            }
+
+            ColumnLayout {
+                id: settingsRootCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 18
+                spacing: 14
+
+                // ── Topbar Header (matching Obsidian Settings.html) ──
                 GridLayout {
                     Layout.fillWidth: true
-                    columns: width > 680 ? 2 : 1
+                    columns: width >= 660 ? 2 : 1
+                    columnSpacing: 16
                     rowSpacing: 10
-                    columnSpacing: 12
 
-                    Repeater {
-                        model: [
-                            { "code": "01", "title": "General & Schedule", "keys": ["username", "vault_name", "start_date", "callout_path", "schedule_heading", "exercise_heading", "cardio_heading"] },
-                            { "code": "02", "title": "Weather Provider", "keys": ["weather_provider", "weather_location", "weather_units", "openweathermap_key"] },
-                            { "code": "03", "title": "Media & Books APIs", "keys": ["tmdb_key", "omdb_key", "mal_client_id", "spoonacular_key", "youtube_key"] },
-                            { "code": "04", "title": "Games & Finance", "keys": ["rawg_key", "steam_key", "steam_id", "default_currency", "currency_symbol", "monthly_budget"] }
-                        ]
-                        delegate: Rectangle {
-                            required property var modelData
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 3
+                        Text {
+                            text: "VAULT CONFIGURATION"
+                            font.family: Appearance.font.family.monospace
+                            font.pixelSize: 10
+                            font.weight: Font.Bold
+                            font.letterSpacing: 1.8
+                            color: root.accentColor
+                        }
+                        RowLayout {
+                            spacing: 10
+                            Text {
+                                text: "Settings"
+                                font.pixelSize: 22
+                                font.weight: Font.Bold
+                                color: root.textStrong
+                            }
+                            Rectangle {
+                                implicitWidth: autoSaveRow.implicitWidth + 14
+                                implicitHeight: 20
+                                radius: 10
+                                color: Qt.alpha(root.accentColor, 0.14)
+                                border.width: 1
+                                border.color: Qt.alpha(root.accentColor, 0.34)
+                                Row {
+                                    id: autoSaveRow
+                                    anchors.centerIn: parent
+                                    spacing: 5
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 6
+                                        height: 6
+                                        radius: 3
+                                        color: root.accentColor
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "Auto-save"
+                                        font.pixelSize: 10
+                                        font.weight: Font.DemiBold
+                                        color: root.accentColor
+                                    }
+                                }
+                            }
+                        }
+                        Text {
                             Layout.fillWidth: true
-                            Layout.alignment: Qt.AlignTop
-                            implicitHeight: secCardCol.implicitHeight + 20
-                            radius: 8
-                            color: root.cardRaisedBg
-                            border.width: 1
-                            border.color: root.borderSubtle
+                            text: "Manage vault identity, homepage schedule, integrations, Globe Map API, and credentials."
+                            font.pixelSize: 11
+                            color: root.textMuted
+                            wrapMode: Text.Wrap
+                        }
+                    }
 
-                            ColumnLayout {
-                                id: secCardCol
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.top: parent.top
-                                anchors.margins: 10
+                    ColumnLayout {
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        Layout.preferredWidth: settingsRootCol.width >= 660 ? 264 : settingsRootCol.width
+                        spacing: 5
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: 32
+                            radius: 8
+                            color: root.cardDeepBg
+                            border.width: 1
+                            border.color: settingsSearchInput.activeFocus ? root.accentColor : root.borderSubtle
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 8
                                 spacing: 6
 
-                                RowLayout {
-                                    Text { text: modelData.code; font.pixelSize: 10; font.family: Appearance.font.family.monospace; color: root.accentColor }
-                                    Text { text: modelData.title.toUpperCase(); font.pixelSize: 10; font.weight: Font.Bold; color: root.textPrimary }
+                                MaterialSymbol {
+                                    text: "search"
+                                    iconSize: 14
+                                    color: root.textMuted
                                 }
+                                TextField {
+                                    id: settingsSearchInput
+                                    objectName: "nexusSettingsSearchField"
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    placeholderText: "Search settings..."
+                                    font.pixelSize: 11
+                                    color: root.textPrimary
+                                    placeholderTextColor: root.textMuted
+                                    background: null
+                                    onTextChanged: {
+                                        if (inputMethodComposing)
+                                            return;
+                                        settingsCustomView.searchQuery = text;
+                                    }
+                                    Keys.onEscapePressed: event => {
+                                        if (inputMethodComposing) {
+                                            event.accepted = false;
+                                            return;
+                                        }
+                                        text = "";
+                                        settingsCustomView.searchQuery = "";
+                                        root.restoreWorkspaceFocus();
+                                        event.accepted = true;
+                                    }
+                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event, settingsSearchInput)
+                                }
+                                Rectangle {
+                                    visible: settingsSearchInput.text.length === 0
+                                    implicitWidth: 18
+                                    implicitHeight: 18
+                                    radius: 4
+                                    color: root.cardRaisedBg
+                                    border.width: 1
+                                    border.color: root.borderSubtle
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "/"
+                                        font.family: Appearance.font.family.monospace
+                                        font.pixelSize: 10
+                                        color: root.textMuted
+                                    }
+                                }
+                            }
+                        }
 
-                                Repeater {
-                                    model: modelData.keys
-                                    delegate: RowLayout {
-                                        required property string modelData
+                        Text {
+                            Layout.alignment: Qt.AlignRight
+                            text: String(settingsCustomView.settingsSummaryCounts.total) + " settings · "
+                                + String(settingsCustomView.settingsSummaryCounts.protectedCount) + " protected"
+                            font.family: Appearance.font.family.monospace
+                            font.pixelSize: 10
+                            color: root.textMuted
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 1
+                    color: root.borderSubtle
+                }
+
+                // ── Main Two-Column Settings Shell (Left Sidebar + Right Content Pane, 1:1 Obsidian Settings layout) ──
+                GridLayout {
+                    id: settingsSplitGrid
+                    Layout.fillWidth: true
+                    columns: width >= 660 ? 2 : 1
+                    columnSpacing: 20
+                    rowSpacing: 14
+
+                    // Left Navigation Rail (clean borderless Obsidian rail with right hairline divider)
+                    Item {
+                        id: settingsNavRail
+                        objectName: "nexusSettingsSidebar"
+                        Layout.preferredWidth: settingsSplitGrid.columns === 2 ? 216 : settingsSplitGrid.width
+                        Layout.fillWidth: settingsSplitGrid.columns === 1
+                        Layout.alignment: Qt.AlignTop
+                        implicitHeight: navRailCol.implicitHeight + 12
+
+                        Rectangle {
+                            visible: settingsSplitGrid.columns === 2
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            anchors.right: parent.right
+                            width: 1
+                            color: root.borderSubtle
+                            opacity: 0.65
+                        }
+
+                        ColumnLayout {
+                            id: navRailCol
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.rightMargin: settingsSplitGrid.columns === 2 ? 12 : 0
+                            anchors.topMargin: 4
+                            spacing: 3
+
+                            Repeater {
+                                model: settingsCustomView.resolvedTabs
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    readonly property bool isActive: settingsCustomView.searchQuery.trim().length === 0
+                                        && settingsCustomView.activeTabObj.id === modelData.id
+                                    objectName: "nexusSettingsTab_" + String(modelData.id)
+                                    Layout.fillWidth: true
+                                    implicitHeight: 34
+                                    radius: 7
+                                    color: isActive
+                                        ? Qt.alpha(root.accentColor, 0.14)
+                                        : (tabBtnMouse.containsMouse ? root.cardSubtleBg : "transparent")
+                                    border.width: 0
+
+                                    // Left vertical accent indicator (Obsidian active tab bar)
+                                    Rectangle {
+                                        visible: parent.isActive
+                                        anchors.left: parent.left
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 2.5
+                                        height: 18
+                                        radius: 1.5
+                                        color: root.accentColor
+                                    }
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 8
+                                        anchors.rightMargin: 8
+                                        spacing: 6
+
+                                        MaterialSymbol {
+                                            text: "drag_indicator"
+                                            iconSize: 12
+                                            color: root.textMuted
+                                            opacity: isActive || tabBtnMouse.containsMouse ? 0.65 : 0.35
+                                        }
+                                        MaterialSymbol {
+                                            text: String(modelData.icon ?? "tune")
+                                            iconSize: 15
+                                            color: isActive ? root.accentColor : root.textMuted
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            text: String(modelData.label ?? "")
+                                            font.pixelSize: 12
+                                            font.weight: isActive ? Font.DemiBold : Font.Medium
+                                            color: isActive ? root.textStrong : root.textSecondary
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            text: String(modelData.count ?? 0)
+                                            font.family: Appearance.font.family.monospace
+                                            font.pixelSize: 11
+                                            font.weight: isActive ? Font.DemiBold : Font.Normal
+                                            color: isActive ? root.accentColor : root.textMuted
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: tabBtnMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            settingsCustomView.searchQuery = "";
+                                            settingsSearchInput.text = "";
+                                            settingsCustomView.activeTabId = String(modelData.id);
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.topMargin: 6
+                                Layout.bottomMargin: 4
+                                implicitHeight: 1
+                                color: root.borderSubtle
+                                opacity: 0.6
+                            }
+
+                            // + Add Tabs trigger (borderless subtle row matching Obsidian)
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: 30
+                                radius: 7
+                                color: addTabBtnMouse.containsMouse ? root.cardSubtleBg : "transparent"
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 8
+                                    spacing: 6
+                                    MaterialSymbol {
+                                        text: "add"
+                                        iconSize: 14
+                                        color: root.accentColor
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: "Add Tabs"
+                                        font.pixelSize: 11
+                                        font.weight: Font.Medium
+                                        color: root.textSecondary
+                                    }
+                                }
+                                MouseArea {
+                                    id: addTabBtnMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        settingsCustomView.addTabOpen = !settingsCustomView.addTabOpen;
+                                        settingsCustomView.newTabLabelDraft = "";
+                                    }
+                                }
+                            }
+
+                            // Inline Add Tab creator
+                            ColumnLayout {
+                                visible: settingsCustomView.addTabOpen
+                                Layout.fillWidth: true
+                                spacing: 4
+                                TextField {
+                                    id: newTabNameInput
+                                    Layout.fillWidth: true
+                                    implicitHeight: 28
+                                    placeholderText: "New tab name..."
+                                    font.pixelSize: 11
+                                    color: root.textPrimary
+                                    placeholderTextColor: root.textMuted
+                                    background: Rectangle {
+                                        radius: 6
+                                        color: root.cardDeepBg
+                                        border.width: 1
+                                        border.color: newTabNameInput.activeFocus ? root.accentColor : root.borderSubtle
+                                    }
+                                    onTextChanged: if (!inputMethodComposing) settingsCustomView.newTabLabelDraft = text
+                                    onAccepted: {
+                                        if (inputMethodComposing)
+                                            Qt.inputMethod.commit();
+                                        const lbl = text.trim();
+                                        if (lbl.length === 0)
+                                            return;
+                                        const slug = "tab-" + lbl.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+                                        const fm = settingsCustomView.parsedFrontmatter;
+                                        const prevLayout = (fm._settings_layout_v1 && typeof fm._settings_layout_v1 === "object")
+                                            ? JSON.parse(JSON.stringify(fm._settings_layout_v1))
+                                            : { "version": 1, "tabs": {}, "tabOrder": [] };
+                                        if (!prevLayout.tabs || typeof prevLayout.tabs !== "object")
+                                            prevLayout.tabs = {};
+                                        if (!Array.isArray(prevLayout.tabOrder))
+                                            prevLayout.tabOrder = [];
+                                        prevLayout.tabs[slug] = { "label": lbl, "eyebrow": "Custom", "description": "Custom vault settings." };
+                                        if (prevLayout.tabOrder.indexOf(slug) === -1)
+                                            prevLayout.tabOrder.push(slug);
+                                        settingsCustomView._saveKey("_settings_layout_v1", prevLayout);
+                                        settingsCustomView.activeTabId = slug;
+                                        settingsCustomView.addTabOpen = false;
+                                        text = "";
+                                        root.restoreWorkspaceFocus();
+                                    }
+                                    Keys.onEscapePressed: event => {
+                                        if (inputMethodComposing) {
+                                            event.accepted = false;
+                                            return;
+                                        }
+                                        settingsCustomView.addTabOpen = false;
+                                        text = "";
+                                        root.restoreWorkspaceFocus();
+                                        event.accepted = true;
+                                    }
+                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event, newTabNameInput)
+                                }
+                            }
+
+                            // Show property keys toggle
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: 32
+                                radius: 7
+                                color: "transparent"
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 6
+                                    spacing: 6
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: "Show property keys"
+                                        font.pixelSize: 11
+                                        color: root.textMuted
+                                        elide: Text.ElideRight
+                                    }
+                                    Rectangle {
+                                        implicitWidth: 32
+                                        implicitHeight: 18
+                                        radius: 9
+                                        color: settingsCustomView.showPropertyKeys ? root.accentColor : root.cardDeepBg
+                                        border.width: 1
+                                        border.color: settingsCustomView.showPropertyKeys ? root.accentColor : root.borderSubtle
+                                        Rectangle {
+                                            width: 12
+                                            height: 12
+                                            radius: 6
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            x: settingsCustomView.showPropertyKeys ? (parent.width - width - 3) : 3
+                                            color: settingsCustomView.showPropertyKeys
+                                                ? (Appearance.colors?.colOnPrimary ?? "#0b1114")
+                                                : root.textMuted
+                                            Behavior on x { NumberAnimation { duration: 120 } }
+                                        }
+                                    }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: settingsCustomView.showPropertyKeys = !settingsCustomView.showPropertyKeys
+                                }
+                            }
+                        }
+                    }
+
+                    // Right Content Pane
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.alignment: Qt.AlignTop
+                        spacing: 14
+
+                        // Active Tab Banner (`VAULT` / `General` | `+ Add heading` `+ Add setting` `3 settings`)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                spacing: 2
+                                Text {
+                                    text: settingsCustomView.searchQuery.trim().length > 0
+                                        ? "SEARCH RESULTS"
+                                        : String(settingsCustomView.activeTabObj.eyebrow ?? "SETTINGS")
+                                    font.family: Appearance.font.family.monospace
+                                    font.pixelSize: 10
+                                    font.weight: Font.Bold
+                                    font.letterSpacing: 1.6
+                                    color: root.accentColor
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: settingsCustomView.searchQuery.trim().length > 0
+                                        ? ("Matches for \"" + settingsCustomView.searchQuery.trim() + "\"")
+                                        : String(settingsCustomView.activeTabObj.label ?? "Settings")
+                                    font.pixelSize: 18
+                                    font.weight: Font.Bold
+                                    color: root.textStrong
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: settingsCustomView.searchQuery.trim().length === 0
+                                        && String(settingsCustomView.activeTabObj.description ?? "").length > 0
+                                    text: String(settingsCustomView.activeTabObj.description ?? "")
+                                    font.pixelSize: 11
+                                    color: root.textMuted
+                                    wrapMode: Text.Wrap
+                                }
+                            }
+
+                            // + Add heading button (matching Obsidian Screenshot)
+                            Rectangle {
+                                objectName: "nexusSettingsAddHeadingBtn"
+                                visible: settingsCustomView.searchQuery.trim().length === 0
+                                implicitWidth: addHeadRow.implicitWidth + 14
+                                implicitHeight: 26
+                                radius: 6
+                                color: addHeadMouse.containsMouse ? root.cardRaisedBg : root.cardSubtleBg
+                                border.width: 1
+                                border.color: root.borderSubtle
+                                Row {
+                                    id: addHeadRow
+                                    anchors.centerIn: parent
+                                    spacing: 4
+                                    MaterialSymbol {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "add"
+                                        iconSize: 13
+                                        color: root.accentColor
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "Add heading"
+                                        font.pixelSize: 11
+                                        font.weight: Font.Medium
+                                        color: root.textSecondary
+                                    }
+                                }
+                                MouseArea {
+                                    id: addHeadMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        settingsCustomView.addHeadingOpen = !settingsCustomView.addHeadingOpen;
+                                        settingsCustomView.addSettingOpen = false;
+                                        settingsCustomView.newHeadingLabelDraft = "";
+                                    }
+                                }
+                            }
+
+                            // + Add setting button
+                            Rectangle {
+                                objectName: "nexusSettingsAddSettingBtn"
+                                implicitWidth: addSetRow.implicitWidth + 14
+                                implicitHeight: 26
+                                radius: 6
+                                color: addSetMouse.containsMouse ? root.cardRaisedBg : root.cardSubtleBg
+                                border.width: 1
+                                border.color: root.borderSubtle
+                                Row {
+                                    id: addSetRow
+                                    anchors.centerIn: parent
+                                    spacing: 4
+                                    MaterialSymbol {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "add"
+                                        iconSize: 13
+                                        color: root.accentColor
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "Add setting"
+                                        font.pixelSize: 11
+                                        font.weight: Font.Medium
+                                        color: root.textSecondary
+                                    }
+                                }
+                                MouseArea {
+                                    id: addSetMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        settingsCustomView.addSettingOpen = !settingsCustomView.addSettingOpen;
+                                        settingsCustomView.addHeadingOpen = false;
+                                        settingsCustomView.newSettingKeyDraft = "";
+                                        settingsCustomView.newSettingValDraft = "";
+                                    }
+                                }
+                            }
+
+                            Text {
+                                visible: settingsCustomView.searchQuery.trim().length === 0
+                                text: String(settingsCustomView.activeTabObj.count ?? 0) + " settings"
+                                font.family: Appearance.font.family.monospace
+                                font.pixelSize: 11
+                                color: root.textMuted
+                            }
+                        }
+
+                        // Inline "+ Add heading" bar
+                        Rectangle {
+                            visible: settingsCustomView.addHeadingOpen
+                            Layout.fillWidth: true
+                            implicitHeight: 42
+                            radius: 8
+                            color: root.cardSubtleBg
+                            border.width: 1
+                            border.color: root.accentColor
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 7
+                                spacing: 8
+                                TextField {
+                                    id: newHeadingField
+                                    objectName: "nexusSettingsNewHeadingField"
+                                    Layout.fillWidth: true
+                                    implicitHeight: 28
+                                    placeholderText: "New section heading title..."
+                                    font.pixelSize: 11
+                                    color: root.textPrimary
+                                    placeholderTextColor: root.textMuted
+                                    background: Rectangle { radius: 6; color: root.cardDeepBg; border.width: 1; border.color: root.borderSubtle }
+                                    onTextChanged: if (!inputMethodComposing) settingsCustomView.newHeadingLabelDraft = text
+                                    function commitHeading(): void {
+                                        if (inputMethodComposing)
+                                            Qt.inputMethod.commit();
+                                        const lbl = text.trim();
+                                        if (lbl.length === 0)
+                                            return;
+                                        const hid = "heading-" + lbl.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+                                        const tabId = String(settingsCustomView.activeTabObj.id || "general");
+                                        const fm = settingsCustomView.parsedFrontmatter;
+                                        const prevLayout = (fm._settings_layout_v1 && typeof fm._settings_layout_v1 === "object")
+                                            ? JSON.parse(JSON.stringify(fm._settings_layout_v1))
+                                            : { "version": 1 };
+                                        if (!prevLayout.headings || typeof prevLayout.headings !== "object")
+                                            prevLayout.headings = {};
+                                        if (!prevLayout.headingTabs || typeof prevLayout.headingTabs !== "object")
+                                            prevLayout.headingTabs = {};
+                                        if (!prevLayout.headingOrder || typeof prevLayout.headingOrder !== "object")
+                                            prevLayout.headingOrder = {};
+                                        if (!Array.isArray(prevLayout.headingOrder[tabId]))
+                                            prevLayout.headingOrder[tabId] = [];
+                                        prevLayout.headings[hid] = { "label": lbl };
+                                        prevLayout.headingTabs[hid] = tabId;
+                                        if (prevLayout.headingOrder[tabId].indexOf(hid) === -1)
+                                            prevLayout.headingOrder[tabId].push(hid);
+                                        settingsCustomView._saveKey("_settings_layout_v1", prevLayout);
+                                        text = "";
+                                        settingsCustomView.addHeadingOpen = false;
+                                        root.restoreWorkspaceFocus();
+                                    }
+                                    onAccepted: commitHeading()
+                                    Keys.onEscapePressed: event => {
+                                        if (inputMethodComposing) {
+                                            event.accepted = false;
+                                            return;
+                                        }
+                                        settingsCustomView.addHeadingOpen = false;
+                                        text = "";
+                                        root.restoreWorkspaceFocus();
+                                        event.accepted = true;
+                                    }
+                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event, newHeadingField)
+                                }
+                                Rectangle {
+                                    implicitWidth: 58
+                                    implicitHeight: 28
+                                    radius: 6
+                                    color: root.accentColor
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "Add"
+                                        font.pixelSize: 11
+                                        font.weight: Font.Bold
+                                        color: Appearance.colors?.colOnPrimary ?? "#0b1114"
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: newHeadingField.commitHeading()
+                                    }
+                                }
+                            }
+                        }
+
+                        // Inline "+ Add setting" bar
+                        Rectangle {
+                            visible: settingsCustomView.addSettingOpen
+                            Layout.fillWidth: true
+                            implicitHeight: 44
+                            radius: 8
+                            color: root.cardSubtleBg
+                            border.width: 1
+                            border.color: root.accentColor
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                spacing: 8
+                                TextField {
+                                    id: newSetKeyField
+                                    Layout.preferredWidth: 160
+                                    implicitHeight: 28
+                                    placeholderText: "property_key"
+                                    font.family: Appearance.font.family.monospace
+                                    font.pixelSize: 11
+                                    color: root.textPrimary
+                                    placeholderTextColor: root.textMuted
+                                    background: Rectangle { radius: 6; color: root.cardDeepBg; border.width: 1; border.color: root.borderSubtle }
+                                    onTextChanged: if (!inputMethodComposing) settingsCustomView.newSettingKeyDraft = text
+                                    Keys.onEscapePressed: event => {
+                                        if (inputMethodComposing) {
+                                            event.accepted = false;
+                                            return;
+                                        }
+                                        settingsCustomView.addSettingOpen = false;
+                                        root.restoreWorkspaceFocus();
+                                        event.accepted = true;
+                                    }
+                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event, newSetKeyField)
+                                }
+                                TextField {
+                                    id: newSetValField
+                                    Layout.fillWidth: true
+                                    implicitHeight: 28
+                                    placeholderText: "Initial value..."
+                                    font.pixelSize: 11
+                                    color: root.textPrimary
+                                    placeholderTextColor: root.textMuted
+                                    background: Rectangle { radius: 6; color: root.cardDeepBg; border.width: 1; border.color: root.borderSubtle }
+                                    onTextChanged: if (!inputMethodComposing) settingsCustomView.newSettingValDraft = text
+                                    onAccepted: newSetSaveBtn.saveNewSetting()
+                                    Keys.onEscapePressed: event => {
+                                        if (inputMethodComposing) {
+                                            event.accepted = false;
+                                            return;
+                                        }
+                                        settingsCustomView.addSettingOpen = false;
+                                        root.restoreWorkspaceFocus();
+                                        event.accepted = true;
+                                    }
+                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event, newSetValField)
+                                }
+                                Rectangle {
+                                    id: newSetSaveBtn
+                                    implicitWidth: 58
+                                    implicitHeight: 28
+                                    radius: 6
+                                    color: root.accentColor
+                                    function saveNewSetting(): void {
+                                        if (newSetKeyField.inputMethodComposing || newSetValField.inputMethodComposing)
+                                            Qt.inputMethod.commit();
+                                        const k = newSetKeyField.text.trim().replace(/\s+/g, "_");
+                                        if (k.length === 0)
+                                            return;
+                                        const val = newSetValField.text.trim();
+                                        const tabId = String(settingsCustomView.activeTabObj.id || "general");
+                                        const fm = settingsCustomView.parsedFrontmatter;
+                                        const prevLayout = (fm._settings_layout_v1 && typeof fm._settings_layout_v1 === "object")
+                                            ? JSON.parse(JSON.stringify(fm._settings_layout_v1))
+                                            : { "version": 1 };
+                                        if (!prevLayout.settingPlacement || typeof prevLayout.settingPlacement !== "object")
+                                            prevLayout.settingPlacement = {};
+                                        if (!prevLayout.settingOrder || typeof prevLayout.settingOrder !== "object")
+                                            prevLayout.settingOrder = {};
+                                        const rootKey = "tab:" + tabId + ":root";
+                                        if (!Array.isArray(prevLayout.settingOrder[rootKey]))
+                                            prevLayout.settingOrder[rootKey] = [];
+                                        prevLayout.settingPlacement[k] = { "tab": tabId };
+                                        if (prevLayout.settingOrder[rootKey].indexOf(k) === -1)
+                                            prevLayout.settingOrder[rootKey].push(k);
+                                        const nextOv = Object.assign({}, settingsCustomView._localOverrides || {});
+                                        nextOv[k] = val;
+                                        nextOv["_settings_layout_v1"] = prevLayout;
+                                        settingsCustomView._localOverrides = nextOv;
+                                        settingsCustomView._localRevision += 1;
+                                        settingsCustomView.saveStateLabel = "Saving…";
+                                        if (root.service) {
+                                            const patch = {};
+                                            patch[k] = val;
+                                            patch["_settings_layout_v1"] = prevLayout;
+                                            root.service.updateNoteFrontmatter(patch);
+                                        }
+                                        settingsSavedPulseTimer.restart();
+                                        newSetKeyField.text = "";
+                                        newSetValField.text = "";
+                                        settingsCustomView.addSettingOpen = false;
+                                        root.restoreWorkspaceFocus();
+                                    }
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "Save"
+                                        font.pixelSize: 11
+                                        font.weight: Font.Bold
+                                        color: Appearance.colors?.colOnPrimary ?? "#0b1114"
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: newSetSaveBtn.saveNewSetting()
+                                    }
+                                }
+                            }
+                        }
+
+                        // Grouped Sections (flat hairline-separated Obsidian Settings design)
+                        Repeater {
+                            model: settingsCustomView.visibleSections
+                            delegate: Item {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                implicitHeight: sectionBodyCol.implicitHeight + 6
+
+                                ColumnLayout {
+                                    id: sectionBodyCol
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    spacing: 8
+
+                                    RowLayout {
                                         Layout.fillWidth: true
                                         spacing: 8
                                         Text {
-                                            Layout.preferredWidth: 130
-                                            text: modelData
-                                            font.pixelSize: 10
+                                            text: String(modelData.label ?? "").toUpperCase()
                                             font.family: Appearance.font.family.monospace
-                                            color: root.textSecondary
-                                            elide: Text.ElideRight
-                                        }
-                                        TextField {
-                                            Layout.fillWidth: true
-                                            implicitHeight: 24
-                                            text: String(root.doc?.frontmatter?.[modelData] ?? "")
-                                            echoMode: modelData.includes("key") || modelData.includes("token") || modelData.includes("secret") ? TextInput.PasswordEchoOnEdit : TextInput.Normal
                                             font.pixelSize: 10
-                                            color: root.textPrimary
-                                            background: Rectangle {
-                                                radius: 4
-                                                color: root.cardDeepBg
-                                                border.width: 1
-                                                border.color: parent.activeFocus ? root.accentColor : root.borderSubtle
+                                            font.weight: Font.Bold
+                                            font.letterSpacing: 1.5
+                                            color: root.accentColor
+                                        }
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            implicitHeight: 1
+                                            color: root.borderSubtle
+                                            opacity: 0.65
+                                        }
+                                        Text {
+                                            text: String((modelData.keys || []).length)
+                                            font.family: Appearance.font.family.monospace
+                                            font.pixelSize: 10
+                                            color: root.textMuted
+                                        }
+                                    }
+
+                                    Text {
+                                        visible: (modelData.keys || []).length === 0
+                                        text: "No settings under this heading yet."
+                                        font.pixelSize: 11
+                                        font.italic: true
+                                        color: root.textMuted
+                                    }
+
+                                    Repeater {
+                                        model: modelData.keys || []
+                                        delegate: Item {
+                                            id: settingRowItem
+                                            required property string modelData
+                                            required property int index
+                                            readonly property var meta: settingsCustomView._metaForKey(modelData)
+                                            readonly property var rawVal: settingsCustomView._getVal(modelData)
+                                            readonly property string displayVal: {
+                                                if (Array.isArray(rawVal))
+                                                    return rawVal.join(", ");
+                                                if (rawVal && typeof rawVal === "object")
+                                                    return JSON.stringify(rawVal);
+                                                return String(rawVal ?? "");
                                             }
-                                            onAccepted: root.restoreWorkspaceFocus()
-                                            Keys.onEscapePressed: event => {
-                                                root.restoreWorkspaceFocus();
-                                                event.accepted = true;
+                                            readonly property bool isSecret: meta.type === "secret"
+                                            readonly property bool isRevealed: Boolean(settingsCustomView.revealedSecrets[modelData])
+                                            readonly property bool isConfigured: displayVal.trim().length > 0
+
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            implicitHeight: settingRowGrid.implicitHeight + (index > 0 ? 12 : 4)
+
+                                            Rectangle {
+                                                visible: settingRowItem.index > 0
+                                                anchors.left: parent.left
+                                                anchors.right: parent.right
+                                                anchors.top: parent.top
+                                                height: 1
+                                                color: root.borderSubtle
+                                                opacity: 0.45
                                             }
-                                            Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
-                                            onEditingFinished: {
-                                                if (root.service) {
-                                                    const patch = {};
-                                                    patch[modelData] = text;
-                                                    root.service.updateNoteFrontmatter(patch);
+
+                                            GridLayout {
+                                                id: settingRowGrid
+                                                anchors.left: parent.left
+                                                anchors.right: parent.right
+                                                anchors.top: parent.top
+                                                anchors.topMargin: settingRowItem.index > 0 ? 10 : 2
+                                                columns: width >= 460 ? 2 : 1
+                                                columnSpacing: 14
+                                                rowSpacing: 6
+
+                                                // Left: Label, optional property key badge, hint
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    Layout.minimumWidth: 0
+                                                    spacing: 2
+
+                                                    RowLayout {
+                                                        Layout.fillWidth: true
+                                                        spacing: 6
+                                                        Text {
+                                                            text: String(settingRowItem.meta.label ?? settingRowItem.modelData)
+                                                            font.pixelSize: 12
+                                                            font.weight: Font.DemiBold
+                                                            color: root.textPrimary
+                                                            elide: Text.ElideRight
+                                                        }
+                                                        Rectangle {
+                                                            visible: settingRowItem.isSecret
+                                                            implicitWidth: secStatusRow.implicitWidth + 10
+                                                            implicitHeight: 16
+                                                            radius: 8
+                                                            color: settingRowItem.isConfigured
+                                                                ? Qt.alpha(root.accentColor, 0.16)
+                                                                : root.cardDeepBg
+                                                            Row {
+                                                                id: secStatusRow
+                                                                anchors.centerIn: parent
+                                                                spacing: 4
+                                                                Rectangle {
+                                                                    anchors.verticalCenter: parent.verticalCenter
+                                                                    width: 5
+                                                                    height: 5
+                                                                    radius: 2.5
+                                                                    color: settingRowItem.isConfigured ? root.accentColor : root.textMuted
+                                                                }
+                                                                Text {
+                                                                    anchors.verticalCenter: parent.verticalCenter
+                                                                    text: settingRowItem.isConfigured ? "Configured" : "Not set"
+                                                                    font.pixelSize: 9
+                                                                    font.weight: Font.DemiBold
+                                                                    color: settingRowItem.isConfigured ? root.accentColor : root.textMuted
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Text {
+                                                        visible: settingsCustomView.showPropertyKeys
+                                                        text: settingRowItem.modelData
+                                                        font.family: Appearance.font.family.monospace
+                                                        font.pixelSize: 10
+                                                        color: root.accentColor
+                                                    }
+
+                                                    Text {
+                                                        Layout.fillWidth: true
+                                                        text: String(settingRowItem.meta.hint ?? "")
+                                                        font.pixelSize: 10
+                                                        color: root.textMuted
+                                                        wrapMode: Text.Wrap
+                                                    }
+                                                }
+
+                                                // Right: Type-appropriate interactive control
+                                                Item {
+                                                    Layout.preferredWidth: settingRowGrid.columns === 2 ? 250 : settingRowGrid.width
+                                                    Layout.fillWidth: settingRowGrid.columns === 1
+                                                    Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                                                    implicitHeight: settingRowItem.meta.type === "select" ? Math.max(28, selectFlow.implicitHeight) : 30
+
+                                                    // Select Pill Group
+                                                    Flow {
+                                                        id: selectFlow
+                                                        visible: settingRowItem.meta.type === "select"
+                                                        anchors.left: parent.left
+                                                        anchors.right: parent.right
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        spacing: 4
+
+                                                        Repeater {
+                                                            model: settingRowItem.meta.options || []
+                                                            delegate: Rectangle {
+                                                                required property string modelData
+                                                                readonly property bool chosen: settingRowItem.displayVal.toLowerCase() === modelData.toLowerCase()
+                                                                    || (settingRowItem.displayVal.length === 0 && modelData === (settingRowItem.meta.options?.[0] ?? ""))
+                                                                implicitWidth: optTxt.implicitWidth + 14
+                                                                implicitHeight: 24
+                                                                radius: 6
+                                                                color: chosen ? root.accentColor : root.cardDeepBg
+                                                                border.width: chosen ? 0 : 1
+                                                                border.color: root.borderSubtle
+
+                                                                Text {
+                                                                    id: optTxt
+                                                                    anchors.centerIn: parent
+                                                                    text: modelData
+                                                                    font.family: Appearance.font.family.monospace
+                                                                    font.pixelSize: 10
+                                                                    font.weight: chosen ? Font.Bold : Font.Medium
+                                                                    color: chosen
+                                                                        ? (Appearance.colors?.colOnPrimary ?? "#0b1114")
+                                                                        : root.textSecondary
+                                                                }
+                                                                MouseArea {
+                                                                    anchors.fill: parent
+                                                                    cursorShape: Qt.PointingHandCursor
+                                                                    onClicked: settingsCustomView._saveKey(settingRowItem.modelData, modelData)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Text / Secret / Color / Number / Date / List inline editor
+                                                    RowLayout {
+                                                        visible: settingRowItem.meta.type !== "select"
+                                                        anchors.fill: parent
+                                                        spacing: 5
+
+                                                        Rectangle {
+                                                            visible: settingRowItem.meta.type === "color"
+                                                            implicitWidth: 22
+                                                            implicitHeight: 22
+                                                            radius: 5
+                                                            color: settingRowItem.displayVal.startsWith("#") ? settingRowItem.displayVal : root.cardDeepBg
+                                                            border.width: 1
+                                                            border.color: root.borderSubtle
+                                                        }
+
+                                                        TextField {
+                                                            id: settingInputField
+                                                            objectName: "nexusSettingField_" + settingRowItem.modelData
+                                                            Layout.fillWidth: true
+                                                            Layout.minimumWidth: 0
+                                                            implicitHeight: 28
+                                                            placeholderText: String(settingRowItem.meta.placeholder ?? "")
+                                                            echoMode: (settingRowItem.isSecret && !settingRowItem.isRevealed)
+                                                                ? TextInput.Password
+                                                                : TextInput.Normal
+                                                            font.family: (settingRowItem.isSecret || settingRowItem.meta.type === "number" || settingRowItem.meta.type === "color" || settingRowItem.meta.type === "json")
+                                                                ? Appearance.font.family.monospace
+                                                                : Appearance.font.family.main
+                                                            font.pixelSize: 11
+                                                            color: root.textPrimary
+                                                            placeholderTextColor: root.textMuted
+                                                            background: Rectangle {
+                                                                radius: 6
+                                                                color: root.cardDeepBg
+                                                                border.width: 1
+                                                                border.color: settingInputField.activeFocus ? root.accentColor : root.borderSubtle
+                                                            }
+
+                                                            Component.onCompleted: text = settingRowItem.displayVal
+
+                                                            Connections {
+                                                                target: settingRowItem
+                                                                function onDisplayValChanged(): void {
+                                                                    if (!settingInputField.activeFocus && !settingInputField.inputMethodComposing && settingInputField.text !== settingRowItem.displayVal)
+                                                                        settingInputField.text = settingRowItem.displayVal;
+                                                                }
+                                                            }
+
+                                                            function commitValue(): void {
+                                                                if (inputMethodComposing)
+                                                                    return;
+                                                                const rawTxt = text.trim();
+                                                                if (rawTxt === settingRowItem.displayVal.trim())
+                                                                    return;
+                                                                if (settingRowItem.meta.type === "list") {
+                                                                    const parts = rawTxt.split(",").map(s => s.trim()).filter(s => s.length > 0);
+                                                                    settingsCustomView._saveKey(settingRowItem.modelData, parts);
+                                                                } else if (settingRowItem.meta.type === "number") {
+                                                                    const n = Number(rawTxt);
+                                                                    settingsCustomView._saveKey(settingRowItem.modelData, (!isNaN(n) && rawTxt.length > 0) ? n : rawTxt);
+                                                                } else if (settingRowItem.meta.type === "json") {
+                                                                    if (rawTxt.length === 0) {
+                                                                        settingsCustomView._saveKey(settingRowItem.modelData, ({}));
+                                                                    } else {
+                                                                        try {
+                                                                            settingsCustomView._saveKey(settingRowItem.modelData, JSON.parse(rawTxt));
+                                                                        } catch (_err) {
+                                                                            settingsCustomView._saveKey(settingRowItem.modelData, rawTxt);
+                                                                        }
+                                                                    }
+                                                                } else {
+                                                                    settingsCustomView._saveKey(settingRowItem.modelData, rawTxt);
+                                                                }
+                                                            }
+
+                                                            onEditingFinished: commitValue()
+                                                            onAccepted: {
+                                                                if (inputMethodComposing)
+                                                                    Qt.inputMethod.commit();
+                                                                commitValue();
+                                                                root.restoreWorkspaceFocus();
+                                                            }
+                                                            Keys.onEscapePressed: event => {
+                                                                if (inputMethodComposing) {
+                                                                    event.accepted = false;
+                                                                    return;
+                                                                }
+                                                                text = settingRowItem.displayVal;
+                                                                root.restoreWorkspaceFocus();
+                                                                event.accepted = true;
+                                                            }
+                                                            Keys.onPressed: event => root.forwardWorkspaceShortcut(event, settingInputField)
+                                                        }
+
+                                                        // Eye reveal toggle for secret credentials
+                                                        Rectangle {
+                                                            visible: settingRowItem.isSecret
+                                                            implicitWidth: 26
+                                                            implicitHeight: 26
+                                                            radius: 6
+                                                            color: eyeMouse.containsMouse ? root.cardRaisedBg : root.cardDeepBg
+                                                            border.width: 1
+                                                            border.color: root.borderSubtle
+                                                            MaterialSymbol {
+                                                                anchors.centerIn: parent
+                                                                text: settingRowItem.isRevealed ? "visibility_off" : "visibility"
+                                                                iconSize: 13
+                                                                color: settingRowItem.isRevealed ? root.accentColor : root.textMuted
+                                                            }
+                                                            MouseArea {
+                                                                id: eyeMouse
+                                                                anchors.fill: parent
+                                                                hoverEnabled: true
+                                                                cursorShape: Qt.PointingHandCursor
+                                                                onClicked: settingsCustomView._toggleSecretReveal(settingRowItem.modelData)
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -5173,6 +6822,56 @@ Item {
                                 }
                             }
                         }
+
+                        // Empty search state
+                        Rectangle {
+                            visible: settingsCustomView.visibleSections.length === 0
+                            Layout.fillWidth: true
+                            implicitHeight: 72
+                            radius: 10
+                            color: root.cardSubtleBg
+                            border.width: 1
+                            border.color: root.borderSubtle
+                            Text {
+                                anchors.centerIn: parent
+                                text: "No settings match your search."
+                                font.pixelSize: 12
+                                color: root.textMuted
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 1
+                    color: root.borderSubtle
+                    opacity: 0.6
+                }
+
+                // ── Footer Status Strip (matching Obsidian Settings footer) ──
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 2
+                    spacing: 8
+
+                    Rectangle {
+                        width: 7
+                        height: 7
+                        radius: 3.5
+                        color: root.accentColor
+                    }
+                    Text {
+                        text: settingsCustomView.saveStateLabel
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        color: root.textSecondary
+                    }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: "Changes are written to frontmatter immediately."
+                        font.pixelSize: 11
+                        color: root.textMuted
                     }
                 }
             }
@@ -5877,25 +7576,35 @@ Item {
                                     objectName: "nexusJournalDailyLogEditor"
                                     Layout.fillWidth: true
                                     Layout.minimumHeight: Math.max(300, jDailyFolioCard.minFolioHeight - 140, jRightRailCard.implicitHeight - 140)
-                                    text: String(root.jView.dailyLogText ?? "")
                                     placeholderText: "Write your daily log here..."
                                     placeholderTextColor: root.textMuted
                                     color: root.textPrimary
                                     font.pixelSize: 14
                                     wrapMode: TextEdit.Wrap
+                                    inputMethodHints: Qt.ImhMultiLine
                                     background: Item {}
+                                    Component.onCompleted: text = String(root.jView.dailyLogText ?? "")
                                     onVisibleChanged: {
-                                        if (visible)
+                                        if (visible) {
+                                            text = String(root.jView.dailyLogText ?? "");
                                             Qt.callLater(() => { if (dailyLogEditor.visible) dailyLogEditor.forceActiveFocus(); });
+                                        } else if (inputMethodComposing) {
+                                            Qt.inputMethod.commit();
+                                        }
                                     }
                                     onActiveFocusChanged: {
-                                        if (!activeFocus && visible && root.journalEditingDailyLog && root.noteKind === "journal" && !cancelLogMouse.containsMouse && !cancelLogMouse.pressed) {
+                                        if (!activeFocus && visible && !inputMethodComposing && root.journalEditingDailyLog && root.noteKind === "journal" && !cancelLogMouse.containsMouse && !cancelLogMouse.pressed) {
                                             if (root.service && dailyLogEditor.text !== String(root.jView.dailyLogText ?? ""))
                                                 root.service.saveJournalDailyLog(dailyLogEditor.text);
                                             root.journalEditingDailyLog = false;
                                         }
                                     }
                                     Keys.onEscapePressed: event => {
+                                        if (inputMethodComposing) {
+                                            event.accepted = false;
+                                            return;
+                                        }
+                                        Qt.inputMethod.commit();
                                         if (root.service && dailyLogEditor.text !== String(root.jView.dailyLogText ?? ""))
                                             root.service.saveJournalDailyLog(dailyLogEditor.text);
                                         dailyLogEditor.focus = false;
@@ -5904,7 +7613,12 @@ Item {
                                         event.accepted = true;
                                     }
                                     Keys.onPressed: event => {
+                                        if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                            event.accepted = false;
+                                            return;
+                                        }
                                         if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                                            Qt.inputMethod.commit();
                                             if (root.service)
                                                 root.service.saveJournalDailyLog(dailyLogEditor.text);
                                             dailyLogEditor.focus = false;
@@ -5913,10 +7627,7 @@ Item {
                                             event.accepted = true;
                                             return;
                                         }
-                                        if ((event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) !== 0
-                                            && root.service && root.service.handleKeyEvent(event)) {
-                                            event.accepted = true;
-                                        }
+                                        root.forwardWorkspaceShortcut(event, dailyLogEditor);
                                     }
                                 }
 
@@ -6194,9 +7905,9 @@ Item {
                             TextField {
                                 id: journalWeatherField
                                 objectName: "nexusJournalWeatherField"
+                                readonly property string syncedWeather: String(root.jView.weather || root.service?.alisWeatherSummary || "")
                                 Layout.fillWidth: true
                                 implicitHeight: 26
-                                text: String(root.jView.weather || root.service?.alisWeatherSummary || "")
                                 placeholderText: "Weather not recorded"
                                 placeholderTextColor: root.textMuted
                                 font.pixelSize: 11
@@ -6208,13 +7919,28 @@ Item {
                                     border.width: 1
                                     border.color: parent.activeFocus ? root.accentColor : root.borderSubtle
                                 }
-                                onAccepted: root.restoreWorkspaceFocus()
+                                Component.onCompleted: text = syncedWeather
+                                onSyncedWeatherChanged: {
+                                    if (!activeFocus && !inputMethodComposing && text !== syncedWeather)
+                                        text = syncedWeather;
+                                }
+                                onAccepted: {
+                                    if (inputMethodComposing)
+                                        Qt.inputMethod.commit();
+                                    root.restoreWorkspaceFocus();
+                                }
                                 Keys.onEscapePressed: event => {
+                                    if (inputMethodComposing) {
+                                        event.accepted = false;
+                                        return;
+                                    }
                                     root.restoreWorkspaceFocus();
                                     event.accepted = true;
                                 }
-                                Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
+                                Keys.onPressed: event => root.forwardWorkspaceShortcut(event, journalWeatherField)
                                 onEditingFinished: {
+                                    if (inputMethodComposing)
+                                        return;
                                     if (root.service && text !== String(root.jView.weather ?? ""))
                                         root.service.updateNoteFrontmatter({ "weather": text });
                                 }
@@ -6290,7 +8016,6 @@ Item {
                                 visible: root.journalEditingReflection
                                 Layout.fillWidth: true
                                 implicitHeight: 28
-                                text: String(root.jView.reflection ?? "")
                                 placeholderText: "One sentence for today"
                                 placeholderTextColor: root.textMuted
                                 font.pixelSize: 11
@@ -6303,22 +8028,34 @@ Item {
                                     border.color: parent.activeFocus ? root.accentColor : root.borderSubtle
                                 }
                                 onVisibleChanged: {
-                                    if (visible)
+                                    if (visible) {
+                                        text = String(root.jView.reflection ?? "");
                                         forceActiveFocus();
+                                    } else if (inputMethodComposing) {
+                                        Qt.inputMethod.commit();
+                                    }
                                 }
                                 Keys.onEscapePressed: event => {
+                                    if (inputMethodComposing) {
+                                        event.accepted = false;
+                                        return;
+                                    }
                                     root.journalEditingReflection = false;
                                     root.restoreWorkspaceFocus();
                                     event.accepted = true;
                                 }
-                                Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
+                                Keys.onPressed: event => root.forwardWorkspaceShortcut(event, reflectionField)
                                 onAccepted: {
+                                    if (inputMethodComposing)
+                                        Qt.inputMethod.commit();
                                     if (root.service && text !== String(root.jView.reflection ?? ""))
                                         root.service.updateNoteFrontmatter({ "reflection": text });
                                     root.journalEditingReflection = false;
                                     root.restoreWorkspaceFocus();
                                 }
                                 onEditingFinished: {
+                                    if (inputMethodComposing)
+                                        return;
                                     if (root.service && text !== String(root.jView.reflection ?? ""))
                                         root.service.updateNoteFrontmatter({ "reflection": text });
                                     root.journalEditingReflection = false;
@@ -6427,7 +8164,6 @@ Item {
                                     property bool _cancelingWeight: false
                                     Layout.fillWidth: true
                                     implicitHeight: 30
-                                    text: root.journalEffectiveWeight
                                     placeholderText: "e.g. 68.5"
                                     placeholderTextColor: root.textMuted
                                     font.pixelSize: 12
@@ -6442,16 +8178,19 @@ Item {
                                     onVisibleChanged: {
                                         if (visible) {
                                             _cancelingWeight = false;
+                                            text = String(root.journalEffectiveWeight ?? "");
                                             Qt.callLater(() => {
                                                 if (weightInputField.visible) {
                                                     weightInputField.forceActiveFocus();
                                                     weightInputField.selectAll();
                                                 }
                                             });
+                                        } else if (inputMethodComposing) {
+                                            Qt.inputMethod.commit();
                                         }
                                     }
                                     function commitWeight() {
-                                        if (!root.journalEditingWeight || _cancelingWeight)
+                                        if (!root.journalEditingWeight || _cancelingWeight || inputMethodComposing)
                                             return;
                                         const cleaned = String(weightInputField.text ?? "").replace(/kg/gi, "").replace(/,/g, ".").trim();
                                         root.journalWeightOverride = cleaned;
@@ -6468,16 +8207,25 @@ Item {
                                         }
                                     }
                                     onActiveFocusChanged: {
-                                        if (!activeFocus && visible && root.journalEditingWeight && root.noteKind === "journal" && !_cancelingWeight && !weightCancelMouse.containsMouse && !weightCancelMouse.pressed) {
+                                        if (!activeFocus && visible && !inputMethodComposing && root.journalEditingWeight && root.noteKind === "journal" && !_cancelingWeight && !weightCancelMouse.containsMouse && !weightCancelMouse.pressed) {
                                             commitWeight();
                                         }
                                     }
                                     Keys.onEscapePressed: event => {
+                                        if (inputMethodComposing) {
+                                            event.accepted = false;
+                                            return;
+                                        }
+                                        Qt.inputMethod.commit();
                                         commitWeight();
                                         event.accepted = true;
                                     }
-                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
-                                    onAccepted: commitWeight()
+                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event, weightInputField)
+                                    onAccepted: {
+                                        if (inputMethodComposing)
+                                            Qt.inputMethod.commit();
+                                        commitWeight();
+                                    }
                                 }
 
                                 Rectangle {
@@ -7489,22 +9237,35 @@ Item {
                                 objectName: "nexusCornellBodyEditor"
                                 Layout.fillWidth: true
                                 Layout.minimumHeight: 180
-                                text: root.service ? root.service.getNoteBodyMarkdown() : ""
                                 placeholderText: "Edit Cornell study sheet markdown..."
                                 placeholderTextColor: root.textMuted
                                 font.pixelSize: 13
                                 color: root.textPrimary
                                 wrapMode: TextEdit.Wrap
+                                inputMethodHints: Qt.ImhMultiLine
                                 background: Item {}
-                                onVisibleChanged: if (visible) Qt.callLater(() => { if (cornellBodyEditor.visible) cornellBodyEditor.forceActiveFocus(); })
+                                Component.onCompleted: text = root.service ? root.service.getNoteBodyMarkdown() : ""
+                                onVisibleChanged: {
+                                    if (visible) {
+                                        text = root.service ? root.service.getNoteBodyMarkdown() : "";
+                                        Qt.callLater(() => { if (cornellBodyEditor.visible) cornellBodyEditor.forceActiveFocus(); });
+                                    } else if (inputMethodComposing) {
+                                        Qt.inputMethod.commit();
+                                    }
+                                }
                                 onActiveFocusChanged: {
-                                    if (!activeFocus && visible && root.editingNoteBody && root.noteKind === "cornell" && !cornellCancelMouse.containsMouse && !cornellCancelMouse.pressed) {
+                                    if (!activeFocus && visible && !inputMethodComposing && root.editingNoteBody && root.noteKind === "cornell" && !cornellCancelMouse.containsMouse && !cornellCancelMouse.pressed) {
                                         if (root.service)
                                             root.service.saveNoteBodyMarkdown(cornellBodyEditor.text);
                                         root.editingNoteBody = false;
                                     }
                                 }
                                 Keys.onEscapePressed: event => {
+                                    if (inputMethodComposing) {
+                                        event.accepted = false;
+                                        return;
+                                    }
+                                    Qt.inputMethod.commit();
                                     if (root.service)
                                         root.service.saveNoteBodyMarkdown(cornellBodyEditor.text);
                                     cornellBodyEditor.focus = false;
@@ -7513,7 +9274,12 @@ Item {
                                     event.accepted = true;
                                 }
                                 Keys.onPressed: event => {
+                                    if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                        event.accepted = false;
+                                        return;
+                                    }
                                     if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                                        Qt.inputMethod.commit();
                                         if (root.service)
                                             root.service.saveNoteBodyMarkdown(cornellBodyEditor.text);
                                         cornellBodyEditor.focus = false;
@@ -7522,10 +9288,7 @@ Item {
                                         event.accepted = true;
                                         return;
                                     }
-                                    if ((event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) !== 0
-                                        && root.service && root.service.handleKeyEvent(event)) {
-                                        event.accepted = true;
-                                    }
+                                    root.forwardWorkspaceShortcut(event, cornellBodyEditor);
                                 }
                             }
 
@@ -8305,22 +10068,35 @@ Item {
                         objectName: "nexusZettelkastenBodyEditor"
                         Layout.fillWidth: true
                         Layout.minimumHeight: 180
-                        text: root.service ? root.service.getNoteBodyMarkdown() : ""
                         placeholderText: "Write your Zettelkasten atomic idea & connections..."
                         placeholderTextColor: root.textMuted
                         font.pixelSize: 13
                         color: root.textPrimary
                         wrapMode: TextEdit.Wrap
+                        inputMethodHints: Qt.ImhMultiLine
                         background: Rectangle { radius: 6; color: root.cardDeepBg; border.width: 1; border.color: root.accentColor }
-                        onVisibleChanged: if (visible) Qt.callLater(() => { if (zettelBodyEditor.visible) zettelBodyEditor.forceActiveFocus(); })
+                        Component.onCompleted: text = root.service ? root.service.getNoteBodyMarkdown() : ""
+                        onVisibleChanged: {
+                            if (visible) {
+                                text = root.service ? root.service.getNoteBodyMarkdown() : "";
+                                Qt.callLater(() => { if (zettelBodyEditor.visible) zettelBodyEditor.forceActiveFocus(); });
+                            } else if (inputMethodComposing) {
+                                Qt.inputMethod.commit();
+                            }
+                        }
                         onActiveFocusChanged: {
-                            if (!activeFocus && visible && root.editingNoteBody && root.noteKind === "zettelkasten" && !zettelCancelMouse.containsMouse && !zettelCancelMouse.pressed) {
+                            if (!activeFocus && visible && !inputMethodComposing && root.editingNoteBody && root.noteKind === "zettelkasten" && !zettelCancelMouse.containsMouse && !zettelCancelMouse.pressed) {
                                 if (root.service)
                                     root.service.saveNoteBodyMarkdown(zettelBodyEditor.text);
                                 root.editingNoteBody = false;
                             }
                         }
                         Keys.onEscapePressed: event => {
+                            if (inputMethodComposing) {
+                                event.accepted = false;
+                                return;
+                            }
+                            Qt.inputMethod.commit();
                             if (root.service)
                                 root.service.saveNoteBodyMarkdown(zettelBodyEditor.text);
                             zettelBodyEditor.focus = false;
@@ -8329,7 +10105,12 @@ Item {
                             event.accepted = true;
                         }
                         Keys.onPressed: event => {
+                            if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                event.accepted = false;
+                                return;
+                            }
                             if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                                Qt.inputMethod.commit();
                                 if (root.service)
                                     root.service.saveNoteBodyMarkdown(zettelBodyEditor.text);
                                 zettelBodyEditor.focus = false;
@@ -8338,10 +10119,7 @@ Item {
                                 event.accepted = true;
                                 return;
                             }
-                            if ((event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) !== 0
-                                && root.service && root.service.handleKeyEvent(event)) {
-                                event.accepted = true;
-                            }
+                            root.forwardWorkspaceShortcut(event, zettelBodyEditor);
                         }
                     }
 
@@ -8752,7 +10530,6 @@ Item {
                                     id: recipeEyebrowEditor
                                     Layout.preferredWidth: 180
                                     implicitHeight: 26
-                                    text: root.recipeDraftTextA
                                     placeholderText: root.recipeEditingField === "recipe_category" ? "Category (e.g. Street Food)" : "Cuisine (e.g. Vietnamese)"
                                     placeholderTextColor: root.textMuted
                                     font.pixelSize: 11
@@ -8763,8 +10540,17 @@ Item {
                                         border.width: 1
                                         border.color: root.accentColor
                                     }
-                                    onVisibleChanged: if (visible) forceActiveFocus()
+                                    onVisibleChanged: {
+                                        if (visible) {
+                                            text = String(root.recipeDraftTextA ?? "");
+                                            forceActiveFocus();
+                                        } else if (inputMethodComposing) {
+                                            Qt.inputMethod.commit();
+                                        }
+                                    }
                                     onAccepted: {
+                                        if (inputMethodComposing)
+                                            Qt.inputMethod.commit();
                                         if (root.service) {
                                             const patch = ({});
                                             patch[root.recipeEditingField] = text.trim();
@@ -8774,11 +10560,15 @@ Item {
                                         root.restoreWorkspaceFocus();
                                     }
                                     Keys.onEscapePressed: event => {
+                                        if (inputMethodComposing) {
+                                            event.accepted = false;
+                                            return;
+                                        }
                                         root.recipeEditingField = "";
                                         root.restoreWorkspaceFocus();
                                         event.accepted = true;
                                     }
-                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
+                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event, recipeEyebrowEditor)
                                 }
                                 Rectangle {
                                     radius: 5
@@ -8840,7 +10630,6 @@ Item {
                                 objectName: "nexusRecipeTaglineEditor"
                                 Layout.fillWidth: true
                                 implicitHeight: 28
-                                text: root.recipeDraftTextA
                                 placeholderText: "Short tagline for this dish..."
                                 placeholderTextColor: root.textMuted
                                 font.pixelSize: 12
@@ -8852,19 +10641,32 @@ Item {
                                     border.width: 1
                                     border.color: root.accentColor
                                 }
-                                onVisibleChanged: if (visible) forceActiveFocus()
+                                onVisibleChanged: {
+                                    if (visible) {
+                                        text = String(root.recipeDraftTextA ?? "");
+                                        forceActiveFocus();
+                                    } else if (inputMethodComposing) {
+                                        Qt.inputMethod.commit();
+                                    }
+                                }
                                 onAccepted: {
+                                    if (inputMethodComposing)
+                                        Qt.inputMethod.commit();
                                     if (root.service)
                                         root.service.updateNoteFrontmatter({ "tagline": text.trim() });
                                     root.recipeEditingField = "";
                                     root.restoreWorkspaceFocus();
                                 }
                                 Keys.onEscapePressed: event => {
+                                    if (inputMethodComposing) {
+                                        event.accepted = false;
+                                        return;
+                                    }
                                     root.recipeEditingField = "";
                                     root.restoreWorkspaceFocus();
                                     event.accepted = true;
                                 }
-                                Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
+                                Keys.onPressed: event => root.forwardWorkspaceShortcut(event, recipeTaglineEditor)
                             }
                             Rectangle {
                                 radius: 5
@@ -9041,7 +10843,6 @@ Item {
                                             objectName: "nexusRecipeStatInput_" + String(modelData.key)
                                             Layout.fillWidth: true
                                             implicitHeight: 28
-                                            text: root.recipeDraftTextA
                                             placeholderText: modelData.label
                                             placeholderTextColor: root.textMuted
                                             font.pixelSize: 12
@@ -9054,11 +10855,16 @@ Item {
                                             }
                                             onVisibleChanged: {
                                                 if (visible) {
+                                                    text = String(root.recipeDraftTextA ?? "");
                                                     forceActiveFocus();
                                                     selectAll();
+                                                } else if (inputMethodComposing) {
+                                                    Qt.inputMethod.commit();
                                                 }
                                             }
                                             function commitStat() {
+                                                if (inputMethodComposing)
+                                                    Qt.inputMethod.commit();
                                                 if (root.service) {
                                                     const patch = ({});
                                                     patch[modelData.key] = statInput.text.trim();
@@ -9069,11 +10875,15 @@ Item {
                                             }
                                             onAccepted: commitStat()
                                             Keys.onEscapePressed: event => {
+                                                if (inputMethodComposing) {
+                                                    event.accepted = false;
+                                                    return;
+                                                }
                                                 root.recipeEditingField = "";
                                                 root.restoreWorkspaceFocus();
                                                 event.accepted = true;
                                             }
-                                            Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
+                                            Keys.onPressed: event => root.forwardWorkspaceShortcut(event, statInput)
                                         }
                                         Rectangle {
                                             objectName: "nexusRecipeStatSave_" + String(modelData.key)
@@ -9182,22 +10992,34 @@ Item {
                                         objectName: "nexusRecipeDescriptionEditor"
                                         Layout.fillWidth: true
                                         Layout.minimumHeight: 72
-                                        text: root.recipeDraftTextA
                                         placeholderText: "Describe the dish, flavor profile, or origin..."
                                         placeholderTextColor: root.textMuted
                                         font.pixelSize: 13
                                         color: root.textPrimary
                                         wrapMode: TextEdit.Wrap
+                                        inputMethodHints: Qt.ImhMultiLine
                                         background: Item {}
-                                        onVisibleChanged: if (visible) Qt.callLater(() => { if (recipeDescEditor.visible) recipeDescEditor.forceActiveFocus(); })
+                                        onVisibleChanged: {
+                                            if (visible) {
+                                                text = String(root.recipeDraftTextA ?? "");
+                                                Qt.callLater(() => { if (recipeDescEditor.visible) recipeDescEditor.forceActiveFocus(); });
+                                            } else if (inputMethodComposing) {
+                                                Qt.inputMethod.commit();
+                                            }
+                                        }
                                         onActiveFocusChanged: {
-                                            if (!activeFocus && visible && root.recipeEditingField === "description" && root.noteKind === "recipe" && !recipeDescCancelMouse.containsMouse && !recipeDescCancelMouse.pressed) {
+                                            if (!activeFocus && visible && !inputMethodComposing && root.recipeEditingField === "description" && root.noteKind === "recipe" && !recipeDescCancelMouse.containsMouse && !recipeDescCancelMouse.pressed) {
                                                 if (root.service)
                                                     root.service.updateNoteFrontmatter({ "description": recipeDescEditor.text.trim() });
                                                 root.recipeEditingField = "";
                                             }
                                         }
                                         Keys.onEscapePressed: event => {
+                                            if (inputMethodComposing) {
+                                                event.accepted = false;
+                                                return;
+                                            }
+                                            Qt.inputMethod.commit();
                                             if (root.service)
                                                 root.service.updateNoteFrontmatter({ "description": recipeDescEditor.text.trim() });
                                             root.recipeEditingField = "";
@@ -9205,7 +11027,12 @@ Item {
                                             event.accepted = true;
                                         }
                                         Keys.onPressed: event => {
+                                            if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                                event.accepted = false;
+                                                return;
+                                            }
                                             if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                                                Qt.inputMethod.commit();
                                                 if (root.service)
                                                     root.service.updateNoteFrontmatter({ "description": recipeDescEditor.text.trim() });
                                                 root.recipeEditingField = "";
@@ -9213,7 +11040,7 @@ Item {
                                                 event.accepted = true;
                                                 return;
                                             }
-                                            root.forwardWorkspaceShortcut(event);
+                                            root.forwardWorkspaceShortcut(event, recipeDescEditor);
                                         }
                                     }
 
@@ -9635,7 +11462,6 @@ Item {
                                                     objectName: "nexusRecipeIngredientNameInput_" + String(ingRowItem.index)
                                                     Layout.fillWidth: true
                                                     implicitHeight: 30
-                                                    text: root.recipeDraftTextA
                                                     placeholderText: "Ingredient name"
                                                     placeholderTextColor: root.textMuted
                                                     font.pixelSize: 12
@@ -9646,15 +11472,30 @@ Item {
                                                         border.width: 1
                                                         border.color: root.accentColor
                                                     }
-                                                    onVisibleChanged: if (visible) forceActiveFocus()
-                                                    onAccepted: ingSaveBtn.commitIng()
+                                                    onVisibleChanged: {
+                                                        if (visible) {
+                                                            text = String(root.recipeDraftTextA ?? "");
+                                                            forceActiveFocus();
+                                                        } else if (inputMethodComposing) {
+                                                            Qt.inputMethod.commit();
+                                                        }
+                                                    }
+                                                    onAccepted: {
+                                                        if (inputMethodComposing)
+                                                            Qt.inputMethod.commit();
+                                                        ingSaveBtn.commitIng();
+                                                    }
                                                     Keys.onEscapePressed: event => {
+                                                        if (inputMethodComposing) {
+                                                            event.accepted = false;
+                                                            return;
+                                                        }
                                                         root.recipeEditingField = "";
                                                         root.recipeEditingIndex = -1;
                                                         root.restoreWorkspaceFocus();
                                                         event.accepted = true;
                                                     }
-                                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
+                                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event, ingNameInput)
                                                 }
 
                                                 TextField {
@@ -9662,7 +11503,6 @@ Item {
                                                     objectName: "nexusRecipeIngredientAmountInput_" + String(ingRowItem.index)
                                                     Layout.preferredWidth: 130
                                                     implicitHeight: 30
-                                                    text: root.recipeDraftTextB
                                                     placeholderText: "Amount (optional)"
                                                     placeholderTextColor: root.textMuted
                                                     font.pixelSize: 12
@@ -9674,14 +11514,28 @@ Item {
                                                         border.width: 1
                                                         border.color: root.accentColor
                                                     }
-                                                    onAccepted: ingSaveBtn.commitIng()
+                                                    onVisibleChanged: {
+                                                        if (visible)
+                                                            text = String(root.recipeDraftTextB ?? "");
+                                                        else if (inputMethodComposing)
+                                                            Qt.inputMethod.commit();
+                                                    }
+                                                    onAccepted: {
+                                                        if (inputMethodComposing)
+                                                            Qt.inputMethod.commit();
+                                                        ingSaveBtn.commitIng();
+                                                    }
                                                     Keys.onEscapePressed: event => {
+                                                        if (inputMethodComposing) {
+                                                            event.accepted = false;
+                                                            return;
+                                                        }
                                                         root.recipeEditingField = "";
                                                         root.recipeEditingIndex = -1;
                                                         root.restoreWorkspaceFocus();
                                                         event.accepted = true;
                                                     }
-                                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
+                                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event, ingAmountInput)
                                                 }
 
                                                 Rectangle {
@@ -9959,30 +11813,46 @@ Item {
                                                 objectName: "nexusRecipeStepInput_" + String(stepRowItem.index)
                                                 Layout.fillWidth: true
                                                 Layout.minimumHeight: 54
-                                                text: root.recipeDraftTextA
                                                 font.pixelSize: 13
                                                 color: root.textPrimary
                                                 wrapMode: TextEdit.Wrap
+                                                inputMethodHints: Qt.ImhMultiLine
                                                 background: Rectangle {
                                                     radius: 6
                                                     color: root.cardDeepBg
                                                     border.width: 1
                                                     border.color: root.accentColor
                                                 }
-                                                onVisibleChanged: if (visible) forceActiveFocus()
+                                                onVisibleChanged: {
+                                                    if (visible) {
+                                                        text = String(root.recipeDraftTextA ?? "");
+                                                        forceActiveFocus();
+                                                    } else if (inputMethodComposing) {
+                                                        Qt.inputMethod.commit();
+                                                    }
+                                                }
                                                 Keys.onEscapePressed: event => {
+                                                    if (inputMethodComposing) {
+                                                        event.accepted = false;
+                                                        return;
+                                                    }
                                                     root.recipeEditingField = "";
                                                     root.recipeEditingIndex = -1;
                                                     root.restoreWorkspaceFocus();
                                                     event.accepted = true;
                                                 }
                                                 Keys.onPressed: event => {
+                                                    if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                                        event.accepted = false;
+                                                        return;
+                                                    }
                                                     if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                                                        Qt.inputMethod.commit();
                                                         root.updateRecipeListItem("instructions", root.rView.instructions, stepRowItem.index, stepInput.text);
                                                         event.accepted = true;
                                                         return;
                                                     }
-                                                    root.forwardWorkspaceShortcut(event);
+                                                    root.forwardWorkspaceShortcut(event, stepInput);
                                                 }
                                             }
 
@@ -10139,14 +12009,33 @@ Item {
                                                     id: tipEditField
                                                     Layout.fillWidth: true
                                                     implicitHeight: 28
-                                                    text: root.recipeDraftTextA
                                                     font.pixelSize: 11
                                                     color: root.textPrimary
                                                     background: Rectangle { radius: 4; color: root.cardBg; border.width: 1; border.color: root.accentColor }
-                                                    onVisibleChanged: if (visible) forceActiveFocus()
-                                                    onAccepted: root.updateRecipeListItem("tips", root.rView.tips, index, text)
-                                                    Keys.onEscapePressed: event => { root.recipeEditingField = ""; root.recipeEditingIndex = -1; root.restoreWorkspaceFocus(); event.accepted = true; }
-                                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
+                                                    onVisibleChanged: {
+                                                        if (visible) {
+                                                            text = String(root.recipeDraftTextA ?? "");
+                                                            forceActiveFocus();
+                                                        } else if (inputMethodComposing) {
+                                                            Qt.inputMethod.commit();
+                                                        }
+                                                    }
+                                                    onAccepted: {
+                                                        if (inputMethodComposing)
+                                                            Qt.inputMethod.commit();
+                                                        root.updateRecipeListItem("tips", root.rView.tips, index, text);
+                                                    }
+                                                    Keys.onEscapePressed: event => {
+                                                        if (inputMethodComposing) {
+                                                            event.accepted = false;
+                                                            return;
+                                                        }
+                                                        root.recipeEditingField = "";
+                                                        root.recipeEditingIndex = -1;
+                                                        root.restoreWorkspaceFocus();
+                                                        event.accepted = true;
+                                                    }
+                                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event, tipEditField)
                                                 }
                                                 Rectangle {
                                                     radius: 4
@@ -10304,14 +12193,33 @@ Item {
                                                     id: pairingEditField
                                                     Layout.fillWidth: true
                                                     implicitHeight: 28
-                                                    text: root.recipeDraftTextA
                                                     font.pixelSize: 11
                                                     color: root.textPrimary
                                                     background: Rectangle { radius: 4; color: root.cardBg; border.width: 1; border.color: root.accentColor }
-                                                    onVisibleChanged: if (visible) forceActiveFocus()
-                                                    onAccepted: root.updateRecipeListItem("pairs_well_with", root.rView.pairings, index, text)
-                                                    Keys.onEscapePressed: event => { root.recipeEditingField = ""; root.recipeEditingIndex = -1; root.restoreWorkspaceFocus(); event.accepted = true; }
-                                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event)
+                                                    onVisibleChanged: {
+                                                        if (visible) {
+                                                            text = String(root.recipeDraftTextA ?? "");
+                                                            forceActiveFocus();
+                                                        } else if (inputMethodComposing) {
+                                                            Qt.inputMethod.commit();
+                                                        }
+                                                    }
+                                                    onAccepted: {
+                                                        if (inputMethodComposing)
+                                                            Qt.inputMethod.commit();
+                                                        root.updateRecipeListItem("pairs_well_with", root.rView.pairings, index, text);
+                                                    }
+                                                    Keys.onEscapePressed: event => {
+                                                        if (inputMethodComposing) {
+                                                            event.accepted = false;
+                                                            return;
+                                                        }
+                                                        root.recipeEditingField = "";
+                                                        root.recipeEditingIndex = -1;
+                                                        root.restoreWorkspaceFocus();
+                                                        event.accepted = true;
+                                                    }
+                                                    Keys.onPressed: event => root.forwardWorkspaceShortcut(event, pairingEditField)
                                                 }
                                                 Rectangle {
                                                     radius: 4
@@ -10511,22 +12419,35 @@ Item {
                                     property bool _cancelingPersonalNote: false
                                     Layout.fillWidth: true
                                     Layout.minimumHeight: 110
-                                    text: String(root.rView.personalNotes ?? "")
                                     placeholderText: "Write your personal cooking notes here..."
                                     placeholderTextColor: root.textMuted
                                     font.pixelSize: 13
                                     color: root.textPrimary
                                     wrapMode: TextEdit.Wrap
+                                    inputMethodHints: Qt.ImhMultiLine
                                     background: Item {}
-                                    onVisibleChanged: if (visible) Qt.callLater(() => { if (recipePersonalNoteEditor.visible) recipePersonalNoteEditor.forceActiveFocus(); })
+                                    Component.onCompleted: text = String(root.rView.personalNotes ?? "")
+                                    onVisibleChanged: {
+                                        if (visible) {
+                                            text = String(root.rView.personalNotes ?? "");
+                                            Qt.callLater(() => { if (recipePersonalNoteEditor.visible) recipePersonalNoteEditor.forceActiveFocus(); });
+                                        } else if (inputMethodComposing) {
+                                            Qt.inputMethod.commit();
+                                        }
+                                    }
                                     onActiveFocusChanged: {
-                                        if (!activeFocus && visible && root.recipeEditingPersonalNote && root.noteKind === "recipe" && !_cancelingPersonalNote && !recipePersonalNoteCancelMouse.containsMouse && !recipePersonalNoteCancelMouse.pressed) {
+                                        if (!activeFocus && visible && !inputMethodComposing && root.recipeEditingPersonalNote && root.noteKind === "recipe" && !_cancelingPersonalNote && !recipePersonalNoteCancelMouse.containsMouse && !recipePersonalNoteCancelMouse.pressed) {
                                             if (root.service && recipePersonalNoteEditor.text !== String(root.rView.personalNotes ?? ""))
                                                 root.service.saveRecipePersonalNotes(recipePersonalNoteEditor.text);
                                             root.recipeEditingPersonalNote = false;
                                         }
                                     }
                                     Keys.onEscapePressed: event => {
+                                        if (inputMethodComposing) {
+                                            event.accepted = false;
+                                            return;
+                                        }
+                                        Qt.inputMethod.commit();
                                         if (root.service)
                                             root.service.saveRecipePersonalNotes(recipePersonalNoteEditor.text);
                                         root.recipeEditingPersonalNote = false;
@@ -10534,9 +12455,14 @@ Item {
                                         event.accepted = true;
                                     }
                                     Keys.onPressed: event => {
-                                        if (root.forwardWorkspaceShortcut(event))
+                                        if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                            event.accepted = false;
+                                            return;
+                                        }
+                                        if (root.forwardWorkspaceShortcut(event, recipePersonalNoteEditor))
                                             return;
                                         if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                                            Qt.inputMethod.commit();
                                             if (root.service)
                                                 root.service.saveRecipePersonalNotes(recipePersonalNoteEditor.text);
                                             root.recipeEditingPersonalNote = false;
@@ -11531,15 +13457,28 @@ Item {
                                 objectName: "nexusFinanceBodyEditor"
                                 Layout.fillWidth: true
                                 Layout.minimumHeight: 160
-                                text: root.service ? root.service.getNoteBodyMarkdown() : ""
                                 placeholderText: "Write your financial review notes & markdown tables..."
                                 placeholderTextColor: root.textMuted
                                 font.pixelSize: 12
                                 color: root.textPrimary
                                 wrapMode: TextEdit.Wrap
+                                inputMethodHints: Qt.ImhMultiLine
                                 background: Rectangle { radius: 6; color: root.cardBg; border.width: 1; border.color: root.accentColor }
-                                onVisibleChanged: if (visible) Qt.callLater(() => { if (financeBodyEditor.visible) financeBodyEditor.forceActiveFocus(); })
+                                Component.onCompleted: text = root.service ? root.service.getNoteBodyMarkdown() : ""
+                                onVisibleChanged: {
+                                    if (visible) {
+                                        text = root.service ? root.service.getNoteBodyMarkdown() : "";
+                                        Qt.callLater(() => { if (financeBodyEditor.visible) financeBodyEditor.forceActiveFocus(); });
+                                    } else if (inputMethodComposing) {
+                                        Qt.inputMethod.commit();
+                                    }
+                                }
                                 Keys.onEscapePressed: event => {
+                                    if (inputMethodComposing) {
+                                        event.accepted = false;
+                                        return;
+                                    }
+                                    Qt.inputMethod.commit();
                                     if (root.service)
                                         root.service.saveNoteBodyMarkdown(financeBodyEditor.text);
                                     financeBodyEditor.focus = false;
@@ -11548,7 +13487,12 @@ Item {
                                     event.accepted = true;
                                 }
                                 Keys.onPressed: event => {
+                                    if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                        event.accepted = false;
+                                        return;
+                                    }
                                     if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                                        Qt.inputMethod.commit();
                                         if (root.service)
                                             root.service.saveNoteBodyMarkdown(financeBodyEditor.text);
                                         financeBodyEditor.focus = false;
@@ -11557,10 +13501,7 @@ Item {
                                         event.accepted = true;
                                         return;
                                     }
-                                    if ((event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) !== 0
-                                        && root.service && root.service.handleKeyEvent(event)) {
-                                        event.accepted = true;
-                                    }
+                                    root.forwardWorkspaceShortcut(event, financeBodyEditor);
                                 }
                             }
 

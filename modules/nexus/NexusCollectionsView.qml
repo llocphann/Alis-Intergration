@@ -368,18 +368,42 @@ ColumnLayout {
                     color: settledColors.colOnLayer1
                     font.pixelSize: Appearance.font.pixelSize.smaller
                     selectByMouse: true
-                    text: String(root.nexus?.collectionFilterQuery ?? "")
-                    onTextEdited: {
-                        if (root.nexus)
+                    Component.onCompleted: text = String(root.nexus?.collectionFilterQuery ?? "")
+                    Connections {
+                        target: root.nexus
+                        function onCollectionFilterQueryChanged(): void {
+                            if (nexusCollectionFilterField.inputMethodComposing)
+                                return;
+                            const nextQ = String(root.nexus?.collectionFilterQuery ?? "");
+                            if (!nexusCollectionFilterField.activeFocus && nexusCollectionFilterField.text !== nextQ)
+                                nexusCollectionFilterField.text = nextQ;
+                        }
+                    }
+                    onTextChanged: {
+                        if (inputMethodComposing)
+                            return;
+                        if (root.nexus && root.nexus.collectionFilterQuery !== text)
+                            root.nexus.collectionFilterQuery = text;
+                    }
+                    onInputMethodComposingChanged: {
+                        if (!inputMethodComposing && root.nexus && root.nexus.collectionFilterQuery !== text)
                             root.nexus.collectionFilterQuery = text;
                     }
                     Keys.onEscapePressed: event => {
+                        if (inputMethodComposing) {
+                            event.accepted = false;
+                            return;
+                        }
                         nexusCollectionFilterField.focus = false;
                         root.restoreWorkspaceFocus();
                         Qt.callLater(root.restoreWorkspaceFocus);
                         event.accepted = true;
                     }
                     Keys.onPressed: event => {
+                        if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                            event.accepted = false;
+                            return;
+                        }
                         if ((event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) !== 0
                             && root.nexus && root.nexus.handleKeyEvent(event)) {
                             event.accepted = true;
@@ -414,8 +438,17 @@ ColumnLayout {
                 color: settledColors.colOnLayer1
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 selectByMouse: true
-                onTextChanged: collectionViewRoot.newEntryTitleDraft = text
+                onTextChanged: {
+                    if (!inputMethodComposing)
+                        collectionViewRoot.newEntryTitleDraft = text;
+                }
+                onInputMethodComposingChanged: {
+                    if (!inputMethodComposing)
+                        collectionViewRoot.newEntryTitleDraft = text;
+                }
                 onAccepted: {
+                    if (inputMethodComposing)
+                        Qt.inputMethod.commit();
                     if (root.nexus && text.trim().length > 0) {
                         root.nexus.createCollectionEntry(root.nexus.activeCollection, text.trim());
                         text = "";
@@ -425,12 +458,20 @@ ColumnLayout {
                     }
                 }
                 Keys.onEscapePressed: event => {
+                    if (inputMethodComposing) {
+                        event.accepted = false;
+                        return;
+                    }
                     newCollectionEntryInput.focus = false;
                     root.restoreWorkspaceFocus();
                     Qt.callLater(root.restoreWorkspaceFocus);
                     event.accepted = true;
                 }
                 Keys.onPressed: event => {
+                    if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                        event.accepted = false;
+                        return;
+                    }
                     if ((event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) !== 0
                         && root.nexus && root.nexus.handleKeyEvent(event)) {
                         event.accepted = true;

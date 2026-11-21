@@ -18,10 +18,24 @@ Item {
 
     // Interactive state matching `90_System/92_Scripts/Dataview/homepage/globe-widget.js`
     // and `globe-vector-map-overlay.js` (smooth cross-fade from 3D Globe -> Detailed Map).
-    readonly property real baseScale: 0.84
-    property real minZoom: 0.72
-    property real maxZoom: 64.0
-    property real defaultZoom: 0.92
+    readonly property var globeSettings: root.nexus?.globeSettings ?? ({})
+    readonly property string mapProvider: String(globeSettings.globe_map_provider ?? "carto").trim().toLowerCase()
+    readonly property string mapApiKey: String(globeSettings.globe_api_key ?? "").trim()
+    readonly property string customTileUrl: String(globeSettings.globe_tile_url ?? "").trim()
+    readonly property string tileProviderSig: mapProvider + ":" + (mapApiKey.length > 0 ? "k" : "0") + ":" + customTileUrl
+
+    function _cfgReal(key: string, fallback: real, lo: real, hi: real): real {
+        const raw = root.globeSettings ? root.globeSettings[key] : undefined;
+        const n = Number(raw);
+        if (raw === undefined || raw === null || String(raw).trim() === "" || isNaN(n))
+            return fallback;
+        return Math.max(lo, Math.min(hi, n));
+    }
+
+    readonly property real baseScale: _cfgReal("globe_base_scale", 0.84, 0.45, 1.4)
+    property real minZoom: _cfgReal("globe_min_zoom", 0.72, 0.35, 2.0)
+    property real maxZoom: _cfgReal("globe_max_zoom", 64.0, 4.0, 128.0)
+    property real defaultZoom: _cfgReal("globe_default_zoom", 0.92, 0.5, 4.0)
     property real zoom: defaultZoom
     property bool autoRotate: true
     // Smooth Globe -> Detailed Interactive Map cross-fade thresholds (`START = 1.42`, `FULL = 2.18`)
@@ -1758,6 +1772,28 @@ Item {
             function tileUrl(z: int, wx: int, ty: int): string {
                 const subs = ["a", "b", "c", "d"];
                 const sub = subs[(wx + ty) & 3];
+                const provider = root.mapProvider;
+                const key = encodeURIComponent(root.mapApiKey);
+                if (provider === "custom" && root.customTileUrl.length > 0) {
+                    return root.customTileUrl
+                        .replace(/\{z\}/gi, String(z))
+                        .replace(/\{x\}/gi, String(wx))
+                        .replace(/\{y\}/gi, String(ty))
+                        .replace(/\{s\}/gi, sub)
+                        .replace(/\{(?:api)?key\}/gi, key);
+                }
+                if (provider === "maptiler" && key.length > 0) {
+                    const style = root.mapStyle === "color" ? "streets-v2" : "dataviz-dark";
+                    return "https://api.maptiler.com/maps/" + style + "/256/" + z + "/" + wx + "/" + ty + "@2x.png?key=" + key;
+                }
+                if (provider === "mapbox" && key.length > 0) {
+                    const style = root.mapStyle === "color" ? "streets-v12" : "dark-v11";
+                    return "https://api.mapbox.com/styles/v1/mapbox/" + style + "/tiles/256/" + z + "/" + wx + "/" + ty + "@2x?access_token=" + key;
+                }
+                if (provider === "stadia" && key.length > 0) {
+                    const style = root.mapStyle === "color" ? "osm_bright" : "alidade_smooth_dark";
+                    return "https://tiles.stadiamaps.com/tiles/" + style + "/" + z + "/" + wx + "/" + ty + "@2x.png?api_key=" + key;
+                }
                 if (root.mapStyle === "color")
                     return "https://" + sub + ".basemaps.cartocdn.com/rastertiles/voyager/" + z + "/" + wx + "/" + ty + "@2x.png";
                 return "https://" + sub + ".basemaps.cartocdn.com/dark_all/" + z + "/" + wx + "/" + ty + "@2x.png";
@@ -1788,7 +1824,7 @@ Item {
                         const wx = ((tx % n) + n) % n;
                         const u = tileUrl(tileZ, wx, ty);
                         list.push({
-                            tileKey: tileZ + "/" + tx + "/" + ty + "/" + root.mapStyle,
+                            tileKey: tileZ + "/" + tx + "/" + ty + "/" + root.mapStyle + "/" + root.tileProviderSig,
                             tx: tx,
                             ty: ty,
                             wx: wx,
@@ -1812,7 +1848,7 @@ Item {
                         const wx = ((tx % n) + n) % n;
                         const u = tileUrl(underlayZ, wx, ty);
                         list.push({
-                            tileKey: underlayZ + "/" + tx + "/" + ty + "/" + root.mapStyle,
+                            tileKey: underlayZ + "/" + tx + "/" + ty + "/" + root.mapStyle + "/" + root.tileProviderSig,
                             tx: tx,
                             ty: ty,
                             wx: wx,

@@ -1165,16 +1165,37 @@ FocusScope {
         String(settledColors.colOnLayer0)
     ]
 
-    readonly property var clusterPalette: [
-        String(settledColors.colPrimary),
-        String(settledColors.colTertiary),
-        String(settledColors.colSecondary),
-        root.mixColorHex(root._settledPrimary, root._settledTertiary, 0.45),
-        root.mixColorHex(root._settledPrimary, String(settledColors.colError), 0.45),
-        root.mixColorHex(root._settledTertiary, String(settledColors.colOnLayer0), 0.30),
-        root.mixColorHex(root._settledSecondary, root._settledPrimary, 0.50),
-        String(settledColors.colError)
-    ]
+    // Vault Graph cluster gradient palette strictly derived from Alis Auto-Theming primary hue (distinct light/rich/deep shades, zero unrelated hues)
+    readonly property var clusterPalette: {
+        const base = Qt.color(root._settledPrimary);
+        const h = (isNaN(base.hslHue) || base.hslHue < 0) ? 0.56 : base.hslHue;
+        const sBase = Math.max(0.32, Math.min(0.86, isNaN(base.hslSaturation) ? 0.62 : base.hslSaturation));
+        const lBase = Math.max(0.38, Math.min(0.68, isNaN(base.hslLightness) ? 0.54 : base.hslLightness));
+        const darkBg = (settledColors.colLayer0.hslLightness ?? 0.14) < 0.5;
+        const stops = [
+            { "dh": 0.0,     "ds": 0.10,  "dl": darkBg ? 0.14 : -0.10 },
+            { "dh": 0.008,   "ds": 0.02,  "dl": darkBg ? -0.02 : 0.06 },
+            { "dh": -0.008,  "ds": 0.06,  "dl": darkBg ? 0.24 : -0.18 },
+            { "dh": 0.014,   "ds": -0.06, "dl": darkBg ? -0.11 : 0.14 },
+            { "dh": -0.014,  "ds": 0.10,  "dl": darkBg ? 0.06 : -0.04 },
+            { "dh": 0.006,   "ds": -0.14, "dl": darkBg ? 0.28 : -0.22 },
+            { "dh": -0.006,  "ds": -0.04, "dl": darkBg ? -0.16 : 0.18 },
+            { "dh": 0.018,   "ds": 0.04,  "dl": darkBg ? 0.18 : -0.12 },
+            { "dh": -0.018,  "ds": -0.10, "dl": darkBg ? -0.07 : 0.10 },
+            { "dh": 0.012,   "ds": 0.12,  "dl": darkBg ? -0.19 : 0.22 },
+            { "dh": -0.012,  "ds": -0.16, "dl": darkBg ? 0.22 : -0.16 },
+            { "dh": 0.0,     "ds": -0.08, "dl": darkBg ? 0.02 : 0.02 }
+        ];
+        const out = [];
+        for (let i = 0; i < stops.length; ++i) {
+            const st = stops[i];
+            const nh = ((h + st.dh) % 1.0 + 1.0) % 1.0;
+            const ns = Math.max(0.22, Math.min(0.92, sBase + st.ds));
+            const nl = Math.max(darkBg ? 0.30 : 0.24, Math.min(darkBg ? 0.84 : 0.72, lBase + st.dl));
+            out.push(Qt.hsla(nh, ns, nl, 1.0).toString());
+        }
+        return out;
+    }
 
     function cardItemById(cardId: string): var {
         if (cardId === "explorer")
@@ -1303,6 +1324,12 @@ FocusScope {
     function forwardKeyEvent(event): bool {
         if (!root.nexus || !event)
             return false;
+        const focused = Window.activeFocusItem;
+        if ((focused && focused.inputMethodComposing === true)
+            || event.key === 0
+            || event.key === Qt.Key_unknown) {
+            return false;
+        }
         if (event.key === Qt.Key_Escape && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.KeypadModifier)) {
             if (root.handleEscape()) {
                 event.accepted = true;
@@ -1310,7 +1337,12 @@ FocusScope {
             }
             return false;
         }
-        root.focusPrimarySurface();
+        const hasShortcutMod = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) !== 0;
+        if (!hasShortcutMod && root._isEditableTextFocused()) {
+            return false;
+        }
+        if (!root._isEditableTextFocused())
+            root.focusPrimarySurface();
         const handled = Boolean(root.nexus.handleKeyEvent(event));
         if (handled) {
             event.accepted = true;
@@ -1332,6 +1364,11 @@ FocusScope {
     function handleEscape(): bool {
         if (!root.nexus)
             return false;
+        const activeFocused = Window.activeFocusItem;
+        if (activeFocused && activeFocused.inputMethodComposing === true) {
+            Qt.inputMethod.commit();
+            return true;
+        }
         if (root.nexus.newNoteModalOpen) {
             root.nexus.closeNewNoteModal();
             root.restoreWorkspaceFocus();
@@ -1387,6 +1424,7 @@ FocusScope {
             return true;
         }
         if (fileFilterField.activeFocus
+            || tagFilterInput.activeFocus
             || quickPlannerEventInput.activeFocus
             || zkTitleField.activeFocus
             || Boolean(root._collectionFilterField?.activeFocus)
@@ -1410,6 +1448,11 @@ FocusScope {
         if ((root.nexus.editingBlockId ?? -1) >= 0) {
             root.nexus.editingBlockId = -1;
             root.nexus.editingBlockText = "";
+            root.restoreWorkspaceFocus();
+            Qt.callLater(root.restoreWorkspaceFocus);
+            return true;
+        }
+        if (root._isEditableTextFocused() && activeFocused !== root._docVimEditor) {
             root.restoreWorkspaceFocus();
             Qt.callLater(root.restoreWorkspaceFocus);
             return true;
@@ -1490,7 +1533,10 @@ FocusScope {
         sequences: ["Escape"]
         context: Qt.ApplicationShortcut
         autoRepeat: false
-        enabled: Boolean(root.nexus?.isOpen) && root.visible && (!root.embeddedSurface || !Boolean(GlobalStates.abyssPerimeterActive))
+        enabled: Boolean(root.nexus?.isOpen)
+            && root.visible
+            && (!root.embeddedSurface || !Boolean(GlobalStates.abyssPerimeterActive))
+            && !Boolean(Window.activeFocusItem?.inputMethodComposing)
         onActivated: {
             if (!root.handleEscape() && root.nexus) {
                 root.nexus.close();
@@ -1516,7 +1562,10 @@ FocusScope {
             Shortcut {
                 sequence: String(winShortcutDelegate.modelData?.sequence ?? "")
                 context: Qt.ApplicationShortcut
-                enabled: Boolean(root.nexus?.isOpen) && root.visible && String(winShortcutDelegate.modelData?.sequence ?? "").length > 0
+                enabled: Boolean(root.nexus?.isOpen)
+                    && root.visible
+                    && String(winShortcutDelegate.modelData?.sequence ?? "").length > 0
+                    && !Boolean(Window.activeFocusItem?.inputMethodComposing)
                 onActivated: {
                     root.triggerWindowShortcutAction(String(winShortcutDelegate.modelData?.actionId ?? ""));
                 }
@@ -1542,7 +1591,12 @@ FocusScope {
         grabPermissions: PointerHandler.ApprovesTakeOverByAnything
         onTapped: (eventPoint, button) => {
             const pt = eventPoint.position;
-            const fields = [fileFilterField, newNotePathField, quickPlannerEventInput, zkTitleField, root._collectionFilterField, root._newCollectionEntryInput];
+            const activeFocused = Window.activeFocusItem;
+            if (activeFocused && activeFocused.inputMethodComposing === true)
+                return;
+            if (root._isEditableTextFocused() && root._pointInsideItem(activeFocused, pt.x, pt.y))
+                return;
+            const fields = [fileFilterField, tagFilterInput, newNotePathField, quickPlannerEventInput, zkTitleField, root._collectionFilterField, root._newCollectionEntryInput];
             for (let i = 0; i < fields.length; ++i) {
                 const f = fields[i];
                 if (f && f.activeFocus && !root._pointInsideItem(f, pt.x, pt.y)) {
@@ -1552,6 +1606,7 @@ FocusScope {
                 }
             }
             if ((!root.activeFocus || (!workspaceKeyScope.activeFocus && !(root._docVimEditor?.activeFocus) && !(root._commandPaletteSearchInput?.activeFocus)))
+                && !root._isEditableTextFocused()
                 && !root.standardNoteInlineEditing
                 && !Boolean(root.nexus?.newNoteModalOpen)
                 && !(root.nexusCustomViewsLoader?.item && root.nexusCustomViewsLoader.item.hasActiveInlineEditor)
@@ -1667,12 +1722,33 @@ FocusScope {
         }
     }
 
+    function _isEditableTextFocused(): bool {
+        const item = Window.activeFocusItem;
+        if (!item)
+            return false;
+        if (item.inputMethodComposing === true)
+            return true;
+        return typeof item.cursorPosition === "number" && item.readOnly !== true;
+    }
+
     Keys.onPressed: event => {
+        const focused = Window.activeFocusItem;
+        if ((focused && focused.inputMethodComposing === true)
+            || event.key === 0
+            || event.key === Qt.Key_unknown) {
+            event.accepted = false;
+            return;
+        }
         if (event.key === Qt.Key_Escape && (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.ShiftModifier | Qt.MetaModifier)) === 0) {
             if (!root.handleEscape() && root.nexus) {
                 root.nexus.close();
             }
             event.accepted = true;
+            return;
+        }
+        const hasShortcutMod = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) !== 0;
+        if (!hasShortcutMod && root._isEditableTextFocused()) {
+            event.accepted = false;
             return;
         }
         if (event.key === Qt.Key_I
@@ -1699,8 +1775,9 @@ FocusScope {
         }
     }
 
-    // Obsidian-style top-edge hover slide-down icon tab bar for sidebar mini-workspaces
-    // Stays completely collapsed (height 0, zero click blocking) until the top edge is hovered.
+    // External top-edge hover slide-open/slide-close icon tab rail for ALL Nexus sidebar cards.
+    // Sits OUTSIDE above the rounded Workspace Card and smoothly animates `animatedHeight` (0 <-> 32)
+    // so hovering temporarily adjusts the card's height while sliding the icon tabs in cleanly.
     component WorkspaceHoverTabBar: Item {
         id: hoverTabRoot
         property string tabBarObjectName: ""
@@ -1712,12 +1789,21 @@ FocusScope {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        height: hoverTabRoot.revealed ? 30 : 16
+        height: Math.max(12, animatedHeight)
         z: 30
 
         readonly property bool _directHovered: topEdgeHover.hovered || barHover.hovered
         property bool _graceHold: false
         readonly property bool revealed: _directHovered || _graceHold
+        property real animatedHeight: hoverTabRoot.revealed ? 32 : 0
+
+        Behavior on animatedHeight {
+            enabled: Appearance.animationsEnabled
+            NumberAnimation {
+                duration: 180
+                easing.type: Easing.OutCubic
+            }
+        }
 
         on_DirectHoveredChanged: {
             if (_directHovered) {
@@ -1730,30 +1816,35 @@ FocusScope {
 
         Timer {
             id: leaveGraceTimer
-            interval: 140
+            interval: 150
             repeat: false
             onTriggered: hoverTabRoot._graceHold = false
         }
 
-        // Passive top-edge hover trigger (16px strip, never intercepts clicks/drags)
+        // Passive top-edge hover trigger (12px strip, never intercepts clicks/drags)
         Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            height: 16
+            height: 12
             HoverHandler {
                 id: topEdgeHover
             }
         }
 
-        // Clip viewport for genuine top-edge slide-down animation (bar keeps full 28px height, zero squishing)
+        // Clip viewport for smooth external slide-open/slide-close animation (bar keeps full 28px height, zero squishing)
         Item {
             id: slideViewport
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            height: 30
+            height: Math.max(0, hoverTabRoot.animatedHeight)
             clip: true
+
+            HoverHandler {
+                id: barHover
+                enabled: hoverTabRoot.revealed
+            }
 
             Rectangle {
                 id: barBody
@@ -1763,9 +1854,8 @@ FocusScope {
                 height: 28
                 y: hoverTabRoot.revealed ? 0 : -height
                 opacity: hoverTabRoot.revealed ? 1.0 : 0.0
-                topLeftRadius: Math.max(0, (Appearance.rounding.normal ?? 12) - 1)
-                topRightRadius: Math.max(0, (Appearance.rounding.normal ?? 12) - 1)
-                color: Qt.rgba(settledColors.colLayer0.r, settledColors.colLayer0.g, settledColors.colLayer0.b, 0.94)
+                radius: 7
+                color: "transparent"
 
                 Behavior on y {
                     enabled: Appearance.animationsEnabled
@@ -1782,23 +1872,10 @@ FocusScope {
                     }
                 }
 
-                HoverHandler {
-                    id: barHover
-                    enabled: hoverTabRoot.revealed
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: 1
-                    color: settledColors.colLayer0Border
-                }
-
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 6
-                    anchors.rightMargin: 6
+                    anchors.leftMargin: 2
+                    anchors.rightMargin: 2
                     spacing: 4
 
                     Repeater {
@@ -2319,10 +2396,16 @@ FocusScope {
     }
 
     function vimHandleNormalKey(event, area): bool {
-        if (!root.nexus)
+        if (!root.nexus || !event)
             return false;
+        if ((area && area.inputMethodComposing === true)
+            || event.key === 0
+            || event.key === Qt.Key_unknown) {
+            return false;
+        }
 
         if (event.key === Qt.Key_Escape) {
+            Qt.inputMethod.commit();
             if (!root.handleEscape() && root.nexus) {
                 root.nexus.close();
             }
@@ -2331,6 +2414,7 @@ FocusScope {
 
         // Ctrl+S saves in any mode
         if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_S) {
+            Qt.inputMethod.commit();
             root.nexus.saveCurrentNote(area ? area.text : null);
             return true;
         }
@@ -2340,6 +2424,7 @@ FocusScope {
 
         if (root.nexus.vimMode === "INSERT") {
             if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_BracketLeft) {
+                Qt.inputMethod.commit();
                 root.nexus.vimMode = "NORMAL";
                 root.nexus.vimCountBuffer = "";
                 root.nexus.vimKeyBuffer = "";
@@ -2861,213 +2946,314 @@ FocusScope {
             Layout.fillHeight: true
             spacing: 4
 
-            // Left Sidebar Icon Tabs Rail — sits OUTSIDE the Workspace Card in a strictly horizontal single row (never wraps, all actions reachable)
-            Flickable {
-                id: nexusLeftTabRail
-                objectName: "nexusLeftTabRail"
+            Item {
+                id: leftSlot0
+                objectName: "nexusLeftSlot0"
+                readonly property int targetHeight: Math.max(120, Math.round(Math.max(320, nexusLeftColumn.height - 14) * (root.nexus?.leftSplitRatio ?? 0.62)))
                 Layout.fillWidth: true
-                Layout.preferredHeight: 30
-                Layout.minimumHeight: 30
-                Layout.maximumHeight: 30
-                clip: true
-                interactive: contentWidth > width + 1
-                flickableDirection: Flickable.HorizontalFlick
-                boundsBehavior: Flickable.StopAtBounds
-                contentWidth: Math.max(width, nexusLeftTabRow.implicitWidth + 4)
-                contentHeight: height
+                Layout.preferredHeight: targetHeight
+                Layout.minimumHeight: targetHeight
+                Layout.maximumHeight: targetHeight
 
-                RowLayout {
-                    id: nexusLeftTabRow
-                    objectName: "nexusExplorerToolbar"
-                    x: 2
-                    y: 0
-                    width: Math.max(nexusLeftTabRail.width - 4, implicitWidth)
-                    height: nexusLeftTabRail.height
-                    spacing: 2
+            // Top Left Card Slot Wrapper: External Hover-Reveal Left Sidebar Icon Tabs + Rounded Explorer Workspace Card
+            Item {
+                id: nexusFileTreeCard
+                objectName: "nexusFileTreeCard"
+                anchors.fill: parent
 
-                    Repeater {
-                        model: [
-                            {
-                                "id": "files",
-                                "icon": "folder",
-                                "tip": "Files"
-                            },
-                            {
-                                "id": "tags",
-                                "icon": "sell",
-                                "tip": "Tags"
-                            },
-                            {
-                                "id": "recent",
-                                "icon": "schedule",
-                                "tip": "Recent"
-                            },
-                            {
-                                "id": "search",
-                                "icon": "search",
-                                "tip": "Search"
+                // External hover-reveal Left Sidebar Icon Tabs Rail (same hover slide-open/close behavior as every Nexus card tab bar,
+                // sits OUTSIDE above the rounded Explorer card and temporarily adjusts its height while open)
+                Item {
+                    id: explorerHoverTabRail
+                    objectName: "nexusLeftHoverTabBar"
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    height: Math.max(12, animatedHeight)
+                    z: 30
+
+                    readonly property bool _directHovered: explorerTopEdgeHover.hovered || explorerBarHover.hovered
+                    property bool _graceHold: false
+                    readonly property bool revealed: _directHovered || _graceHold
+                    property real animatedHeight: revealed ? 32 : 0
+
+                    Behavior on animatedHeight {
+                        enabled: Appearance.animationsEnabled
+                        NumberAnimation {
+                            duration: 180
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    on_DirectHoveredChanged: {
+                        if (_directHovered) {
+                            explorerLeaveGraceTimer.stop();
+                            _graceHold = true;
+                        } else {
+                            explorerLeaveGraceTimer.restart();
+                        }
+                    }
+
+                    Timer {
+                        id: explorerLeaveGraceTimer
+                        interval: 150
+                        repeat: false
+                        onTriggered: explorerHoverTabRail._graceHold = false
+                    }
+
+                    // Passive top-edge hover trigger (12px strip, never intercepts clicks/drags)
+                    Item {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        height: 12
+                        HoverHandler {
+                            id: explorerTopEdgeHover
+                        }
+                    }
+
+                    Item {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        height: Math.max(0, explorerHoverTabRail.animatedHeight)
+                        clip: true
+
+                        HoverHandler {
+                            id: explorerBarHover
+                            enabled: explorerHoverTabRail.revealed
+                        }
+
+                        Flickable {
+                            id: nexusLeftTabRail
+                            objectName: "nexusLeftTabRail"
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            height: 28
+                            y: explorerHoverTabRail.revealed ? 0 : -height
+                            opacity: explorerHoverTabRail.revealed ? 1.0 : 0.0
+                            clip: true
+                            interactive: explorerHoverTabRail.revealed && contentWidth > width + 1
+                            flickableDirection: Flickable.HorizontalFlick
+                            boundsBehavior: Flickable.StopAtBounds
+                            contentWidth: Math.max(width, nexusLeftTabRow.implicitWidth + 4)
+                            contentHeight: height
+
+                            Behavior on y {
+                                enabled: Appearance.animationsEnabled
+                                NumberAnimation {
+                                    duration: 180
+                                    easing.type: Easing.OutCubic
+                                }
                             }
-                        ]
-                        delegate: Rectangle {
-                            required property var modelData
-                            readonly property bool active: (root.nexus?.leftSidebarTab ?? "files") === modelData.id
-                            Layout.preferredWidth: nexusLeftColumn.width < 208 ? 22 : 26
-                            Layout.preferredHeight: 26
-                            radius: 7
-                            color: active
-                                ? settledColors.colSecondaryContainer
-                                : (leftTabMouse.containsMouse ? settledColors.colLayer2Hover : "transparent")
-                            border.width: active ? 1 : 0
-                            border.color: Qt.alpha(settledColors.colPrimary, 0.35)
-
-                            MaterialSymbol {
-                                anchors.centerIn: parent
-                                text: modelData.icon
-                                iconSize: nexusLeftColumn.width < 208 ? 14 : 15
-                                color: parent.active ? settledColors.colPrimary : settledColors.colSubtext
+                            Behavior on opacity {
+                                enabled: Appearance.animationsEnabled
+                                NumberAnimation {
+                                    duration: 140
+                                    easing.type: Easing.OutCubic
+                                }
                             }
-                            MouseArea {
-                                id: leftTabMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (root.nexus) {
-                                        root.nexus.leftSidebarTab = modelData.id;
-                                        if (modelData.id === "search" && fileFilterField.text.trim().length > 0) {
-                                            root.nexus.searchVault(fileFilterField.text.trim());
+
+                            RowLayout {
+                                id: nexusLeftTabRow
+                                objectName: "nexusExplorerToolbar"
+                                x: 2
+                                y: 0
+                                width: Math.max(nexusLeftTabRail.width - 4, implicitWidth)
+                                height: nexusLeftTabRail.height
+                                spacing: 2
+
+                                Repeater {
+                                    model: [
+                                        {
+                                            "id": "files",
+                                            "icon": "folder",
+                                            "tip": "Files"
+                                        },
+                                        {
+                                            "id": "tags",
+                                            "icon": "sell",
+                                            "tip": "Tags"
+                                        },
+                                        {
+                                            "id": "recent",
+                                            "icon": "schedule",
+                                            "tip": "Recent"
+                                        },
+                                        {
+                                            "id": "search",
+                                            "icon": "search",
+                                            "tip": "Search"
+                                        }
+                                    ]
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        readonly property bool active: (root.nexus?.leftSidebarTab ?? "files") === modelData.id
+                                        Layout.preferredWidth: nexusLeftColumn.width < 208 ? 22 : 26
+                                        Layout.preferredHeight: 24
+                                        radius: 7
+                                        color: active
+                                            ? settledColors.colSecondaryContainer
+                                            : (leftTabMouse.containsMouse ? settledColors.colLayer2Hover : "transparent")
+                                        border.width: active ? 1 : 0
+                                        border.color: Qt.alpha(settledColors.colPrimary, 0.35)
+
+                                        MaterialSymbol {
+                                            anchors.centerIn: parent
+                                            text: modelData.icon
+                                            iconSize: nexusLeftColumn.width < 208 ? 14 : 15
+                                            color: parent.active ? settledColors.colPrimary : settledColors.colSubtext
+                                        }
+                                        MouseArea {
+                                            id: leftTabMouse
+                                            anchors.fill: parent
+                                            enabled: explorerHoverTabRail.revealed
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (root.nexus) {
+                                                    root.nexus.leftSidebarTab = modelData.id;
+                                                    if (modelData.id === "search" && fileFilterField.text.trim().length > 0) {
+                                                        root.nexus.searchVault(fileFilterField.text.trim());
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Item {
+                                    Layout.fillWidth: true
+                                }
+
+                                // New Note button
+                                Rectangle {
+                                    Layout.preferredWidth: nexusLeftColumn.width < 208 ? 20 : 22
+                                    Layout.preferredHeight: 24
+                                    radius: 6
+                                    color: newNoteMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
+                                    MaterialSymbol {
+                                        anchors.centerIn: parent
+                                        text: "note_add"
+                                        iconSize: 14
+                                        color: settledColors.colOnLayer1
+                                    }
+                                    MouseArea {
+                                        id: newNoteMouse
+                                        anchors.fill: parent
+                                        enabled: explorerHoverTabRail.revealed
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: newNoteBar.visible = !newNoteBar.visible
+                                    }
+                                }
+
+                                // Interactive New Note & API Search Modal button
+                                Rectangle {
+                                    objectName: "nexusOpenNewNoteModalButton"
+                                    Layout.preferredWidth: nexusLeftColumn.width < 208 ? 20 : 22
+                                    Layout.preferredHeight: 24
+                                    radius: 6
+                                    color: newNoteModalMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
+                                    MaterialSymbol {
+                                        anchors.centerIn: parent
+                                        text: "travel_explore"
+                                        iconSize: 14
+                                        color: settledColors.colPrimary
+                                    }
+                                    MouseArea {
+                                        id: newNoteModalMouse
+                                        anchors.fill: parent
+                                        enabled: explorerHoverTabRail.revealed
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (root.nexus)
+                                                root.nexus.openNewNoteModal("standard", "");
+                                        }
+                                    }
+                                }
+
+                                // Today's Journal button
+                                Rectangle {
+                                    Layout.preferredWidth: nexusLeftColumn.width < 208 ? 20 : 22
+                                    Layout.preferredHeight: 24
+                                    radius: 6
+                                    color: dailyMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
+                                    MaterialSymbol {
+                                        anchors.centerIn: parent
+                                        text: "today"
+                                        iconSize: 14
+                                        color: settledColors.colPrimary
+                                    }
+                                    MouseArea {
+                                        id: dailyMouse
+                                        anchors.fill: parent
+                                        enabled: explorerHoverTabRail.revealed
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (root.nexus)
+                                                root.nexus.openDailyNote();
+                                        }
+                                    }
+                                }
+
+                                // Rescan Vault button
+                                Rectangle {
+                                    Layout.preferredWidth: nexusLeftColumn.width < 208 ? 20 : 22
+                                    Layout.preferredHeight: 24
+                                    radius: 6
+                                    color: refreshMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
+                                    MaterialSymbol {
+                                        anchors.centerIn: parent
+                                        text: "refresh"
+                                        iconSize: 14
+                                        color: settledColors.colSubtext
+                                    }
+                                    MouseArea {
+                                        id: refreshMouse
+                                        anchors.fill: parent
+                                        enabled: explorerHoverTabRail.revealed
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (root.nexus) {
+                                                root.nexus.refreshVault();
+                                                root.nexus.refreshCalendar(root.nexus.calendarYear, root.nexus.calendarMonth);
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-
-                    Item {
-                        Layout.fillWidth: true
-                    }
-
-                    // New Note button
-                    Rectangle {
-                        Layout.preferredWidth: nexusLeftColumn.width < 208 ? 20 : 22
-                        Layout.preferredHeight: 24
-                        radius: 6
-                        color: newNoteMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
-                        MaterialSymbol {
-                            anchors.centerIn: parent
-                            text: "note_add"
-                            iconSize: 14
-                            color: settledColors.colOnLayer1
-                        }
-                        MouseArea {
-                            id: newNoteMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: newNoteBar.visible = !newNoteBar.visible
-                        }
-                    }
-
-                    // Interactive New Note & API Search Modal button
-                    Rectangle {
-                        objectName: "nexusOpenNewNoteModalButton"
-                        Layout.preferredWidth: nexusLeftColumn.width < 208 ? 20 : 22
-                        Layout.preferredHeight: 24
-                        radius: 6
-                        color: newNoteModalMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
-                        MaterialSymbol {
-                            anchors.centerIn: parent
-                            text: "travel_explore"
-                            iconSize: 14
-                            color: settledColors.colPrimary
-                        }
-                        MouseArea {
-                            id: newNoteModalMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (root.nexus)
-                                    root.nexus.openNewNoteModal("standard", "");
-                            }
-                        }
-                    }
-
-                    // Today's Journal button (always accessible on the single horizontal rail)
-                    Rectangle {
-                        Layout.preferredWidth: nexusLeftColumn.width < 208 ? 20 : 22
-                        Layout.preferredHeight: 24
-                        radius: 6
-                        color: dailyMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
-                        MaterialSymbol {
-                            anchors.centerIn: parent
-                            text: "today"
-                            iconSize: 14
-                            color: settledColors.colPrimary
-                        }
-                        MouseArea {
-                            id: dailyMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (root.nexus)
-                                    root.nexus.openDailyNote();
-                            }
-                        }
-                    }
-
-                    // Rescan Vault button (always accessible on the single horizontal rail)
-                    Rectangle {
-                        Layout.preferredWidth: nexusLeftColumn.width < 208 ? 20 : 22
-                        Layout.preferredHeight: 24
-                        radius: 6
-                        color: refreshMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
-                        MaterialSymbol {
-                            anchors.centerIn: parent
-                            text: "refresh"
-                            iconSize: 14
-                            color: settledColors.colSubtext
-                        }
-                        MouseArea {
-                            id: refreshMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (root.nexus) {
-                                    root.nexus.refreshVault();
-                                    root.nexus.refreshCalendar(root.nexus.calendarYear, root.nexus.calendarMonth);
-                                }
-                            }
-                        }
-                    }
                 }
-            }
 
-            Item {
-                id: leftSlot0
-                objectName: "nexusLeftSlot0"
-                readonly property int targetHeight: Math.max(120, Math.round(Math.max(320, nexusLeftColumn.height - 44) * (root.nexus?.leftSplitRatio ?? 0.62)))
-                Layout.fillWidth: true
-                Layout.preferredHeight: targetHeight
-                Layout.minimumHeight: targetHeight
-                Layout.maximumHeight: targetHeight
+                // Rounded Explorer Workspace Card (height temporarily adjusts when external icon tab rail opens)
+                Rectangle {
+                    id: nexusFileTreeCardSurface
+                    objectName: "nexusFileTreeCardSurface"
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.top: parent.top
+                    anchors.topMargin: explorerHoverTabRail.animatedHeight
+                    radius: Appearance.rounding.normal ?? 12
+                    color: settledColors.colLayer1
+                    border.width: 1
+                    border.color: settledColors.colLayer0Border
+                    clip: true
 
-            // Top Left Card: File Tree / Tags / Recent / Search
-            Rectangle {
-                id: nexusFileTreeCard
-                objectName: "nexusFileTreeCard"
-                anchors.fill: parent
-                radius: Appearance.rounding.normal ?? 12
-                color: settledColors.colLayer1
-                border.width: 1
-                border.color: settledColors.colLayer0Border
-                clip: true
-
-                HoverHandler {
-                    id: explorerCardHover
-                }
+                    Timer {
+                        id: fileSearchDebounceTimer
+                        interval: 120
+                        repeat: false
+                        onTriggered: {
+                            if (root.nexus && root.nexus.leftSidebarTab === "search" && !fileFilterField.inputMethodComposing)
+                                root.nexus.searchVault(fileFilterField.text);
+                        }
+                    }
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -3113,26 +3299,36 @@ FocusScope {
                                 color: settledColors.colOnLayer0
                                 background: null
                                 onTextChanged: {
-                                    if (!root.nexus)
+                                    if (!root.nexus || inputMethodComposing)
                                         return;
                                     if (root.nexus.leftSidebarTab === "search")
-                                        root.nexus.searchVault(text);
+                                        fileSearchDebounceTimer.restart();
                                     else
                                         root.nexus.fileFilterQuery = text;
                                 }
                                 onAccepted: {
+                                    if (inputMethodComposing)
+                                        return;
                                     if (root.nexus && text.trim().length > 0) {
                                         root.nexus.leftSidebarTab = "search";
                                         root.nexus.searchVault(text);
                                     }
                                 }
                                 Keys.onEscapePressed: event => {
+                                    if (inputMethodComposing) {
+                                        event.accepted = false;
+                                        return;
+                                    }
                                     fileFilterField.focus = false;
                                     root.restoreWorkspaceFocus();
                                     Qt.callLater(root.restoreWorkspaceFocus);
                                     event.accepted = true;
                                 }
                                 Keys.onPressed: event => {
+                                    if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                        event.accepted = false;
+                                        return;
+                                    }
                                     if ((event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) !== 0
                                         && root.nexus && root.nexus.handleKeyEvent(event)) {
                                         event.accepted = true;
@@ -3210,6 +3406,8 @@ FocusScope {
                                 color: settledColors.colOnLayer1
                                 background: null
                                 onAccepted: {
+                                    if (inputMethodComposing)
+                                        Qt.inputMethod.commit();
                                     if (root.nexus && text.trim().length > 0) {
                                         root.nexus.createNote(text.trim(), "", "standard");
                                         text = "";
@@ -3220,6 +3418,10 @@ FocusScope {
                                     }
                                 }
                                 Keys.onEscapePressed: event => {
+                                    if (inputMethodComposing) {
+                                        event.accepted = false;
+                                        return;
+                                    }
                                     newNoteBar.visible = false;
                                     newNotePathField.focus = false;
                                     root.restoreWorkspaceFocus();
@@ -3227,6 +3429,10 @@ FocusScope {
                                     event.accepted = true;
                                 }
                                 Keys.onPressed: event => {
+                                    if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                        event.accepted = false;
+                                        return;
+                                    }
                                     if ((event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) !== 0
                                         && root.nexus && root.nexus.handleKeyEvent(event)) {
                                         event.accepted = true;
@@ -3772,14 +3978,30 @@ FocusScope {
                                         color: settledColors.colOnLayer0
                                         background: null
                                         onTextChanged: {
+                                            if (inputMethodComposing)
+                                                return;
                                             if (root.nexus)
                                                 root.nexus.tagSearchQuery = text;
                                         }
+                                        onInputMethodComposingChanged: {
+                                            if (!inputMethodComposing && root.nexus)
+                                                root.nexus.tagSearchQuery = text;
+                                        }
                                         Keys.onEscapePressed: event => {
+                                            if (inputMethodComposing) {
+                                                event.accepted = false;
+                                                return;
+                                            }
                                             text = "";
                                             focus = false;
                                             root.restoreWorkspaceFocus();
                                             event.accepted = true;
+                                        }
+                                        Keys.onPressed: event => {
+                                            if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                                event.accepted = false;
+                                                return;
+                                            }
                                         }
                                     }
                                 }
@@ -4214,6 +4436,7 @@ FocusScope {
                         }
                     }
                 }
+                }
             }
             }
 
@@ -4265,22 +4488,11 @@ FocusScope {
                 Layout.fillHeight: true
                 Layout.minimumHeight: 110
 
-            // Bottom Left Card: Local Graph (full-bleed with floating hover header)
-            Rectangle {
+            // Bottom Left Card Slot Wrapper: External Hover Icon Tab Rail + Rounded Local Graph Workspace Card
+            Item {
                 id: nexusLocalGraphCard
                 objectName: "nexusLocalGraphCard"
                 anchors.fill: parent
-                radius: Appearance.rounding.normal ?? 12
-                color: settledColors.colLayer1
-                border.width: (root.dropTargetCardId === "localGraph" && root.draggingCardId !== "" && root.draggingCardId !== "localGraph") ? 2 : 1
-                border.color: (root.dropTargetCardId === "localGraph" && root.draggingCardId !== "" && root.draggingCardId !== "localGraph")
-                    ? settledColors.colPrimary
-                    : settledColors.colLayer0Border
-                clip: true
-
-                HoverHandler {
-                    id: localGraphCardHover
-                }
 
                 property bool _graphSettledOnce: false
                 Component.onCompleted: {
@@ -4316,23 +4528,9 @@ FocusScope {
                     localGraphCanvas.requestPaint();
                 }
 
-                NexusGraphCanvas {
-                    id: localGraphCanvas
-                    objectName: "nexusLocalGraphCanvas"
-                    anchors.fill: parent
-                    anchors.margins: 4
-                    workspace: root
-                    isLocal: true
-                    compact: true
-                    revealStaggerMs: 12
-                    graphData: nexusLocalGraphCard.activeLocalGraph
-                    currentPath: String(root.nexus?.currentPath ?? "")
-                    clusterPalette: root.clusterPalette
-                    onNodeActivated: nodeData => root.activateGraphNode(nodeData)
-                }
-
-                // Obsidian-style top-edge hover slide-down icon tab bar (collapsed height 0 until top edge hovered)
+                // External top-edge hover slide-open/close icon tab bar (temporarily adjusts Local Graph card height)
                 WorkspaceHoverTabBar {
+                    id: localGraphHoverBar
                     tabBarObjectName: "nexusLocalGraphStatusBar"
                     tabs: [
                         {
@@ -4351,6 +4549,38 @@ FocusScope {
                             "onClick": () => localGraphCanvas.resetView()
                         }
                     ]
+                }
+
+                Rectangle {
+                    id: nexusLocalGraphCardSurface
+                    objectName: "nexusLocalGraphCardSurface"
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.top: parent.top
+                    anchors.topMargin: localGraphHoverBar.animatedHeight
+                    radius: Appearance.rounding.normal ?? 12
+                    color: settledColors.colLayer1
+                    border.width: (root.dropTargetCardId === "localGraph" && root.draggingCardId !== "" && root.draggingCardId !== "localGraph") ? 2 : 1
+                    border.color: (root.dropTargetCardId === "localGraph" && root.draggingCardId !== "" && root.draggingCardId !== "localGraph")
+                        ? settledColors.colPrimary
+                        : settledColors.colLayer0Border
+                    clip: true
+
+                    NexusGraphCanvas {
+                        id: localGraphCanvas
+                        objectName: "nexusLocalGraphCanvas"
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        workspace: root
+                        isLocal: true
+                        compact: true
+                        revealStaggerMs: 12
+                        graphData: nexusLocalGraphCard.activeLocalGraph
+                        currentPath: String(root.nexus?.currentPath ?? "")
+                        clusterPalette: root.clusterPalette
+                        onNodeActivated: nodeData => root.activateGraphNode(nodeData)
+                    }
                 }
             }
             }
@@ -5239,51 +5469,12 @@ FocusScope {
                                 }
                             }
 
-                            // Ornamental Diamond Divider (`─── ◇ ───`) — auto-themed to Alis
-                            RowLayout {
+                            // Obsidian 100%-parity Ornamental Divider (03_Compatibility.css) — auto-themed to Alis
+                            NexusSeparator {
                                 objectName: "nexusOrnamentalSeparator"
                                 Layout.fillWidth: true
-                                spacing: 10
-                                Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Qt.alpha(settledColors.colPrimary, 0.28) }
-                                StyledText { text: "◇"; font.pixelSize: 10; color: settledColors.colPrimary }
-                                Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Qt.alpha(settledColors.colPrimary, 0.28) }
-                            }
-
-                            // Vertical Splitter for Hero Dashboard Card Height (hover-only)
-                            Rectangle {
-                                id: nexusHomepageHeroSplitter
-                                objectName: "nexusHomepageHeroSplitter"
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 6
-                                radius: 3
-                                readonly property bool active: heroResizeMouse.pressed || heroResizeMouse.containsMouse
-                                opacity: active ? 1.0 : 0.0
-                                Behavior on opacity { NumberAnimation { duration: 150 } }
-                                color: active ? settledColors.colPrimary : "transparent"
-
-                                Rectangle {
-                                    anchors.centerIn: parent
-                                    width: 48
-                                    height: 2
-                                    radius: 1
-                                    color: nexusHomepageHeroSplitter.active
-                                        ? settledColors.colOnPrimary
-                                        : settledColors.colLayer0Border
-                                }
-
-                                MouseArea {
-                                    id: heroResizeMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    preventStealing: true
-                                    cursorShape: Qt.SizeVerCursor
-                                    onPositionChanged: mouse => {
-                                        if (!pressed || !root.nexus)
-                                            return;
-                                        const pt = mapToItem(homepageHeroCard, 0, mouse.y);
-                                        root.nexus.setHomepageHeroHeight(Math.round(pt.y));
-                                    }
-                                }
+                                accentColor: settledColors.colPrimary
+                                mutedColor: settledColors.colSubtext
                             }
 
                             // Middle Section: Daily Schedule (exclusively backed by Dashboard Weekly Planner projection) + Right Photo & 3D Abyssal Globe + Workout Tables
@@ -5590,6 +5781,8 @@ FocusScope {
                                                             color: settledColors.colOnLayer1
                                                             background: null
                                                             onAccepted: {
+                                                                if (inputMethodComposing)
+                                                                    Qt.inputMethod.commit();
                                                                 if (text.trim().length > 0) {
                                                                     homepageScheduleCard.addPlannerEventFromInput(text.trim());
                                                                     text = "";
@@ -5599,12 +5792,20 @@ FocusScope {
                                                                 }
                                                             }
                                                             Keys.onEscapePressed: event => {
+                                                                if (inputMethodComposing) {
+                                                                    event.accepted = false;
+                                                                    return;
+                                                                }
                                                                 quickPlannerEventInput.focus = false;
                                                                 root.restoreWorkspaceFocus();
                                                                 Qt.callLater(root.restoreWorkspaceFocus);
                                                                 event.accepted = true;
                                                             }
                                                             Keys.onPressed: event => {
+                                                                if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                                                    event.accepted = false;
+                                                                    return;
+                                                                }
                                                                 if ((event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) !== 0
                                                                     && root.nexus && root.nexus.handleKeyEvent(event)) {
                                                                     event.accepted = true;
@@ -6085,43 +6286,6 @@ FocusScope {
                                                 }
                                             }
                                         }
-                                    }
-                                }
-                            }
-
-                            // Vertical Splitter for Daily Schedule Card Height (hover-only)
-                            Rectangle {
-                                id: nexusHomepageScheduleSplitter
-                                objectName: "nexusHomepageScheduleSplitter"
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 6
-                                radius: 3
-                                readonly property bool active: scheduleResizeMouse.pressed || scheduleResizeMouse.containsMouse
-                                opacity: active ? 1.0 : 0.0
-                                Behavior on opacity { NumberAnimation { duration: 150 } }
-                                color: active ? settledColors.colPrimary : "transparent"
-
-                                Rectangle {
-                                    anchors.centerIn: parent
-                                    width: 48
-                                    height: 2
-                                    radius: 1
-                                    color: nexusHomepageScheduleSplitter.active
-                                        ? settledColors.colOnPrimary
-                                        : settledColors.colLayer0Border
-                                }
-
-                                MouseArea {
-                                    id: scheduleResizeMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    preventStealing: true
-                                    cursorShape: Qt.SizeVerCursor
-                                    onPositionChanged: mouse => {
-                                        if (!pressed || !root.nexus)
-                                            return;
-                                        const pt = mapToItem(homepageScheduleCard, 0, mouse.y);
-                                        root.nexus.setHomepageScheduleHeight(Math.round(pt.y));
                                     }
                                 }
                             }
@@ -6625,6 +6789,8 @@ FocusScope {
                                 }
                             }
                             onAccepted: {
+                                if (inputMethodComposing)
+                                    Qt.inputMethod.commit();
                                 if (!root.nexus)
                                     return;
                                 if (root.nexus.vimMode === "COMMAND") {
@@ -6644,6 +6810,10 @@ FocusScope {
                                 Qt.callLater(root.restoreWorkspaceFocus);
                             }
                             Keys.onEscapePressed: event => {
+                                if (inputMethodComposing) {
+                                    event.accepted = false;
+                                    return;
+                                }
                                 if (root.nexus) {
                                     root.nexus.vimMode = "NORMAL";
                                     text = "";
@@ -6654,6 +6824,10 @@ FocusScope {
                                 event.accepted = true;
                             }
                             Keys.onPressed: event => {
+                                if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                    event.accepted = false;
+                                    return;
+                                }
                                 if ((event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) !== 0
                                     && root.nexus && root.nexus.handleKeyEvent(event)) {
                                     event.accepted = true;
@@ -6751,31 +6925,11 @@ FocusScope {
                 Layout.minimumHeight: targetHeight
                 Layout.maximumHeight: targetHeight
 
-            // Top Right Card: Mini Calendar & Daily Journal (100% Obsidian Calendar Plugin Parity + Full Alis Auto-Theming)
-            Rectangle {
+            // Top Right Card Slot Wrapper: External Hover Icon Tab Rail + Rounded Mini Calendar Card
+            Item {
                 id: nexusCalendarCard
                 objectName: "nexusCalendarCard"
                 anchors.fill: parent
-                radius: Appearance.rounding.normal ?? 12
-                color: settledColors.colLayer1
-                border.width: 1
-                border.color: settledColors.colLayer0Border
-                clip: true
-
-                HoverHandler {
-                    id: calendarCardHover
-                }
-
-                WheelHandler {
-                    onWheel: event => {
-                        if (!root.nexus)
-                            return;
-                        if (event.angleDelta.y > 0)
-                            root.nexus.prevCalendarMonth();
-                        else if (event.angleDelta.y < 0)
-                            root.nexus.nextCalendarMonth();
-                    }
-                }
 
                 readonly property string monthLabel: {
                     const hdr = String(root.nexus?.calendarHeader || "Nov 2026").trim();
@@ -6803,6 +6957,67 @@ FocusScope {
                         return dmy[3] + "-" + dmy[2] + "-" + dmy[1];
                     return "";
                 }
+
+                // External top-edge hover slide-open/close icon tab bar (temporarily adjusts Calendar card height)
+                WorkspaceHoverTabBar {
+                    id: calendarHoverBar
+                    tabBarObjectName: "nexusCalendarHoverTabBar"
+                    tabs: [
+                        {
+                            "id": "calendar",
+                            "icon": "calendar_month",
+                            "label": "Calendar",
+                            "active": true
+                        }
+                    ]
+                    actions: [
+                        {
+                            "icon": "view_week",
+                            "tip": "Toggle ISO Week Numbers",
+                            "active": root.showCalendarWeekNumbers,
+                            "onClick": () => {
+                                root.calendarShowWeekNumbersOverride = !root.showCalendarWeekNumbers;
+                                root.calendarWeekNumbersUserToggled = true;
+                            }
+                        },
+                        {
+                            "icon": "today",
+                            "tip": "Jump to Today",
+                            "active": false,
+                            "onClick": () => {
+                                if (root.nexus) {
+                                    root.nexus.jumpCalendarToday();
+                                    root.nexus.openDailyNote();
+                                }
+                            }
+                        }
+                    ]
+                }
+
+                Rectangle {
+                    id: nexusCalendarCardSurface
+                    objectName: "nexusCalendarCardSurface"
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.top: parent.top
+                    anchors.topMargin: calendarHoverBar.animatedHeight
+                    radius: Appearance.rounding.normal ?? 12
+                    color: settledColors.colLayer1
+                    border.width: 1
+                    border.color: settledColors.colLayer0Border
+                    clip: true
+
+                    WheelHandler {
+                        onWheel: event => {
+                            if (!root.nexus)
+                                return;
+                            if (event.angleDelta.y > 0)
+                                root.nexus.prevCalendarMonth();
+                            else if (event.angleDelta.y < 0)
+                                root.nexus.nextCalendarMonth();
+                        }
+                    }
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -7150,40 +7365,6 @@ FocusScope {
                         }
                     }
                 }
-
-                // Obsidian-style top-edge hover slide-down icon tab bar
-                WorkspaceHoverTabBar {
-                    tabBarObjectName: "nexusCalendarHoverTabBar"
-                    tabs: [
-                        {
-                            "id": "calendar",
-                            "icon": "calendar_month",
-                            "label": "Calendar",
-                            "active": true
-                        }
-                    ]
-                    actions: [
-                        {
-                            "icon": "view_week",
-                            "tip": "Toggle ISO Week Numbers",
-                            "active": root.showCalendarWeekNumbers,
-                            "onClick": () => {
-                                root.calendarShowWeekNumbersOverride = !root.showCalendarWeekNumbers;
-                                root.calendarWeekNumbersUserToggled = true;
-                            }
-                        },
-                        {
-                            "icon": "today",
-                            "tip": "Jump to Today",
-                            "active": false,
-                            "onClick": () => {
-                                if (root.nexus) {
-                                    root.nexus.jumpCalendarToday();
-                                    root.nexus.openDailyNote();
-                                }
-                            }
-                        }
-                    ]
                 }
             }
             }
@@ -7240,22 +7421,11 @@ FocusScope {
                 Layout.minimumHeight: targetHeight
                 Layout.maximumHeight: targetHeight
 
-            // Middle Right Card: Full-Bleed Vault Graph with Hover-Only Floating Header
-            Rectangle {
+            // Middle Right Card Slot Wrapper: External Hover Icon Tab Rail + Rounded Vault Graph Workspace Card
+            Item {
                 id: nexusVaultGraphCard
                 objectName: "nexusVaultGraphCard"
                 anchors.fill: parent
-                radius: Appearance.rounding.normal ?? 12
-                color: settledColors.colLayer1
-                border.width: (root.dropTargetCardId === "vaultGraph" && root.draggingCardId !== "" && root.draggingCardId !== "vaultGraph") ? 2 : 1
-                border.color: (root.dropTargetCardId === "vaultGraph" && root.draggingCardId !== "" && root.draggingCardId !== "vaultGraph")
-                    ? settledColors.colPrimary
-                    : settledColors.colLayer0Border
-                clip: true
-
-                HoverHandler {
-                    id: vaultGraphCardHover
-                }
 
                 property bool _graphSettledOnce: false
                 Component.onCompleted: {
@@ -7290,23 +7460,9 @@ FocusScope {
                     vaultGraphCanvas.requestPaint();
                 }
 
-                NexusGraphCanvas {
-                    id: vaultGraphCanvas
-                    objectName: "nexusVaultGraphCanvas"
-                    anchors.fill: parent
-                    anchors.margins: 4
-                    workspace: root
-                    isLocal: false
-                    compact: true
-                    revealStaggerMs: 36
-                    graphData: nexusVaultGraphCard.graphData
-                    currentPath: String(root.nexus?.currentPath ?? "")
-                    clusterPalette: root.clusterPalette
-                    onNodeActivated: nodeData => root.activateGraphNode(nodeData)
-                }
-
-                // Obsidian-style top-edge hover slide-down icon tab bar
+                // External top-edge hover slide-open/close icon tab bar (temporarily adjusts Vault Graph card height)
                 WorkspaceHoverTabBar {
+                    id: vaultGraphHoverBar
                     tabBarObjectName: "nexusVaultGraphHoverTabBar"
                     tabs: [
                         {
@@ -7333,6 +7489,38 @@ FocusScope {
                             }
                         }
                     ]
+                }
+
+                Rectangle {
+                    id: nexusVaultGraphCardSurface
+                    objectName: "nexusVaultGraphCardSurface"
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.top: parent.top
+                    anchors.topMargin: vaultGraphHoverBar.animatedHeight
+                    radius: Appearance.rounding.normal ?? 12
+                    color: settledColors.colLayer1
+                    border.width: (root.dropTargetCardId === "vaultGraph" && root.draggingCardId !== "" && root.draggingCardId !== "vaultGraph") ? 2 : 1
+                    border.color: (root.dropTargetCardId === "vaultGraph" && root.draggingCardId !== "" && root.draggingCardId !== "vaultGraph")
+                        ? settledColors.colPrimary
+                        : settledColors.colLayer0Border
+                    clip: true
+
+                    NexusGraphCanvas {
+                        id: vaultGraphCanvas
+                        objectName: "nexusVaultGraphCanvas"
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        workspace: root
+                        isLocal: false
+                        compact: true
+                        revealStaggerMs: 36
+                        graphData: nexusVaultGraphCard.graphData
+                        currentPath: String(root.nexus?.currentPath ?? "")
+                        clusterPalette: root.clusterPalette
+                        onNodeActivated: nodeData => root.activateGraphNode(nodeData)
+                    }
                 }
             }
             }
@@ -7388,22 +7576,11 @@ FocusScope {
                 Layout.fillHeight: true
                 Layout.minimumHeight: 110
 
-            // Bottom Right Card: Weekly Planner (synced with Dashboard Weekly Planner) / Outline / Flashcards
-            Rectangle {
+            // Bottom Right Card Slot Wrapper: External Hover Icon Tab Rail + Rounded Weekly Planner / Outline / Flashcards Card
+            Item {
                 id: nexusContextCard
                 objectName: "nexusContextCard"
                 anchors.fill: parent
-                radius: Appearance.rounding.normal ?? 12
-                color: settledColors.colLayer1
-                border.width: (root.dropTargetCardId === "context" && root.draggingCardId !== "" && root.draggingCardId !== "context") ? 2 : 1
-                border.color: (root.dropTargetCardId === "context" && root.draggingCardId !== "" && root.draggingCardId !== "context")
-                    ? settledColors.colPrimary
-                    : settledColors.colLayer0Border
-                clip: true
-
-                HoverHandler {
-                    id: contextCardHover
-                }
 
                 property int weekDayOffset: Number(GlobalStates.dashboardPlannerBrowser?.weekOffset ?? 0)
                 onWeekDayOffsetChanged: {
@@ -7500,6 +7677,52 @@ FocusScope {
 
                 readonly property var syncedAllDayItems: plannerDayProjection.allDay ?? []
                 readonly property var syncedTimedItems: plannerDayProjection.timed ?? []
+
+                // External top-edge hover slide-open/close icon tab bar for Planner / Outline / ZK (temporarily adjusts card height)
+                WorkspaceHoverTabBar {
+                    id: contextHoverBar
+                    tabBarObjectName: "nexusContextHoverTabBar"
+                    tabs: [
+                        {
+                            "id": "schedule",
+                            "icon": "calendar_view_week",
+                            "label": "",
+                            "active": (root.nexus?.rightBottomTab ?? "schedule") === "schedule"
+                        },
+                        {
+                            "id": "outline",
+                            "icon": "format_list_bulleted",
+                            "label": "",
+                            "active": (root.nexus?.rightBottomTab ?? "schedule") === "outline"
+                        },
+                        {
+                            "id": "flashcards",
+                            "icon": "style",
+                            "label": "",
+                            "active": (root.nexus?.rightBottomTab ?? "schedule") === "flashcards"
+                        }
+                    ]
+                    onTabSelected: tabId => {
+                        if (root.nexus)
+                            root.nexus.rightBottomTab = tabId;
+                    }
+                }
+
+                Rectangle {
+                    id: nexusContextCardSurface
+                    objectName: "nexusContextCardSurface"
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.top: parent.top
+                    anchors.topMargin: contextHoverBar.animatedHeight
+                    radius: Appearance.rounding.normal ?? 12
+                    color: settledColors.colLayer1
+                    border.width: (root.dropTargetCardId === "context" && root.draggingCardId !== "" && root.draggingCardId !== "context") ? 2 : 1
+                    border.color: (root.dropTargetCardId === "context" && root.draggingCardId !== "" && root.draggingCardId !== "context")
+                        ? settledColors.colPrimary
+                        : settledColors.colLayer0Border
+                    clip: true
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -7691,62 +7914,80 @@ FocusScope {
                         Layout.fillHeight: true
                         spacing: 4
 
-                        // 7-Day Week Strip (MON..SUN + day numbers)
-                        RowLayout {
+                        // 7-Day Week Strip (MON..SUN + day numbers spanning 100% of available sidebar width evenly)
+                        GridLayout {
+                            id: weeklyPlannerDayStrip
+                            objectName: "nexusWeeklyPlannerDayStrip"
                             Layout.fillWidth: true
-                            spacing: 2
+                            columns: 7
+                            columnSpacing: 2
+                            rowSpacing: 0
 
                             Repeater {
                                 model: nexusContextCard.weekDaysModel
-                                delegate: ColumnLayout {
+                                delegate: Item {
+                                    id: weekDayCell
                                     required property var modelData
                                     Layout.fillWidth: true
-                                    spacing: 2
+                                    Layout.preferredWidth: 1
+                                    Layout.minimumWidth: 0
+                                    implicitHeight: 38
 
-                                    StyledText {
-                                        Layout.alignment: Qt.AlignHCenter
-                                        text: modelData.label
-                                        font.pixelSize: 9
-                                        font.weight: Font.DemiBold
-                                        color: settledColors.colSubtext
-                                    }
-
-                                    Rectangle {
-                                        Layout.alignment: Qt.AlignHCenter
-                                        width: 26
-                                        height: 18
-                                        radius: 4
-                                        color: modelData.isToday
-                                            ? settledColors.colPrimary
-                                            : (modelData.isSelected ? settledColors.colSecondaryContainer : "transparent")
-                                        border.width: (!modelData.isToday && modelData.isSelected) ? 1 : 0
-                                        border.color: settledColors.colPrimary
+                                    Column {
+                                        anchors.fill: parent
+                                        spacing: 2
 
                                         StyledText {
-                                            anchors.centerIn: parent
-                                            text: String(modelData.day)
-                                            font.pixelSize: 10
-                                            font.weight: (modelData.isToday || modelData.isSelected) ? Font.Bold : Font.Normal
-                                            color: modelData.isToday ? settledColors.colOnPrimary : settledColors.colOnLayer1
+                                            width: parent.width
+                                            horizontalAlignment: Text.AlignHCenter
+                                            text: weekDayCell.modelData.label
+                                            font.pixelSize: 9
+                                            font.weight: Font.DemiBold
+                                            color: settledColors.colSubtext
                                         }
 
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                if (root.nexus) {
-                                                    root.nexus.selectedDateStr = modelData.dateStr;
-                                                    if (GlobalStates.dashboardPlannerBrowser) {
-                                                        const nextState = Object.assign({}, GlobalStates.dashboardPlannerBrowser);
-                                                        nextState.selectedDateIso = modelData.dateStr;
-                                                        GlobalStates.dashboardPlannerBrowser = nextState;
-                                                    }
+                                        Rectangle {
+                                            width: parent.width
+                                            height: 20
+                                            radius: 5
+                                            color: weekDayCell.modelData.isToday
+                                                ? settledColors.colPrimary
+                                                : (weekDayCell.modelData.isSelected
+                                                    ? settledColors.colSecondaryContainer
+                                                    : (weekDayCellMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"))
+                                            border.width: (!weekDayCell.modelData.isToday && weekDayCell.modelData.isSelected) ? 1 : 0
+                                            border.color: settledColors.colPrimary
+
+                                            StyledText {
+                                                anchors.centerIn: parent
+                                                text: String(weekDayCell.modelData.day)
+                                                font.pixelSize: 10
+                                                font.weight: (weekDayCell.modelData.isToday || weekDayCell.modelData.isSelected) ? Font.Bold : Font.Normal
+                                                color: weekDayCell.modelData.isToday
+                                                    ? settledColors.colOnPrimary
+                                                    : (weekDayCell.modelData.isSelected ? settledColors.colOnSecondaryContainer : settledColors.colOnLayer1)
+                                            }
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: weekDayCellMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (root.nexus) {
+                                                root.nexus.selectedDateStr = weekDayCell.modelData.dateStr;
+                                                if (GlobalStates.dashboardPlannerBrowser) {
+                                                    const nextState = Object.assign({}, GlobalStates.dashboardPlannerBrowser);
+                                                    nextState.selectedDateIso = weekDayCell.modelData.dateStr;
+                                                    GlobalStates.dashboardPlannerBrowser = nextState;
                                                 }
                                             }
-                                            onDoubleClicked: {
-                                                if (root.nexus)
-                                                    root.nexus.openDailyNote(modelData.dateStr);
-                                            }
+                                        }
+                                        onDoubleClicked: {
+                                            if (root.nexus)
+                                                root.nexus.openDailyNote(weekDayCell.modelData.dateStr);
                                         }
                                     }
                                 }
@@ -8051,6 +8292,8 @@ FocusScope {
                                 color: settledColors.colOnLayer1
                                 background: null
                                 onAccepted: {
+                                    if (inputMethodComposing)
+                                        Qt.inputMethod.commit();
                                     if (root.nexus && text.trim().length > 0) {
                                         root.nexus.captureZettelkastenNote(text.trim(), "");
                                         text = "";
@@ -8060,12 +8303,20 @@ FocusScope {
                                     }
                                 }
                                 Keys.onEscapePressed: event => {
+                                    if (inputMethodComposing) {
+                                        event.accepted = false;
+                                        return;
+                                    }
                                     zkTitleField.focus = false;
                                     root.restoreWorkspaceFocus();
                                     Qt.callLater(root.restoreWorkspaceFocus);
                                     event.accepted = true;
                                 }
                                 Keys.onPressed: event => {
+                                    if (inputMethodComposing || event.key === 0 || event.key === Qt.Key_unknown) {
+                                        event.accepted = false;
+                                        return;
+                                    }
                                     if ((event.modifiers & (Qt.AltModifier | Qt.ControlModifier | Qt.MetaModifier)) !== 0
                                         && root.nexus && root.nexus.handleKeyEvent(event)) {
                                         event.accepted = true;
@@ -8173,34 +8424,6 @@ FocusScope {
                         }
                     }
                 }
-
-                // Obsidian-style top-edge hover slide-down icon tab bar for Planner / Outline / ZK
-                WorkspaceHoverTabBar {
-                    tabBarObjectName: "nexusContextHoverTabBar"
-                    tabs: [
-                        {
-                            "id": "schedule",
-                            "icon": "calendar_view_week",
-                            "label": "",
-                            "active": (root.nexus?.rightBottomTab ?? "schedule") === "schedule"
-                        },
-                        {
-                            "id": "outline",
-                            "icon": "format_list_bulleted",
-                            "label": "",
-                            "active": (root.nexus?.rightBottomTab ?? "schedule") === "outline"
-                        },
-                        {
-                            "id": "flashcards",
-                            "icon": "style",
-                            "label": "",
-                            "active": (root.nexus?.rightBottomTab ?? "schedule") === "flashcards"
-                        }
-                    ]
-                    onTabSelected: tabId => {
-                        if (root.nexus)
-                            root.nexus.rightBottomTab = tabId;
-                    }
                 }
             }
             }
@@ -8482,12 +8705,20 @@ FocusScope {
                     anchors.leftMargin: 10
                     anchors.rightMargin: 10
                     verticalAlignment: TextInput.AlignVCenter
-                    text: root.renameDialogNewName
                     font.pixelSize: Appearance.font.pixelSize.small
                     color: settledColors.colOnLayer1
                     selectByMouse: true
                     focus: root.renameDialogOpen
+                    Connections {
+                        target: root
+                        function onRenameDialogOpenChanged(): void {
+                            if (root.renameDialogOpen)
+                                renameInput.text = String(root.renameDialogNewName ?? "");
+                        }
+                    }
                     onAccepted: {
+                        if (inputMethodComposing)
+                            return;
                         const newName = text.trim();
                         if (newName.length > 0 && root.nexus) {
                             const oldP = root.renameDialogOldPath;
@@ -8503,8 +8734,13 @@ FocusScope {
                         }
                         root.renameDialogOpen = false;
                     }
-                    Keys.onEscapePressed: {
+                    Keys.onEscapePressed: event => {
+                        if (inputMethodComposing) {
+                            event.accepted = false;
+                            return;
+                        }
                         root.renameDialogOpen = false;
+                        event.accepted = true;
                     }
                 }
             }
@@ -8627,13 +8863,25 @@ FocusScope {
                         objectName: "nexusTagActionInput"
                         Layout.fillWidth: true
                         verticalAlignment: TextInput.AlignVCenter
-                        text: root.tagDialogTargetTag
                         font.family: Appearance.font.family.monospace
                         font.pixelSize: Appearance.font.pixelSize.small
                         color: settledColors.colOnLayer1
                         selectByMouse: true
                         focus: root.tagDialogOpen
+                        Connections {
+                            target: root
+                            function onTagDialogOpenChanged(): void {
+                                if (root.tagDialogOpen)
+                                    tagActionInput.text = String(root.tagDialogTargetTag ?? "");
+                            }
+                            function onTagDialogTargetTagChanged(): void {
+                                if (root.tagDialogOpen && !tagActionInput.activeFocus && !tagActionInput.inputMethodComposing)
+                                    tagActionInput.text = String(root.tagDialogTargetTag ?? "");
+                            }
+                        }
                         onAccepted: {
+                            if (inputMethodComposing)
+                                return;
                             const nextTag = text.trim().replace(/^#+/, "");
                             if (nextTag.length > 0 && nextTag !== root.tagDialogSourceTag && root.nexus) {
                                 if (root.tagDialogMode === "merge")
@@ -8644,9 +8892,14 @@ FocusScope {
                             root.tagDialogOpen = false;
                             root.restoreWorkspaceFocus();
                         }
-                        Keys.onEscapePressed: {
+                        Keys.onEscapePressed: event => {
+                            if (inputMethodComposing) {
+                                event.accepted = false;
+                                return;
+                            }
                             root.tagDialogOpen = false;
                             root.restoreWorkspaceFocus();
+                            event.accepted = true;
                         }
                     }
                 }

@@ -4744,6 +4744,7 @@ pub fn cmd_scan_for_date_with_cache_opts(
     let mut cfg_exercise_heading = "Calisthenics".to_string();
     let mut cfg_cardio_heading = "Cardio".to_string();
     let mut cfg_weather_loc = "Can Tho, VN".to_string();
+    let mut cfg_globe_settings = serde_json::Map::new();
 
     let settings_md_path = vault_canon.join("90_System/93_Configuration/settings.md");
     if let Ok(settings_raw) = fs::read_to_string(&settings_md_path) {
@@ -4772,6 +4773,30 @@ pub fn cmd_scan_for_date_with_cache_opts(
         }
         if let Some(wl) = s_props.get("weather_location").filter(|s| !s.trim().is_empty()) {
             cfg_weather_loc = wl.trim().to_string();
+        }
+        for gk in [
+            "globe_size",
+            "globe_style",
+            "globe_monochrome_color",
+            "location_pins",
+            "globe_source_folders",
+            "globe_display_min",
+            "globe_display_max",
+            "globe_render_min",
+            "globe_render_max",
+            "globe_min_zoom",
+            "globe_max_zoom",
+            "globe_default_zoom",
+            "globe_base_scale",
+            "globe_texture_width",
+            "globe_texture_height",
+            "globe_map_provider",
+            "globe_api_key",
+            "globe_tile_url",
+        ] {
+            if let Some(val) = s_props.get(gk) {
+                cfg_globe_settings.insert(gk.to_string(), Value::String(val.trim().to_string()));
+            }
         }
     }
 
@@ -5079,6 +5104,7 @@ pub fn cmd_scan_for_date_with_cache_opts(
         "homepageCoverUrl": homepage_cover_url,
         "homepagePhotoUrl": if homepage_photo_url.is_empty() { homepage_cover_url.clone() } else { homepage_photo_url },
         "weatherLocation": cfg_weather_loc,
+        "globeSettings": Value::Object(cfg_globe_settings),
         "collections": {
             "movies": col_movies,
             "tvSeries": col_tvseries.clone(),
@@ -8297,6 +8323,76 @@ fn format_yaml_list_item(item: &Value) -> String {
     }
 }
 
+fn is_delete_sentinel(val: &Value) -> bool {
+    val.as_object()
+        .and_then(|m| m.get("__nexus_delete__"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+fn append_yaml_entry(out: &mut Vec<String>, key: &str, val: &Value, indent: usize) {
+    if is_delete_sentinel(val) {
+        return;
+    }
+    let pad = " ".repeat(indent);
+    match val {
+        Value::Array(arr) => {
+            if arr.is_empty() {
+                out.push(format!("{}{}: []", pad, key));
+                return;
+            }
+            out.push(format!("{}{}:", pad, key));
+            let item_pad = " ".repeat(indent + 2);
+            for item in arr {
+                match item {
+                    Value::Object(obj) => {
+                        if obj.is_empty() {
+                            out.push(format!("{}- {{}}", item_pad));
+                        } else {
+                            let mut first = true;
+                            for (ok, ov) in obj {
+                                if is_delete_sentinel(ov) {
+                                    continue;
+                                }
+                                if first {
+                                    first = false;
+                                    match ov {
+                                        Value::Object(_) | Value::Array(_) => {
+                                            out.push(format!("{}-", item_pad));
+                                            append_yaml_entry(out, ok, ov, indent + 4);
+                                        }
+                                        _ => {
+                                            out.push(format!("{}- {}: {}", item_pad, ok, format_yaml_scalar(ov)));
+                                        }
+                                    }
+                                } else {
+                                    append_yaml_entry(out, ok, ov, indent + 4);
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        out.push(format!("{}- {}", item_pad, format_yaml_list_item(item)));
+                    }
+                }
+            }
+        }
+        Value::Object(obj) => {
+            if obj.is_empty() {
+                out.push(format!("{}{}: {{}}", pad, key));
+                return;
+            }
+            out.push(format!("{}{}:", pad, key));
+            for (ok, ov) in obj {
+                append_yaml_entry(out, ok, ov, indent + 2);
+            }
+        }
+        _ => {
+            out.push(format!("{}{}: {}", pad, key, format_yaml_scalar(val)));
+        }
+    }
+}
+
 pub fn apply_frontmatter_updates_to_content(raw: &str, updates: &serde_json::Map<String, Value>) -> String {
     let trailing_newline = raw.ends_with('\n');
     let lines: Vec<String> = raw.lines().map(|s| s.to_string()).collect();
@@ -8322,25 +8418,18 @@ pub fn apply_frontmatter_updates_to_content(raw: &str, updates: &serde_json::Map
                             .find(|(uk, _)| uk.eq_ignore_ascii_case(k_clean))
                         {
                             updated_keys.insert(u_key.to_ascii_lowercase());
-                            // Skip any following indented list lines belonging to this key
+                            // Skip any following indented lines belonging to this key
                             let mut next_i = i + 1;
                             while next_i < fm_end {
                                 let nl = &lines[next_i];
                                 let nt = nl.trim();
-                                if nt.starts_with("- ") || nl.starts_with("  ") || nl.starts_with('\t') {
+                                if nt.starts_with("- ") || nl.starts_with(' ') || nl.starts_with('\t') {
                                     next_i += 1;
                                 } else {
                                     break;
                                 }
                             }
-                            if let Value::Array(arr) = u_val {
-                                new_fm.push(format!("{}:", k_clean));
-                                for item in arr {
-                                    new_fm.push(format!("  - {}", format_yaml_list_item(item)));
-                                }
-                            } else {
-                                new_fm.push(format!("{}: {}", k_clean, format_yaml_scalar(u_val)));
-                            }
+                            append_yaml_entry(&mut new_fm, k_clean, u_val, 0);
                             i = next_i;
                             continue;
                         }
@@ -8351,14 +8440,7 @@ pub fn apply_frontmatter_updates_to_content(raw: &str, updates: &serde_json::Map
             }
             for (u_key, u_val) in updates {
                 if !updated_keys.contains(&u_key.to_ascii_lowercase()) {
-                    if let Value::Array(arr) = u_val {
-                        new_fm.push(format!("{}:", u_key));
-                        for item in arr {
-                            new_fm.push(format!("  - {}", format_yaml_list_item(item)));
-                        }
-                    } else {
-                        new_fm.push(format!("{}: {}", u_key, format_yaml_scalar(u_val)));
-                    }
+                    append_yaml_entry(&mut new_fm, u_key, u_val, 0);
                 }
             }
             new_fm.push("---".to_string());
@@ -8377,14 +8459,7 @@ pub fn apply_frontmatter_updates_to_content(raw: &str, updates: &serde_json::Map
     let mut new_lines: Vec<String> = Vec::new();
     new_lines.push("---".to_string());
     for (u_key, u_val) in updates {
-        if let Value::Array(arr) = u_val {
-            new_lines.push(format!("{}:", u_key));
-            for item in arr {
-                new_lines.push(format!("  - {}", format_yaml_list_item(item)));
-            }
-        } else {
-            new_lines.push(format!("{}: {}", u_key, format_yaml_scalar(u_val)));
-        }
+        append_yaml_entry(&mut new_lines, u_key, u_val, 0);
     }
     new_lines.push("---".to_string());
     if !lines.is_empty() {

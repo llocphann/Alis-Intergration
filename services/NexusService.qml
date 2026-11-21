@@ -388,6 +388,7 @@ Item {
     property string homepageCoverUrl: ""
     property string homepagePhotoUrl: ""
     property string weatherLocation: "Can Tho, VN"
+    property var globeSettings: ({})
     property var collections: ({
             "movies": [],
             "tvSeries": [],
@@ -2010,6 +2011,20 @@ Item {
         const keys = Object.keys(updatesObj);
         if (keys.length === 0)
             return false;
+        if (target.toLowerCase().endsWith("settings.md")) {
+            let nextGlobe = null;
+            for (let gi = 0; gi < keys.length; ++gi) {
+                const gk = keys[gi];
+                if (gk.startsWith("globe_") || gk === "location_pins") {
+                    if (!nextGlobe)
+                        nextGlobe = Object.assign({}, root.globeSettings || {});
+                    const gv = updatesObj[gk];
+                    nextGlobe[gk] = (gv === undefined || gv === null) ? "" : String(gv);
+                }
+            }
+            if (nextGlobe)
+                root.globeSettings = nextGlobe;
+        }
         // Publish Journal check-ins only from the successful write/readback
         // below, so failed or interrupted writes cannot persist an unsaved choice.
         const args = [
@@ -3184,6 +3199,8 @@ Item {
     }
 
     function handleKeyEvent(event): bool {
+        if (!event || event.key === 0 || event.key === Qt.Key_unknown)
+            return false;
         const combo = root.formatKeyEvent(event);
         if (!combo)
             return false;
@@ -3368,6 +3385,7 @@ Item {
         root.homepageCoverUrl = String(payload.homepageCoverUrl ?? "");
         root.homepagePhotoUrl = String(payload.homepagePhotoUrl ?? payload.homepageCoverUrl ?? "");
         root.weatherLocation = String(payload.weatherLocation ?? "Can Tho, VN");
+        root.globeSettings = payload.globeSettings ?? root.globeSettings;
         root.collections = payload.collections ?? root.collections;
         root.stats = payload.stats ?? root.stats;
         root._loadedVaultPath = root.configuredVaultPath;
