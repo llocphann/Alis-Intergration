@@ -1170,10 +1170,12 @@ Item {
                 Image {
                     anchors.fill: parent
                     source: String(root.dossier.backdropUrl || root.dossier.posterUrl || "")
+                    sourceSize: Qt.size(960, 540)
                     fillMode: Image.PreserveAspectCrop
                     opacity: status === Image.Ready ? 0.30 : 0.0
                     visible: String(source).length > 0
                     asynchronous: true
+                    cache: false
                 }
 
                 Rectangle {
@@ -1221,8 +1223,10 @@ Item {
                             id: gameCoverImg
                             anchors.fill: parent
                             source: String(root.dossier.posterUrl ?? "")
+                            sourceSize: Qt.size(480, 640)
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
+                            cache: false
                         }
 
                         // Inner 7px frame (`cv-game-cover-shell::after`)
@@ -2284,10 +2288,12 @@ Item {
             Image {
                 anchors.fill: parent
                 source: String(root.dossier.backdropUrl || root.dossier.posterUrl || "")
+                sourceSize: Qt.size(960, 540)
                 fillMode: Image.PreserveAspectCrop
                 opacity: status === Image.Ready ? 0.18 : 0.0
                 visible: String(source).length > 0
                 asynchronous: true
+                cache: false
             }
 
             Rectangle {
@@ -2332,8 +2338,10 @@ Item {
                             id: dossierPosterImg
                             anchors.fill: parent
                             source: String(root.dossier.posterUrl ?? "")
+                            sourceSize: Qt.size(480, 640)
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
+                            cache: false
                             visible: String(source).length > 0
                         }
 
@@ -3718,8 +3726,10 @@ Item {
                             source: exerciseCustomView.previewUrlStr.length > 0
                                 ? exerciseCustomView.previewUrlStr
                                 : exerciseCustomView.animUrlStr
+                            sourceSize: Qt.size(480, 360)
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
+                            cache: false
                             visible: String(source).length > 0
                         }
 
@@ -3731,8 +3741,9 @@ Item {
                             visible: root.exerciseShowAnimation && exerciseCustomView.hasAnimation
                             source: visible ? exerciseCustomView.animUrlStr : ""
                             fillMode: Image.PreserveAspectCrop
-                            playing: visible && (root.workspace?.transitionSettled ?? true) && !Boolean(HostServices.GlobalStates?.regionSelectorOpen)
+                            playing: visible && status === AnimatedImage.Ready && (root.workspace?.transitionSettled ?? true) && !Boolean(HostServices.GlobalStates?.regionSelectorOpen)
                             asynchronous: true
+                            cache: false
                         }
 
                         // Fallback icon when no media exists
@@ -8478,9 +8489,11 @@ Item {
                                     objectName: "nexusRecipeHeroImage"
                                     anchors.fill: parent
                                     source: String(root.rView.coverUrl || root.dossier.posterUrl || "")
+                                    sourceSize: Qt.size(960, 540)
                                     fillMode: Image.PreserveAspectCrop
                                     scale: String(source).indexOf("spoonacular-") !== -1 ? 1.18 : 1.02
                                     asynchronous: true
+                                    cache: false
                                     visible: status === Image.Ready
                                 }
 

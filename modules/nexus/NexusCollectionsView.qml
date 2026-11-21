@@ -737,8 +737,10 @@ ColumnLayout {
                                     anchors.fill: parent
                                     anchors.margins: 1
                                     source: String(baseCardDelegate.modelData.posterUrl ?? "")
+                                    sourceSize: Qt.size(360, 540)
                                     fillMode: Image.PreserveAspectCrop
                                     asynchronous: true
+                                    cache: false
                                     visible: Boolean(baseCardDelegate.modelData.posterUrl) && status === Image.Ready
                                 }
 
@@ -1076,8 +1078,10 @@ ColumnLayout {
                                 objectName: "nexusTvPosterImg_" + String(baseCardDelegate.index)
                                 anchors.fill: parent
                                 source: String(baseCardDelegate.modelData.posterUrl ?? "")
+                                sourceSize: Qt.size(360, 540)
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
+                                cache: false
                                 visible: Boolean(baseCardDelegate.modelData.posterUrl) && status === Image.Ready
                             }
 
@@ -1258,8 +1262,10 @@ ColumnLayout {
                                 id: gameCoverImg
                                 anchors.fill: parent
                                 source: String(baseCardDelegate.modelData.posterUrl ?? "")
+                                sourceSize: Qt.size(360, 540)
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
+                                cache: false
                                 visible: Boolean(baseCardDelegate.modelData.posterUrl) && status === Image.Ready
                             }
 
@@ -1569,8 +1575,10 @@ ColumnLayout {
                                 objectName: "nexusBookCoverImg_" + String(baseCardDelegate.index)
                                 anchors.fill: parent
                                 source: String(baseCardDelegate.modelData.posterUrl ?? "")
+                                sourceSize: Qt.size(360, 540)
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
+                                cache: false
                                 visible: Boolean(baseCardDelegate.modelData.posterUrl) && status === Image.Ready
                             }
 
@@ -2206,10 +2214,12 @@ ColumnLayout {
                                     objectName: "nexusRecipeBaseCoverImage_" + String(baseCardDelegate.index)
                                     anchors.fill: parent
                                     source: String(baseCardDelegate.modelData.posterUrl ?? "")
+                                    sourceSize: Qt.size(480, 360)
                                     fillMode: Image.PreserveAspectCrop
                                     horizontalAlignment: Image.AlignHCenter
                                     verticalAlignment: Image.AlignVCenter
                                     asynchronous: true
+                                    cache: false
                                     // Spoonacular 556x370 cover JPEGs have 48px solid white sidebars baked into the image file;
                                     // 1.18x scale inside `clip: true` cleanly crops out the white sidebars on both left & right edges.
                                     readonly property real baseCropScale: String(source).indexOf("spoonacular-") !== -1 ? 1.18 : 1.02
@@ -2679,7 +2689,7 @@ ColumnLayout {
                                 sourceSize: Qt.size(320, 268)
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
-                                cache: true
+                                cache: false
                                 visible: Boolean(baseCardDelegate.modelData.posterUrl) && status === Image.Ready && (!exBaseCard.exDemoPlaying || !exCardAnimImg.visible)
                             }
 
@@ -2689,7 +2699,8 @@ ColumnLayout {
                                 source: (baseCardDelegate.isExerciseCard && exBaseCard.exDemoPlaying && exBaseCard.animUrl.length > 0) ? exBaseCard.animUrl : ""
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
-                                playing: exBaseCard. visible && exBaseCard.exDemoPlaying && !root.screenshotOverlayActive
+                                cache: false
+                                playing: exBaseCard.visible && exBaseCard.exDemoPlaying && !root.screenshotOverlayActive
                                 visible: exBaseCard.exDemoPlaying && exBaseCard.animUrl.length > 0 && status === AnimatedImage.Ready
                             }
 

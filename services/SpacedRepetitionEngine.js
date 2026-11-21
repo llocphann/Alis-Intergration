@@ -100,7 +100,7 @@ function normalizeOptions(raw) {
     if (prio === "hard_first") prio = "hardest_first";
     if (["due_first", "level_asc", "hardest_first", "new_first", "interleaved"].indexOf(prio) < 0) prio = "due_first";
 
-    return {
+    var out = {
         enable: src.enable !== false,
         dailyNewLimit: Math.round(clampNumber(src.dailyNewLimit, 1, 200, d.dailyNewLimit)),
         dailyReviewLimit: Math.round(clampNumber(src.dailyReviewLimit, 10, 1000, d.dailyReviewLimit)),
@@ -121,6 +121,10 @@ function normalizeOptions(raw) {
         dailyGoalCards: Math.round(clampNumber(src.dailyGoalCards, 1, 500, d.dailyGoalCards)),
         weekendsEnabled: src.weekendsEnabled !== undefined ? Boolean(src.weekendsEnabled) : d.weekendsEnabled
     };
+    try {
+        Object.defineProperty(out, "_normalized", { value: true, enumerable: false, configurable: true });
+    } catch (e) {}
+    return out;
 }
 
 function civilDayKey(ms) {
@@ -355,7 +359,7 @@ function normalizeCard(raw, indexFallback, nowMs, rawOptions, lexiconAnalyzer) {
         nowMs = indexFallback;
         indexFallback = 1;
     }
-    var opts = normalizeOptions(rawOptions);
+    var opts = (rawOptions && rawOptions._normalized === true) ? rawOptions : normalizeOptions(rawOptions);
     var now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
     var src = (raw && typeof raw === "object") ? raw : {};
 
@@ -666,7 +670,7 @@ function computeNextSchedule(card, rating, nowMs, rawOptions, dueCountsByDay) {
         dueCountsByDay = tmpCounts;
         nowMs = tmpNow;
     }
-    var opts = normalizeOptions(rawOptions);
+    var opts = (rawOptions && rawOptions._normalized === true) ? rawOptions : normalizeOptions(rawOptions);
     var now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
     var c = normalizeCard(card, 1, now, opts, null);
     var r = (rating === undefined || rating === null || String(rating).trim() === "")
@@ -1488,7 +1492,7 @@ function buildYearHeatmap(historyByDay, yearArg, nowMs, goalCardsArg) {
 }
 
 function computeAnalytics(cards, historyByDay, nowMs, rawOptions) {
-    var opts = normalizeOptions(rawOptions);
+    var opts = (rawOptions && rawOptions._normalized === true) ? rawOptions : normalizeOptions(rawOptions);
     var now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
     var todayKeyStr = civilDayKey(now);
     var list = Array.isArray(cards) ? cards : [];
@@ -1778,7 +1782,7 @@ function computeAnalytics(cards, historyByDay, nowMs, rawOptions) {
 
 function starterCards(nowMs, rawOptions, lexiconAnalyzer) {
     var now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
-    var opts = normalizeOptions(rawOptions);
+    var opts = (rawOptions && rawOptions._normalized === true) ? rawOptions : normalizeOptions(rawOptions);
     var seeds = [
         {
             id: "sr-seed-en-1",
@@ -1923,7 +1927,7 @@ function starterCards(nowMs, rawOptions, lexiconAnalyzer) {
 
 function unitVocabularyCards(nowMs, rawOptions, lexiconAnalyzer) {
     var now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
-    var opts = normalizeOptions(rawOptions);
+    var opts = (rawOptions && rawOptions._normalized === true) ? rawOptions : normalizeOptions(rawOptions);
     var unitSeeds = [
         {
                 "id": "sr-unit01-01",
@@ -3961,18 +3965,64 @@ function unitVocabularyCards(nowMs, rawOptions, lexiconAnalyzer) {
     });
 }
 
+function _trailingInt(str) {
+    if (typeof str !== "string" || !str.length) return -1;
+    var end = str.length;
+    var pos = end;
+    while (pos > 0) {
+        var ch = str.charCodeAt(pos - 1);
+        if (ch < 48 || ch > 57) break;
+        pos--;
+    }
+    if (pos === end) return -1;
+    var n = parseInt(str.slice(pos), 10);
+    return Number.isFinite(n) ? n : -1;
+}
+
+function _isCanonicalCardFast(item, opts) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    var id = item.id;
+    if (typeof id !== "string" || !id) return false;
+    if (!item.term && !item.clozeText) return false;
+    var cat = item.category;
+    if (cat !== "vocabulary" && cat !== "knowledge" && cat !== "cloze") return false;
+    if (typeof item.language !== "string" || !item.language) return false;
+    var deck = item.deck;
+    if (typeof deck !== "string" || !deck) return false;
+    if (cat === "vocabulary" && (deck === "Default" || /^Unit\s*\d+$/i.test(deck))) return false;
+    if (typeof item.level !== "string" || typeof item.cefrLevel !== "string") return false;
+    if (typeof item.pos !== "string" || typeof item.meaning !== "string" || typeof item.front !== "string") return false;
+    if (typeof item.definitionEn !== "string") return false;
+    if (typeof item.dueDate !== "string" || item.dueDate.length !== 10) return false;
+    if (!Number.isFinite(Number(item.dueAt))) return false;
+    if (typeof item.state !== "string" || !item.state) return false;
+    if (typeof item.isLeech !== "boolean") return false;
+    var expectedLeech = item.isLeech || (Number(item.lapses) || 0) >= opts.leechThreshold;
+    if (item.isLeech !== expectedLeech) return false;
+    return true;
+}
+
+function _withNeedsSave(out, flag) {
+    try {
+        Object.defineProperty(out, "needsSave", { value: Boolean(flag), enumerable: false, configurable: true });
+    } catch (e) {
+        out.needsSave = Boolean(flag);
+    }
+    return out;
+}
+
 function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
     var now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
-    var opts = normalizeOptions(rawOptions);
+    var opts = (rawOptions && rawOptions._normalized === true) ? rawOptions : normalizeOptions(rawOptions);
 
     if (!rawPayload || typeof rawPayload !== "object" || Array.isArray(rawPayload)) {
-        return {
+        return _withNeedsSave({
             schemaVersion: SCHEMA_VERSION,
             nextId: 200,
             cards: starterCards(now, opts, lexiconAnalyzer),
             historyByDay: {},
             retainedStorageFields: { lexiconRevision: CURRENT_LEXICON_REVISION }
-        };
+        }, true);
     }
 
     var retained = (rawPayload.retainedStorageFields && typeof rawPayload.retainedStorageFields === "object" && !Array.isArray(rawPayload.retainedStorageFields))
@@ -3980,6 +4030,7 @@ function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
         : {};
     var knownKeys = ["schemaVersion", "nextId", "cards", "historyByDay", "retainedStorageFields"];
     var keys = Object.keys(rawPayload);
+    var needsSave = Number(rawPayload.schemaVersion) !== SCHEMA_VERSION;
     for (var k = 0; k < keys.length; k++) {
         var key = keys[k];
         if (knownKeys.indexOf(key) < 0) {
@@ -3987,38 +4038,57 @@ function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
         }
     }
     if (typeof retained.reviewMode === "string") {
-        retained.reviewMode = normalizeStudyMode(retained.reviewMode);
+        var normRM = normalizeStudyMode(retained.reviewMode);
+        if (normRM !== retained.reviewMode) needsSave = true;
+        retained.reviewMode = normRM;
     }
     if (typeof retained.studyMode === "string") {
-        retained.studyMode = normalizeStudyMode(retained.studyMode);
+        var normSM = normalizeStudyMode(retained.studyMode);
+        if (normSM !== retained.studyMode) needsSave = true;
+        retained.studyMode = normSM;
     }
     var prevLexRev = Number(retained.lexiconRevision || rawPayload.lexiconRevision) || 0;
+    var prevSchema = Number(rawPayload.schemaVersion) || 0;
+    if (prevSchema < SCHEMA_VERSION || prevLexRev < CURRENT_LEXICON_REVISION) {
+        needsSave = true;
+    }
 
     var rawCards = Array.isArray(rawPayload.cards) ? rawPayload.cards : [];
+    var canFastPath = prevSchema >= SCHEMA_VERSION && prevLexRev >= CURRENT_LEXICON_REVISION;
     var cards = [];
     var seenIds = {};
     var maxNumericId = Math.max(1, Number(rawPayload.nextId) || 1);
 
     for (var i = 0; i < rawCards.length; i++) {
         var item = rawCards[i];
-        if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-        var norm = normalizeCard(item, i + 1, now, opts, lexiconAnalyzer);
-        if (!norm.term && !norm.clozeText) continue;
-        if (seenIds[norm.id]) {
-            norm.id = norm.id + "-" + (i + 1);
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+            needsSave = true;
+            continue;
+        }
+        var norm;
+        if (canFastPath && _isCanonicalCardFast(item, opts)) {
+            norm = item;
+            if (seenIds[norm.id]) {
+                norm = Object.assign({}, norm, { id: norm.id + "-" + (i + 1) });
+                needsSave = true;
+            }
+        } else {
+            norm = normalizeCard(item, i + 1, now, opts, lexiconAnalyzer);
+            needsSave = true;
+            if (!norm.term && !norm.clozeText) continue;
+            if (seenIds[norm.id]) {
+                norm.id = norm.id + "-" + (i + 1);
+            }
         }
         seenIds[norm.id] = true;
-        var numMatch = norm.id.match(/(\d+)$/);
-        if (numMatch) {
-            var num = parseInt(numMatch[1], 10);
-            if (num >= maxNumericId) maxNumericId = num + 1;
-        }
+        var num = _trailingInt(norm.id);
+        if (num >= maxNumericId) maxNumericId = num + 1;
         cards.push(norm);
     }
 
-    var prevSchema = Number(rawPayload.schemaVersion) || 0;
     var hasUserStarterDeck = cards.some(function(c) { return c && (c.id === "sr-seed-en-1" || /^sr-unit\d+/i.test(c.id)); }) || Boolean(rawPayload.includeUnitVocabulary);
     if (prevSchema < 4 && hasUserStarterDeck) {
+        needsSave = true;
         var seenTerms = {};
         for (var st = 0; st < cards.length; st++) {
             var existingTerm = String(cards[st].term || "").trim().toLowerCase();
@@ -4051,6 +4121,7 @@ function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
     }
 
     if (prevSchema < 5 || prevLexRev < CURRENT_LEXICON_REVISION) {
+        needsSave = true;
         for (var ec = 0; ec < cards.length; ec++) {
             var eCard = cards[ec];
             if (!eCard) continue;
@@ -4060,7 +4131,10 @@ function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
             }
         }
     }
-    retained.lexiconRevision = CURRENT_LEXICON_REVISION;
+    if (Number(retained.lexiconRevision) !== CURRENT_LEXICON_REVISION) {
+        retained.lexiconRevision = CURRENT_LEXICON_REVISION;
+        needsSave = true;
+    }
 
     var historyByDay = {};
     if (rawPayload.historyByDay && typeof rawPayload.historyByDay === "object" && !Array.isArray(rawPayload.historyByDay)) {
@@ -4075,17 +4149,19 @@ function migrateStorage(rawPayload, nowMs, rawOptions, lexiconAnalyzer) {
                     newStudied: Math.max(0, Math.round(Number(entry.newStudied) || 0)),
                     reviewsDone: Math.max(0, Math.round(Number(entry.reviewsDone) || 0))
                 };
+            } else {
+                needsSave = true;
             }
         }
     }
 
-    return {
+    return _withNeedsSave({
         schemaVersion: SCHEMA_VERSION,
         nextId: maxNumericId,
         cards: cards,
         historyByDay: historyByDay,
         retainedStorageFields: retained
-    };
+    }, needsSave);
 }
 
 function shuffleWithRng(arr, randomFn) {

@@ -19,10 +19,32 @@ Item {
     focus: true
 
     property bool presentationActive: false
-    property var backend: HostServices.AlisIntergration?.spacedRepetition
-        ?? HostServices.AlisIntergration?.session?.spacedRepetition
-        ?? HostServices.SpacedRepetition
-        ?? null
+    readonly property var _emptyBackend: ({
+        cards: [], historyByDay: ({}), retainedStorageFields: ({}),
+        ready: false, lookupBusy: false, lastLookupResult: null, errorMessage: "",
+        filterCategory: "all", filterLanguage: "all", filterLevel: "all", filterDeck: "all",
+        selectedCategory: "all", selectedLanguage: "all", selectedCefrLevel: "all", selectedDeck: "all",
+        leechesOnly: false, searchQuery: "", boostMode: "", boostAheadDays: 3,
+        studyMode: "matching", smartMixEnabled: true, cardRevealed: false,
+        presentationActive: false, interactionLocked: false, canUndoReview: false, boostActive: false,
+        options: ({}), analytics: ({ dueCountsByDay: ({}), counts: ({}), decks: [], total: 0, cefrCounts: ({}) }),
+        decks: [], totalCount: 0, dueCount: 0, newCount: 0, learningCount: 0, youngCount: 0, matureCount: 0,
+        leechCount: 0, vocabCount: 0, knowledgeCount: 0, clozeCount: 0, streakDays: 0, todayReviewedCount: 0,
+        retentionRate: 100, averageEase: 250, levelBreakdown: ({}), masteredLevelBreakdown: ({}),
+        studyQueue: [], currentCard: null, hasActiveCard: false, currentIntervals: ({}), filteredLibraryCards: [],
+        getYearHeatmap: function() { return { weeks: [] } },
+        refreshClock: function() {},
+        ensureLoaded: function() {},
+        formatMorphology: function() { return "" },
+        analyzeDraft: function() { return ({}) },
+        renderClozeFront: function() { return "" },
+        buildMatchingRound: function() { return { pairs: [] } },
+        previewQuickText: function() { return [] }
+    })
+    property var backend: ((HostServices.AlisIntergration?.spacedRepetitionEnabled ?? false)
+        ? (HostServices.AlisIntergration?.spacedRepetition ?? HostServices.AlisIntergration?.session?.spacedRepetition)
+        : (HostServices.AlisIntergration?.spacedRepetition ?? HostServices.AlisIntergration?.session?.spacedRepetition ?? HostServices.SpacedRepetition))
+        ?? _emptyBackend
 
     property bool _captureLoaded: false
     property bool _libraryLoaded: false
@@ -129,7 +151,18 @@ Item {
             root.backend.interactionLocked = root.studyInteractionInProgress
     }
 
-    onBackendChanged: root.syncBackendActivityFlags()
+    onBackendChanged: {
+        root.syncBackendActivityFlags()
+        if (!root.backend)
+            return
+        if (typeof root.backend.ensureLoaded === "function" && (root.presentationActive || root.visible))
+            root.backend.ensureLoaded()
+        root._activeStudyCardId = String(root.backend?.currentCard?.id ?? "")
+        if (root.isMultipleChoiceMode || root.isClozeMode)
+            root.rebuildMultipleChoiceOptions()
+        if (root.isMatchingMode)
+            root.rebuildMatchingRound()
+    }
     onBackendSessionActiveChanged: {
         root.syncBackendActivityFlags()
         if (!root.backendSessionActive) {
@@ -370,31 +403,35 @@ Item {
     readonly property var filteredLibraryCards: {
         if (root.subTab !== "library")
             return []
-        const list = Array.from(root.backend.cards ?? [])
         const q = String(root.librarySearch || root.backend.searchQuery || "").trim().toLowerCase()
+        const onlyLeeches = root.libraryLeechesOnly || root.backend.leechesOnly
+        const bq = String(root.backend.searchQuery ?? "").trim().toLowerCase()
+        if (q === bq && Boolean(onlyLeeches) === Boolean(root.backend.leechesOnly)
+                && Array.isArray(root.backend.filteredLibraryCards)) {
+            return root.backend.filteredLibraryCards
+        }
+        const list = root.backend.cards ?? []
         const cat = String(root.backend.selectedCategory ?? "all").toLowerCase()
         const lang = String(root.backend.selectedLanguage ?? "all").toLowerCase()
         const cefr = String(root.backend.selectedCefrLevel ?? "all").toUpperCase()
         const deck = root.backend.selectedDeck
-        const onlyLeeches = root.libraryLeechesOnly || root.backend.leechesOnly
+        const leechThresh = root.backend.options?.leechThreshold ?? 6
         return list.filter(card => {
             if (!card) return false
             if (cat !== "all" && card.category !== cat) return false
             if (lang !== "all" && card.language !== lang) return false
             if (cefr !== "ALL" && String(card.cefrLevel ?? "").toUpperCase() !== cefr) return false
             if (deck !== "all" && card.deck !== deck) return false
-            if (onlyLeeches && !card.isLeech && (Number(card.lapses) || 0) < (root.backend.options?.leechThreshold ?? 6)) return false
+            if (onlyLeeches && !card.isLeech && (Number(card.lapses) || 0) < leechThresh) return false
             if (!q.length) return true
-            return String(card.front ?? "").toLowerCase().includes(q)
-                || String(card.term ?? "").toLowerCase().includes(q)
-                || String(card.back ?? "").toLowerCase().includes(q)
-                || String(card.definitionEn ?? "").toLowerCase().includes(q)
-                || String(card.meaningVi ?? "").toLowerCase().includes(q)
-                || String(card.example ?? "").toLowerCase().includes(q)
-                || String(card.cefrLevel ?? "").toLowerCase().includes(q)
-                || String(card.deck ?? "").toLowerCase().includes(q)
-                || String(card.morphologyText ?? "").toLowerCase().includes(q)
-                || (card.collocations ?? []).some(c => String(c).toLowerCase().includes(q))
+            let hay = card._searchHay
+            if (typeof hay !== "string") {
+                hay = `${card.term ?? ""} ${card.front ?? ""} ${card.meaning ?? ""} ${card.back ?? ""} ${card.definitionEn ?? ""} ${card.meaningVi ?? ""} ${card.example ?? ""} ${card.cefrLevel ?? ""} ${card.deck ?? ""} ${card.notes ?? ""} ${card.morphologyText ?? ""} ${(card.collocations ?? []).join(" ")}`.toLowerCase()
+                try {
+                    Object.defineProperty(card, "_searchHay", { value: hay, enumerable: false, configurable: true })
+                } catch (e) {}
+            }
+            return hay.includes(q)
         })
     }
 
@@ -1328,15 +1365,33 @@ Item {
         if (root.presentationActive)
             root.focusPrimarySurface()
     }
+    property bool _canvasesSettled: false
+    Timer {
+        id: _canvasSettleTimer
+        interval: 160
+        repeat: false
+        onTriggered: {
+            root._canvasesSettled = true
+        }
+    }
+
     onPresentationActiveChanged: {
+        if (root.presentationActive && root.backend && typeof root.backend.ensureLoaded === "function")
+            root.backend.ensureLoaded()
         if (root.presentationActive && root.backend && typeof root.backend.refreshClock === "function")
             root.backend.refreshClock()
+        if (root.presentationActive && !root._canvasesSettled)
+            _canvasSettleTimer.restart()
         if (root.presentationActive && root.subTab === "study")
             root.focusPrimarySurface()
     }
     onVisibleChanged: {
+        if (root.visible && root.backend && typeof root.backend.ensureLoaded === "function")
+            root.backend.ensureLoaded()
         if (root.visible && root.backend && typeof root.backend.refreshClock === "function")
             root.backend.refreshClock()
+        if (root.visible && !root._canvasesSettled)
+            _canvasSettleTimer.restart()
         if (root.visible && root.presentationActive && root.subTab === "study")
             Qt.callLater(() => root.focusPrimarySurface())
     }
@@ -1441,6 +1496,8 @@ Item {
 
     Component.onCompleted: {
         root.syncBackendActivityFlags()
+        if (root.backend && typeof root.backend.ensureLoaded === "function")
+            root.backend.ensureLoaded()
         if (root.backend && typeof root.backend.refreshClock === "function")
             root.backend.refreshClock()
         root.restoreBrowserState()
@@ -1450,6 +1507,7 @@ Item {
             root.rebuildMultipleChoiceOptions()
         if (root.isMatchingMode)
             root.rebuildMatchingRound()
+        _canvasSettleTimer.restart()
     }
 
     Keys.onPressed: event => {
@@ -4801,16 +4859,17 @@ Item {
                                                     readonly property color level3Color: root._heatLevel3Color
                                                     readonly property color level4Color: root._heatLevel4Color
 
-                                                    onHeatmapDataChanged: if (available) requestPaint()
-                                                    onAvailableChanged: if (available) requestPaint()
-                                                    onTodayBorderColorChanged: if (available) requestPaint()
-                                                    onLabelColorChanged: if (available) requestPaint()
-                                                    onFutureColorChanged: if (available) requestPaint()
-                                                    onEmptyColorChanged: if (available) requestPaint()
-                                                    onLevel1ColorChanged: if (available) requestPaint()
-                                                    onLevel2ColorChanged: if (available) requestPaint()
-                                                    onLevel3ColorChanged: if (available) requestPaint()
-                                                    onLevel4ColorChanged: if (available) requestPaint()
+                                                    readonly property bool paintReady: available && root._canvasesSettled && visible
+                                                    onPaintReadyChanged: if (paintReady) requestPaint()
+                                                    onHeatmapDataChanged: if (paintReady) requestPaint()
+                                                    onTodayBorderColorChanged: if (paintReady) requestPaint()
+                                                    onLabelColorChanged: if (paintReady) requestPaint()
+                                                    onFutureColorChanged: if (paintReady) requestPaint()
+                                                    onEmptyColorChanged: if (paintReady) requestPaint()
+                                                    onLevel1ColorChanged: if (paintReady) requestPaint()
+                                                    onLevel2ColorChanged: if (paintReady) requestPaint()
+                                                    onLevel3ColorChanged: if (paintReady) requestPaint()
+                                                    onLevel4ColorChanged: if (paintReady) requestPaint()
 
                                                     onPaint: {
                                                         const ctx = getContext("2d")
@@ -4820,33 +4879,47 @@ Item {
                                                             return
                                                         ctx.font = `7px ${Appearance.font.family.main}`
                                                         ctx.textBaseline = "top"
+                                                        const buckets = new Map()
+                                                        let todayRect = null
+                                                        ctx.fillStyle = labelColor
                                                         for (let w = 0; w < weeks.length; w++) {
                                                             const wk = weeks[w]
                                                             if (!wk) continue
                                                             const x = w * 10
                                                             const monthLabel = String(wk.monthLabel ?? "")
-                                                            if (monthLabel.length > 0) {
-                                                                ctx.fillStyle = labelColor
+                                                            if (monthLabel.length > 0)
                                                                 ctx.fillText(monthLabel, x, 0)
-                                                            }
                                                             const days = wk.days ?? []
                                                             for (let d = 0; d < days.length; d++) {
                                                                 const cell = days[d]
                                                                 if (!cell || !cell.inYear)
                                                                     continue
                                                                 const y = 13 + d * 10
-                                                                ctx.fillStyle = root.heatmapCellColor(cell)
-                                                                ctx.beginPath()
-                                                                ctx.roundedRect(x, y, 8, 8, 2, 2)
-                                                                ctx.fill()
-                                                                if (cell.isToday) {
-                                                                    ctx.strokeStyle = todayBorderColor
-                                                                    ctx.lineWidth = 1
-                                                                    ctx.beginPath()
-                                                                    ctx.roundedRect(x + 0.5, y + 0.5, 7, 7, 2, 2)
-                                                                    ctx.stroke()
+                                                                const cKey = root.heatmapCellColor(cell).toString()
+                                                                let arr = buckets.get(cKey)
+                                                                if (!arr) {
+                                                                    arr = []
+                                                                    buckets.set(cKey, arr)
                                                                 }
+                                                                arr.push(x, y)
+                                                                if (cell.isToday)
+                                                                    todayRect = [x + 0.5, y + 0.5]
                                                             }
+                                                        }
+                                                        buckets.forEach((coords, colorStr) => {
+                                                            ctx.fillStyle = colorStr
+                                                            ctx.beginPath()
+                                                            for (let i = 0; i < coords.length; i += 2) {
+                                                                ctx.roundedRect(coords[i], coords[i + 1], 8, 8, 2, 2)
+                                                            }
+                                                            ctx.fill()
+                                                        })
+                                                        if (todayRect) {
+                                                            ctx.strokeStyle = todayBorderColor
+                                                            ctx.lineWidth = 1
+                                                            ctx.beginPath()
+                                                            ctx.roundedRect(todayRect[0], todayRect[1], 7, 7, 2, 2)
+                                                            ctx.stroke()
                                                         }
                                                     }
                                                 }
@@ -5086,9 +5159,11 @@ Item {
                                                 property var cefrData: root.backend.analytics?.cefrCounts ?? ({})
                                                 property int totalCards: root.backend.analytics?.total ?? 0
                                                 property string hoveredLvl: root.hoveredCefrLevel
-                                                onCefrDataChanged: requestPaint()
-                                                onTotalCardsChanged: requestPaint()
-                                                onHoveredLvlChanged: requestPaint()
+                                                readonly property bool paintReady: available && root._canvasesSettled && visible
+                                                onPaintReadyChanged: if (paintReady) requestPaint()
+                                                onCefrDataChanged: if (paintReady) requestPaint()
+                                                onTotalCardsChanged: if (paintReady) requestPaint()
+                                                onHoveredLvlChanged: if (paintReady) requestPaint()
 
                                                 onPaint: {
                                                     var ctx = getContext("2d")

@@ -204,6 +204,8 @@ ColumnLayout {
                     source: (root.nexus?.currentDoc?.category === "image" && root.nexus?.currentDoc?.absPath) ? ("file://" + root.nexus.currentDoc.absPath) : ""
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
+                    cache: false
+                    sourceSize: Qt.size(Math.max(1, Math.min(2048, Math.round(parent.width * 2))), Math.max(1, Math.min(2048, Math.round(parent.height * 2))))
                 }
             }
         }
@@ -847,6 +849,8 @@ ColumnLayout {
                                             source: blockDelegate.modelData.kind === "image" ? String(blockDelegate.modelData.lang ?? "") : ""
                                             fillMode: Image.PreserveAspectFit
                                             asynchronous: true
+                                            cache: false
+                                            sourceSize: Qt.size(1200, 900)
                                         }
                                     }
 

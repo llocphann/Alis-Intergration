@@ -4909,7 +4909,7 @@ FocusScope {
                                                                     homepageGlobeLoader._globeSettledOnce = true;
                                                             }
                                                         }
-                                                        active: root.transitionSettled || _globeSettledOnce || !Boolean(root.nexus?.isOpen)
+                                                        active: root.transitionSettled || _globeSettledOnce
                                                         onLoaded: {
                                                             _globeSettledOnce = true;
                                                         }
@@ -5613,6 +5613,7 @@ FocusScope {
                         objectName: "nexusFullGraphLoader"
                         anchors.fill: parent
                         anchors.margins: 14
+                        asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
                         readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "graph"
                         visible: shouldLoad
                         active: false
@@ -5664,6 +5665,7 @@ FocusScope {
                         objectName: "nexusCollectionViewLoader"
                         anchors.fill: parent
                         anchors.margins: 16
+                        asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
                         readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "collection"
                         visible: shouldLoad
                         function _syncSource(): void {
@@ -5682,6 +5684,7 @@ FocusScope {
                         objectName: "nexusDocumentViewLoader"
                         anchors.fill: parent
                         anchors.margins: 16
+                        asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
                         readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "document" && Boolean(root.nexus?.currentDoc)
                         visible: shouldLoad
                         function _syncSource(): void {
@@ -7518,6 +7521,7 @@ FocusScope {
         objectName: "nexusNewNoteModalLoader"
         anchors.fill: parent
         z: 760
+        asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
         readonly property bool shouldLoad: Boolean(root.nexus?.newNoteModalOpen ?? false)
         visible: shouldLoad
         function _syncSource(): void {

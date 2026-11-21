@@ -7,7 +7,15 @@ import qs.services as HostServices
 Item {
     id: root
     property bool _live: true
-    Component.onDestruction: root._live = false
+    Component.onDestruction: {
+        root._live = false;
+        const procs = [scanProc, docProc, calendarProc, searchProc, apiSearchProc];
+        for (const p of procs) {
+            if (p && p.running) {
+                try { p.signal(15); } catch (_e) { p.running = false; }
+            }
+        }
+    }
 
     readonly property string binaryPath: decodeURIComponent(String(Qt.resolvedUrl("../assets/bin/alis-nexus")).replace(/^(?:file:\/\/|qs:)/, ""))
     readonly property string configuredVaultPath: {
@@ -3149,7 +3157,7 @@ Item {
             for (let i = 0; i < files.length; ++i) {
                 const f = files[i];
                 if (f)
-                    parts.push(String(f.relPath ?? "") + ":" + String(f.mtimeMs ?? 0) + ":" + String(f.size ?? 0));
+                    parts.push(String(f.relPath ?? "") + ":" + String(f.mtimeSecs ?? f.mtimeMs ?? 0) + ":" + String(f.sizeBytes ?? f.size ?? 0));
             }
             sample = parts.join(",");
         }
@@ -3224,7 +3232,7 @@ Item {
 
     Timer {
         id: sleepResumeWatchdog
-        interval: 15000
+        interval: (scanProc.running || docProc.running || calendarProc.running) ? 5000 : 60000
         repeat: true
         running: root._live && Quickshell.env("ALIS_NEXUS_HEADLESS_SERVICE_ONLY") !== "1"
         onTriggered: {

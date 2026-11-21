@@ -42,6 +42,7 @@ Item {
     property bool _fanConfigApplyQueued: false
     property bool sleepMonitorEnabled: true
     property bool probeSystemSleepMeta: true
+    property bool _systemSleepMetaDirty: true
     property int resumeFirstPassDelayMs: 1500
     property int resumeSecondPassDelayMs: 5000
     property bool _managedBeforeSleep: false
@@ -251,6 +252,7 @@ Item {
     function handleSuspendResume(): void {
         if (!root._live)
             return
+        root._systemSleepMetaDirty = true
         root._sleeping = false
         root._resumeRecoveryPending = true
         root._resumeSecondPass = false
@@ -533,7 +535,7 @@ Item {
         command: [
             "/bin/sh", "-c",
             "for p in \"$1\" /usr/libexec/alis-thinkfan /usr/libexec/inir-thinkfan \"$2\"; do if [ -n \"$p\" ] && [ -x \"$p\" ]; then if [ \"$3\" = \"1\" ]; then wakeup=0; systemctl is-enabled --quiet thinkfan-wakeup.service 2>/dev/null && wakeup=1; auto_cfg=1; for c in /etc/thinkfan.yaml /etc/thinkfan.conf; do if [ -r \"$c\" ]; then grep -Eq 'level[[:space:]]+auto|\"auto\"' \"$c\" || auto_cfg=0; break; fi; done; proc=0; pgrep -x thinkfan >/dev/null 2>&1 && proc=1; printf 'META:wakeup=%s,autoCfg=%s,proc=%s\\n' \"$wakeup\" \"$auto_cfg\" \"$proc\"; fi; printf 'HELPER:%s\\n' \"$p\"; exec \"$p\" --status; fi; done; exit 127",
-            "sh", root.helperPath, root.packagedHelperPath, root.probeSystemSleepMeta ? "1" : "0"
+            "sh", root.helperPath, root.packagedHelperPath, (root.probeSystemSleepMeta && root._systemSleepMetaDirty) ? "1" : "0"
         ]
 
         stdout: SplitParser {
@@ -543,6 +545,7 @@ Item {
                     root._wakeupUnitEnabled = line.includes("wakeup=1")
                     root._configAllowsAutoLevel = !line.includes("autoCfg=0")
                     root._daemonRunning = line.includes("proc=1")
+                    root._systemSleepMetaDirty = false
                     return
                 }
                 if (line.startsWith("HELPER:")) {

@@ -43,12 +43,13 @@ Item {
         onActiveChanged: syncSource()
         Component.onCompleted: syncSource()
     }
-    Loader { id: theme; active: host.nexusEnabled; source: "services/NexusTheme.qml" }
-    Loader { id: notes; active: host.nexusEnabled; source: "services/Zettelkasten.qml" }
-    Loader { id: nexusLoader; active: host.nexusEnabled; source: "services/NexusService.qml" }
+    Loader { id: theme; active: host.nexusEnabled; asynchronous: status !== Loader.Ready; source: "services/NexusTheme.qml" }
+    Loader { id: notes; active: host.nexusEnabled; asynchronous: status !== Loader.Ready; source: "services/Zettelkasten.qml" }
+    Loader { id: nexusLoader; active: host.nexusEnabled; asynchronous: status !== Loader.Ready; source: "services/NexusService.qml" }
     Loader {
         id: spacedRepetitionLoader
         active: host.spacedRepetitionEnabled ?? false
+        asynchronous: status !== Loader.Ready
         function syncSource(): void {
             if (active && String(source).length === 0) source = "services/SpacedRepetition.qml"
             else if (!active) source = ""
@@ -59,6 +60,7 @@ Item {
     Loader {
         id: exercisesTrackerLoader
         active: host.exercisesTrackerEnabled ?? false
+        asynchronous: status !== Loader.Ready
         function syncSource(): void {
             if (active && String(source).length === 0) source = "services/ExercisesTracker.qml"
             else if (!active) source = ""
