@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Services.UPower
 import qs
 import qs.modules.common
 import qs.modules.common.widgets
@@ -71,11 +72,14 @@ Item {
     property var _edgeClusterBuf: null
     property var _staticColorBuckets: []
     property var _edgeStratumColors3D: []
+    property var _edgeFastColors3D: null
+    property var _dimNodeCols3D: []
     property var _fgHubIndices: []
     property var _clusterHubEdges: [] // per cluster bucket index -> Int32Array of hub-incident edge indices
     property var _trigCos64: null
     property var _trigSin64: null
     property var _edgeScratchPts: [] // 3 strata * 13 color slots = 39 reusable coordinate arrays
+    property var _edgeFastScratchPts: [] // 2 depth strata for fast-motion / Power-Saver 3D edge pass
     property var _fgOrderScratch: []
     property bool _projCacheValid: false
     property real _cachedProjYaw: -999
@@ -88,6 +92,11 @@ Item {
     property int _cachedProjNLen: -1
     property var _cachedProjDataRef: null
     property bool _interacting3D: false
+    property bool _forcePowerSaverForTest: false
+    property bool _electricHasVisibleEdges: true
+    property double _lastElectricEmptyProbeMs: 0
+    property string _electricEmptyViewSig: ""
+    property real _orbitFrameAcc: 0.0
     property double _lastHoverProbeMs: 0
     property string _colorsThemeSig: ""
     property bool _needsStaggeredReveal: true
@@ -107,6 +116,14 @@ Item {
     property string lastPaintedThemeSignature: ""
 
     readonly property bool is3D: root.allow3D && root.renderMode === "3d"
+    readonly property bool isPowerSaving: root._forcePowerSaverForTest
+        || (PowerProfiles.profile === PowerProfile.PowerSaver)
+        || (Config.options?.performance?.lowPower ?? false)
+    readonly property bool _fast3DPass: root.is3D
+        && (root._interacting3D || root.autoRotate3D || root.isPowerSaving)
+    readonly property bool _ultraFast3DPass: root.is3D
+        && ((root._interacting3D && root.isPowerSaving)
+            || (root._fast3DPass && root.nodePositions.length > 350))
     readonly property color accentColor: root.workspace ? Qt.color(root.workspace._settledPrimary) : (Appearance.colors?.colPrimary ?? "#82c2cf")
     readonly property color secondaryColor: Appearance.colors?.colSecondary ?? root.accentColor
     readonly property color tertiaryColor: Appearance.colors?.colTertiary ?? root.accentColor
@@ -330,6 +347,24 @@ Item {
             edgeColors[c] = { "normal": normArr, "dim": dimArr };
         }
         root._edgeStratumColors3D = edgeColors;
+        // Pre-bake unified 2-stratum edge & dimmed-node colors for fast-motion / Power-Saver 3D LOD (zero per-frame Qt.rgba)
+        const fastBack = root._mixColor(acc, bg, 0.56);
+        const fastFront = root._mixColor(acc, bg, 0.90);
+        root._edgeFastColors3D = {
+            "normal": [
+                Qt.rgba(fastBack.r, fastBack.g, fastBack.b, 0.16),
+                Qt.rgba(fastFront.r, fastFront.g, fastFront.b, 0.34)
+            ],
+            "dim": [
+                Qt.rgba(fastBack.r, fastBack.g, fastBack.b, 0.045),
+                Qt.rgba(fastFront.r, fastFront.g, fastFront.b, 0.085)
+            ]
+        };
+        root._dimNodeCols3D = [
+            Qt.rgba(muted.r, muted.g, muted.b, 0.12),
+            Qt.rgba(muted.r, muted.g, muted.b, 0.16),
+            Qt.rgba(muted.r, muted.g, muted.b, 0.22)
+        ];
     }
 
     function clusterColor(groupIdx: int): color {
@@ -350,7 +385,7 @@ Item {
 
     Timer {
         id: _interact3DSettleTimer
-        interval: 130
+        interval: 120
         repeat: false
         onTriggered: {
             if (root._interacting3D) {
@@ -368,11 +403,13 @@ Item {
         _interact3DSettleTimer.restart();
     }
 
-    Timer {
-        id: _coalescePaintTimer
-        interval: 16
-        repeat: false
+    // Vsync-locked single-frame paint coalescer (replaces drifting 16ms Timer so
+    // drag/wheel/orbit updates align 1:1 with display vblank even under Power Saver).
+    FrameAnimation {
+        id: _coalescePaintFrame
+        running: false
         onTriggered: {
+            running = false;
             if (root.canRepaintTheme)
                 root.requestPaint();
         }
@@ -382,29 +419,45 @@ Item {
         root._paintPending = true;
         if (!root.canRepaintTheme)
             return;
-        if (!_coalescePaintTimer.running)
-            _coalescePaintTimer.start();
+        if (!_coalescePaintFrame.running)
+            _coalescePaintFrame.running = true;
     }
 
-    Timer {
-        id: orbitMotionTimer
-        interval: 18
-        repeat: true
+    // Vsync-aligned, delta-time-normalized 3D orbit & inertia driver (zero timer-vs-vsync stutter)
+    FrameAnimation {
+        id: orbitMotionAnim
         running: root.is3D && root.visible && root.canRepaintTheme && (
             (root.autoRotate3D && !graphMouse.pressed)
             || Math.abs(root._velYaw) > 0.00035
             || Math.abs(root._velPitch) > 0.00035
         )
         onTriggered: {
+            const dt = Math.max(0.004, Math.min(0.050, frameTime));
             const hasInertia = Math.abs(root._velYaw) > 0.00035 || Math.abs(root._velPitch) > 0.00035;
+            // In Power Saver during calm passive auto-orbit on dense vaults, pace smoothly at ~30fps
+            // while keeping active drag/inertia at full vsync frame rate.
+            if (!hasInertia && root.isPowerSaving && root.nodePositions.length > 350) {
+                root._orbitFrameAcc += dt;
+                if (root._orbitFrameAcc < 0.030)
+                    return;
+                const stepScale = Math.max(0.25, Math.min(3.0, root._orbitFrameAcc / 0.016667));
+                root._orbitFrameAcc = 0.0;
+                if (root.autoRotate3D && !graphMouse.pressed)
+                    root.rotYaw += 0.0032 * stepScale;
+                root.requestPaint();
+                return;
+            }
+            root._orbitFrameAcc = 0.0;
+            const dtScale = Math.max(0.25, Math.min(3.0, dt / 0.016667));
             if (root.autoRotate3D && !graphMouse.pressed) {
-                root.rotYaw += 0.0032;
+                root.rotYaw += 0.0032 * dtScale;
             }
             if (hasInertia) {
-                root.rotYaw += root._velYaw;
-                root.rotPitch = Math.max(-1.42, Math.min(1.42, root.rotPitch + root._velPitch));
-                root._velYaw *= 0.84;
-                root._velPitch *= 0.84;
+                root.rotYaw += root._velYaw * dtScale;
+                root.rotPitch = Math.max(-1.42, Math.min(1.42, root.rotPitch + root._velPitch * dtScale));
+                const damp = Math.pow(0.84, dtScale);
+                root._velYaw *= damp;
+                root._velPitch *= damp;
                 if (Math.abs(root._velYaw) <= 0.00035) root._velYaw = 0.0;
                 if (Math.abs(root._velPitch) <= 0.00035) root._velPitch = 0.0;
                 root.mark3DInteracting();
@@ -456,6 +509,27 @@ Item {
         }
     }
 
+    function _currentElectricViewSig(): string {
+        return `${Math.round(root.zoom * 100)}|${Math.round(root.panX)}|${Math.round(root.panY)}|${Math.round(root.width)}x${Math.round(root.height)}|${root.nodePositions.length}|${root.hoveredIndex}`;
+    }
+
+    function _maybeRepaintElectric(forceProbe: bool): void {
+        if (!root.electricCurrentActive || (root.is3D && root._interacting3D))
+            return;
+        if (root._electricHasVisibleEdges) {
+            electricCanvas.requestPaint();
+            return;
+        }
+        const sig = root._currentElectricViewSig();
+        const nowMs = Date.now();
+        if (forceProbe || sig !== root._electricEmptyViewSig || (nowMs - root._lastElectricEmptyProbeMs >= 650)) {
+            root._electricEmptyViewSig = sig;
+            root._lastElectricEmptyProbeMs = nowMs;
+            root._electricHasVisibleEdges = true;
+            electricCanvas.requestPaint();
+        }
+    }
+
     function requestPaint(): void {
         root._paintPending = true;
         if (!root.canRepaintTheme)
@@ -467,8 +541,7 @@ Item {
         }
         staggerPaintTimer.stop();
         graphCanvas.requestPaint();
-        if (root.electricCurrentActive && !(root.is3D && root._interacting3D))
-            electricCanvas.requestPaint();
+        root._maybeRepaintElectric(false);
     }
 
     function _baseRadiusFactor(n: var): real {
@@ -1032,16 +1105,66 @@ Item {
     readonly property bool hostSettled: root.workspace ? Boolean(root.workspace.transitionSettled) : true
     readonly property bool hostSurfaceActive: Boolean(root.workspace ? root.workspace.surfaceActive : true)
     readonly property bool canRepaintTheme: root.visible && root.hostOpen && root.hostSurfaceActive && root.hostSettled
+    // Estimate the un-clamped screen radius (in logical px) of traveling pulse dots at
+    // current viewport size, node density, and zoom. Below ~0.72px the pulse is sub-pixel /
+    // imperceptible to the human eye, so we hide electricCanvas and pause its timer completely.
+    readonly property real _estimatedElectricDotRadius: {
+        const minDim = Math.min(root.width, root.height);
+        if (minDim < 110)
+            return 0.0;
+        const pad = (root.isLocal || root.nodePositions.length <= 8)
+            ? (root.compact ? 28 : 34)
+            : (root.compact ? 8 : 18);
+        const availW = Math.max(40, root.width - pad * 2);
+        const availH = Math.max(40, root.height - pad * 2);
+        const geomDim = Math.sqrt(availW * availH);
+        const refDim = root.compact ? 260.0 : 640.0;
+        const nLen = Math.max(1, root.nodePositions.length);
+        const densityFactor = (!root.isLocal && nLen > 150)
+            ? Math.max(0.54, Math.min(1.0, Math.pow(150.0 / nLen, 0.24)))
+            : 1.0;
+        const sizeScale = Math.max(0.52, Math.min(1.08, Math.sqrt(geomDim / refDim))) * densityFactor;
+        const typicalBaseR = root.isLocal
+            ? (root.compact ? 2.5 : 3.3)
+            : (root.compact ? 0.95 : 1.35);
+        return typicalBaseR * sizeScale * root._zoomRadiusScale(root.zoom) * 0.44;
+    }
+    readonly property bool electricPerceptible: {
+        const minDim = Math.min(root.width, root.height);
+        if (minDim < 110)
+            return false;
+        const nLen = root.nodePositions.length;
+        if (root.isLocal)
+            return root.zoom >= 0.65 && root._estimatedElectricDotRadius >= 0.65;
+        // Dense vault graph zoomed far out or shrunk into compact card: hide imperceptible dots
+        if (nLen > 40 && root.zoom < 0.82)
+            return false;
+        if (root.compact && nLen > 50)
+            return root.zoom >= 1.85 || (root.hoveredIndex >= 0 && root.zoom >= 1.35);
+        if (nLen > 80 && root._estimatedElectricDotRadius < 0.55)
+            return false;
+        return root._estimatedElectricDotRadius >= 0.50;
+    }
     readonly property bool electricCurrentActive: root.electricCurrentEnabled
+        && root.electricPerceptible
         && root.canRepaintTheme
         && root.resolvedEdges.length > 0
         && root.width > 10 && root.height > 10
+        && !(root.is3D && root._interacting3D)
         && !(Config.options?.performance?.reduceAnimations ?? false)
         && !(Config.options?.appearance?.reduceAnimations ?? false)
         && !(GlobalStates?.wallpaperSelectorOpen ?? false)
         && !(GlobalStates?.screenLocked ?? false)
         && !(GlobalStates?.regionSelectorOpen ?? false)
         && !(GlobalStates?.annotationEditorOpen ?? false)
+    onElectricCurrentActiveChanged: {
+        if (!root.electricCurrentActive) {
+            root.lastElectricArcCount = 0;
+        } else {
+            root._electricHasVisibleEdges = true;
+            electricCanvas.requestPaint();
+        }
+    }
 
     function _triggerThemeRepaint(): void {
         if (!root.canRepaintTheme) {
@@ -1081,19 +1204,19 @@ Item {
         }
     }
 
-    // Calm 24fps EQ-DSP electric pulse driver (ONLY runs on separate lightweight electricCanvas,
-    // strictly paused when hidden/closed/unsettled/reduced-motion/wallpaper-preview)
+    // Calm EQ-DSP electric pulse driver (ONLY runs when pulses are human-eye perceptible and
+    // at least one edge is large enough to show a dot; automatically sleeps at 0% CPU otherwise).
     Timer {
         id: electricAnimTimer
-        interval: (Config.options?.performance?.lowPower ?? false) ? 75 : 42
+        interval: root.isPowerSaving ? 80 : 42
         repeat: true
-        running: root.electricCurrentActive
+        running: root.electricCurrentActive && root._electricHasVisibleEdges
         onTriggered: {
-            if (!root.electricCurrentActive) {
+            if (!root.electricCurrentActive || !root._electricHasVisibleEdges) {
                 stop();
                 return;
             }
-            root._electricPhase = (root._electricPhase + 0.042) % 1000.0;
+            root._electricPhase = (root._electricPhase + (root.isPowerSaving ? 0.068 : 0.042)) % 1000.0;
             electricCanvas.requestPaint();
         }
     }
@@ -1229,11 +1352,12 @@ Item {
                 root._cachedProjDataRef = root.graphData;
 
                 // Subtle 3D spatial depth backdrop + cached equatorial horizon guide
+                // Skipped during active 3D motion / Power-Saver interaction so frame times stay silky smooth.
                 const gcx = m.cx * root.zoom + root.panX;
                 const gcy = m.cy * root.zoom + root.panY;
                 const gr = m.radius3D * 0.96 * root.zoom;
                 if (gr > 18 && gr < Math.max(width, height) * 4) {
-                    if (!root._interacting3D) {
+                    if (!root._fast3DPass) {
                         const bgGlow = ctx.createRadialGradient(gcx, gcy, gr * 0.06, gcx, gcy, gr * 1.18);
                         bgGlow.addColorStop(0.0, Qt.rgba(acc.r, acc.g, acc.b, 0.055));
                         bgGlow.addColorStop(0.72, Qt.rgba(acc.r, acc.g, acc.b, 0.018));
@@ -1244,7 +1368,7 @@ Item {
                         ctx.fill();
                     }
 
-                    if (root.zoom < 2.2) {
+                    if (root.zoom < 2.2 && !(root._interacting3D && root.isPowerSaving)) {
                         if (!root._trigCos64 || !root._trigSin64) {
                             const c64 = new Float32Array(65);
                             const s64 = new Float32Array(65);
@@ -1310,61 +1434,61 @@ Item {
             const eSrc = root._edgeSrcBuf;
             const eDst = root._edgeDstBuf;
 
-            // 1. Draw base edges (1-pass zero-alloc 3 depth strata in 3D; fast batched in 2D)
+            // 1. Draw base edges (adaptive 2-stratum fast LOD during 3D motion/Power-Saver; crisp 3x13 settled)
             if (mode3D) {
-                const eClust = root._edgeClusterBuf;
-                const edgeCols = root._edgeStratumColors3D;
-                let scratch = root._edgeScratchPts;
-                if (!scratch || scratch.length !== 39) {
-                    scratch = new Array(39);
-                    for (let s = 0; s < 39; ++s) scratch[s] = [];
-                    root._edgeScratchPts = scratch;
-                } else {
-                    for (let s = 0; s < 39; ++s) scratch[s].length = 0;
-                }
-                const minLen2 = root._interacting3D ? 1.8 : 0.6;
-                for (let e = 0; e < eLen; ++e) {
-                    const sIdx = eSrc[e];
-                    const tIdx = eDst[e];
-                    if (activeIdx >= 0 && (sIdx === activeIdx || tIdx === activeIdx))
-                        continue;
-                    const x0 = sxBuf[sIdx];
-                    const y0 = syBuf[sIdx];
-                    const x1 = sxBuf[tIdx];
-                    const y1 = syBuf[tIdx];
-                    if ((x0 < -24 && x1 < -24) || (x0 > width + 24 && x1 > width + 24)
-                            || (y0 < -24 && y1 < -24) || (y0 > height + 24 && y1 > height + 24))
-                        continue;
-                    const edx = x1 - x0;
-                    const edy = y1 - y0;
-                    if (edx * edx + edy * edy < minLen2)
-                        continue;
-                    const avgZ = (zdBuf[sIdx] + zdBuf[tIdx]) * 0.5;
-                    const st = avgZ < -0.22 ? 0 : (avgZ < 0.28 ? 1 : 2);
-                    const cid = (eClust && e < eClust.length) ? eClust[e] : -1;
-                    const cSlot = cid >= 0 ? (cid % 12) : 12;
-                    scratch[st * 13 + cSlot].push(x0, y0, x1, y1);
-                }
-                const lineWidths = [0.45, 0.68, 0.98];
-                for (let st = 0; st < 3; ++st) {
-                    ctx.lineWidth = lineWidths[st];
-                    const baseOff = st * 13;
-                    for (let cSlot = 0; cSlot < 13; ++cSlot) {
-                        const pts = scratch[baseOff + cSlot];
+                const useMergedFastEdges = root._ultraFast3DPass || (root.isPowerSaving && eLen > 240);
+                if (useMergedFastEdges) {
+                    let fScratch = root._edgeFastScratchPts;
+                    if (!fScratch || fScratch.length !== 2) {
+                        fScratch = [[], []];
+                        root._edgeFastScratchPts = fScratch;
+                    } else {
+                        fScratch[0].length = 0;
+                        fScratch[1].length = 0;
+                    }
+                    const minLen2 = (root._interacting3D && root.isPowerSaving)
+                        ? 16.0
+                        : (root._interacting3D ? 6.25 : 4.0);
+                    const thinDeepBack = root._interacting3D && root.isPowerSaving && eLen > 1200;
+                    for (let e = 0; e < eLen; ++e) {
+                        const sIdx = eSrc[e];
+                        const tIdx = eDst[e];
+                        if (activeIdx >= 0 && (sIdx === activeIdx || tIdx === activeIdx))
+                            continue;
+                        const avgZ = (zdBuf[sIdx] + zdBuf[tIdx]) * 0.5;
+                        if (thinDeepBack && avgZ < -0.35 && (e & 1) === 1)
+                            continue;
+                        const x0 = sxBuf[sIdx];
+                        const y0 = syBuf[sIdx];
+                        const x1 = sxBuf[tIdx];
+                        const y1 = syBuf[tIdx];
+                        if ((x0 < -24 && x1 < -24) || (x0 > width + 24 && x1 > width + 24)
+                                || (y0 < -24 && y1 < -24) || (y0 > height + 24 && y1 > height + 24))
+                            continue;
+                        const edx = x1 - x0;
+                        const edy = y1 - y0;
+                        if (edx * edx + edy * edy < minLen2)
+                            continue;
+                        fScratch[avgZ < 0.08 ? 0 : 1].push(x0, y0, x1, y1);
+                    }
+                    const fastCols = root._edgeFastColors3D;
+                    const fastWidths = [0.55, 0.90];
+                    for (let st = 0; st < 2; ++st) {
+                        const pts = fScratch[st];
                         const pLen = pts.length;
                         if (pLen === 0)
                             continue;
-                        if (edgeCols && cSlot < edgeCols.length)
-                            ctx.strokeStyle = activeIdx >= 0 ? edgeCols[cSlot].dim[st] : edgeCols[cSlot].normal[st];
-                        else
-                            ctx.strokeStyle = acc;
+                        ctx.lineWidth = fastWidths[st];
+                        ctx.strokeStyle = fastCols
+                            ? (activeIdx >= 0 ? fastCols.dim[st] : fastCols.normal[st])
+                            : acc;
                         ctx.beginPath();
                         let segs = 0;
                         for (let p = 0; p < pLen; p += 4) {
                             ctx.moveTo(pts[p], pts[p + 1]);
                             ctx.lineTo(pts[p + 2], pts[p + 3]);
                             segs += 1;
-                            if (segs === 256) {
+                            if (segs === 384) {
                                 ctx.stroke();
                                 ctx.beginPath();
                                 segs = 0;
@@ -1372,6 +1496,69 @@ Item {
                         }
                         if (segs > 0)
                             ctx.stroke();
+                    }
+                } else {
+                    const eClust = root._edgeClusterBuf;
+                    const edgeCols = root._edgeStratumColors3D;
+                    let scratch = root._edgeScratchPts;
+                    if (!scratch || scratch.length !== 39) {
+                        scratch = new Array(39);
+                        for (let s = 0; s < 39; ++s) scratch[s] = [];
+                        root._edgeScratchPts = scratch;
+                    } else {
+                        for (let s = 0; s < 39; ++s) scratch[s].length = 0;
+                    }
+                    const minLen2 = root._interacting3D ? 4.0 : 0.6;
+                    for (let e = 0; e < eLen; ++e) {
+                        const sIdx = eSrc[e];
+                        const tIdx = eDst[e];
+                        if (activeIdx >= 0 && (sIdx === activeIdx || tIdx === activeIdx))
+                            continue;
+                        const x0 = sxBuf[sIdx];
+                        const y0 = syBuf[sIdx];
+                        const x1 = sxBuf[tIdx];
+                        const y1 = syBuf[tIdx];
+                        if ((x0 < -24 && x1 < -24) || (x0 > width + 24 && x1 > width + 24)
+                                || (y0 < -24 && y1 < -24) || (y0 > height + 24 && y1 > height + 24))
+                            continue;
+                        const edx = x1 - x0;
+                        const edy = y1 - y0;
+                        if (edx * edx + edy * edy < minLen2)
+                            continue;
+                        const avgZ = (zdBuf[sIdx] + zdBuf[tIdx]) * 0.5;
+                        const st = avgZ < -0.22 ? 0 : (avgZ < 0.28 ? 1 : 2);
+                        const cid = (eClust && e < eClust.length) ? eClust[e] : -1;
+                        const cSlot = cid >= 0 ? (cid % 12) : 12;
+                        scratch[st * 13 + cSlot].push(x0, y0, x1, y1);
+                    }
+                    const lineWidths = [0.45, 0.68, 0.98];
+                    for (let st = 0; st < 3; ++st) {
+                        ctx.lineWidth = lineWidths[st];
+                        const baseOff = st * 13;
+                        for (let cSlot = 0; cSlot < 13; ++cSlot) {
+                            const pts = scratch[baseOff + cSlot];
+                            const pLen = pts.length;
+                            if (pLen === 0)
+                                continue;
+                            if (edgeCols && cSlot < edgeCols.length)
+                                ctx.strokeStyle = activeIdx >= 0 ? edgeCols[cSlot].dim[st] : edgeCols[cSlot].normal[st];
+                            else
+                                ctx.strokeStyle = acc;
+                            ctx.beginPath();
+                            let segs = 0;
+                            for (let p = 0; p < pLen; p += 4) {
+                                ctx.moveTo(pts[p], pts[p + 1]);
+                                ctx.lineTo(pts[p + 2], pts[p + 3]);
+                                segs += 1;
+                                if (segs === 256) {
+                                    ctx.stroke();
+                                    ctx.beginPath();
+                                    segs = 0;
+                                }
+                            }
+                            if (segs > 0)
+                                ctx.stroke();
+                        }
                     }
                 }
             } else {
@@ -1462,19 +1649,24 @@ Item {
                         }
                     }
                 }
-                const zMins = [-99.0, -0.22, 0.28];
-                const zMaxs = [-0.22, 0.28, 99.0];
+                const useTwoStrataNodes = root._ultraFast3DPass;
+                const fastDotMaxR = root._fast3DPass ? 1.85 : 1.10;
+                const zMins = useTwoStrataNodes ? [-99.0, 0.12] : [-99.0, -0.22, 0.28];
+                const zMaxs = useTwoStrataNodes ? [0.12, 99.0] : [-0.22, 0.28, 99.0];
+                const strataCount = zMins.length;
                 if (!root.isLocal && activeIdx < 0) {
-                    // Pass 0 (3D Fast): 3-stratum batched color-bucket fills with pre-baked depth fog (zero Array.from / sort!)
+                    // Pass 0 (3D Fast): batched color-bucket fills with pre-baked depth fog (2 strata under motion/Power-Saver, 3 settled)
                     const buckets = root._staticColorBuckets;
-                    for (let st = 0; st < 3; ++st) {
+                    for (let st = 0; st < strataCount; ++st) {
                         const zLo = zMins[st];
                         const zHi = zMaxs[st];
                         for (let bk = 0; bk < buckets.length; ++bk) {
                             const bucket = buckets[bk];
                             const idxs = bucket.indices;
                             const bLen = idxs.length;
-                            ctx.fillStyle = st === 0 ? bucket.s0Col : (st === 1 ? bucket.s1Col : bucket.s2Col);
+                            ctx.fillStyle = useTwoStrataNodes
+                                ? (st === 0 ? bucket.s1Col : bucket.s2Col)
+                                : (st === 0 ? bucket.s0Col : (st === 1 ? bucket.s1Col : bucket.s2Col));
                             ctx.beginPath();
                             let queued = 0;
                             for (let j = 0; j < bLen; ++j) {
@@ -1489,7 +1681,7 @@ Item {
                                 if (px < -cullPad || px > width + cullPad || py < -cullPad || py > height + cullPad)
                                     continue;
                                 const r = baseRadBuf[ni] * scaleMul * scBuf[ni];
-                                if (r <= 1.05) {
+                                if (r <= fastDotMaxR) {
                                     ctx.rect(px - r, py - r, r * 2.0, r * 2.0);
                                 } else {
                                     ctx.moveTo(px + r, py);
@@ -1516,15 +1708,17 @@ Item {
                         fgList.push(curNodeIdx);
                 } else if (!root.isLocal && activeIdx >= 0) {
                     const degBuf = root._nodeDegBuf;
-                    const dimCols = [
-                        Qt.rgba(muted.r, muted.g, muted.b, 0.12),
-                        Qt.rgba(muted.r, muted.g, muted.b, 0.16),
-                        Qt.rgba(muted.r, muted.g, muted.b, 0.22)
-                    ];
-                    for (let st = 0; st < 3; ++st) {
+                    const dimCols = (root._dimNodeCols3D && root._dimNodeCols3D.length === 3)
+                        ? root._dimNodeCols3D
+                        : [
+                            Qt.rgba(muted.r, muted.g, muted.b, 0.12),
+                            Qt.rgba(muted.r, muted.g, muted.b, 0.16),
+                            Qt.rgba(muted.r, muted.g, muted.b, 0.22)
+                        ];
+                    for (let st = 0; st < strataCount; ++st) {
                         const zLo = zMins[st];
                         const zHi = zMaxs[st];
-                        ctx.fillStyle = dimCols[st];
+                        ctx.fillStyle = useTwoStrataNodes ? dimCols[st === 0 ? 1 : 2] : dimCols[st];
                         ctx.beginPath();
                         let queued = 0;
                         for (let i = 0; i < nLen; ++i) {
@@ -1536,8 +1730,7 @@ Item {
                                 || Boolean(nodes[i]?.isTagNode)
                                 || ((degBuf && i < degBuf.length ? degBuf[i] : Number(nodes[i]?.degree ?? 0)) >= 10));
                             if (isFg) {
-                                if (st === 0 || (nz >= zLo && nz < zHi))
-                                    fgList.push(i);
+                                fgList.push(i);
                                 continue;
                             }
                             const px = sxBuf[i];
@@ -1545,7 +1738,7 @@ Item {
                             if (px < -cullPad || px > width + cullPad || py < -cullPad || py > height + cullPad)
                                 continue;
                             const r = baseRadBuf[i] * scaleMul * scBuf[i];
-                            if (r <= 1.05) {
+                            if (r <= fastDotMaxR) {
                                 ctx.rect(px - r, py - r, r * 2.0, r * 2.0);
                             } else {
                                 ctx.moveTo(px + r, py);
@@ -1561,16 +1754,13 @@ Item {
                         if (queued > 0)
                             ctx.fill();
                     }
-                    // Deduplicate fgList if node wasn't added cleanly above: only add once in stride st loop
                 } else {
                     for (let i = 0; i < nLen; ++i)
                         fgList.push(i);
                 }
 
-                // Deduplicate in activeIdx branch if needed? No, nz in [zLo, zHi) partitions 3 strata disjointly,
-                // EXCEPT st===0 test pushed only when in that stratum! So fgList already contains each index at most ONCE!
                 fgList.sort((a, b) => zdBuf[a] - zdBuf[b]);
-                let gradBudget = root._interacting3D ? 0 : 24;
+                let gradBudget = root._fast3DPass ? 0 : (root.isPowerSaving ? 12 : 24);
                 for (let oi = 0; oi < fgList.length; ++oi) {
                     const i = fgList[oi];
                     const n = nodes[i];
@@ -1783,7 +1973,7 @@ Item {
                         continue;
                     const isTagHub = Boolean(n.isTagNode);
                     if (interacting3D) {
-                        if (isHovered || isCurrent || isTagHub)
+                        if (isHovered || isCurrent || (!root.isPowerSaving && isTagHub))
                             labelList.push(i);
                         continue;
                     }
@@ -1906,11 +2096,11 @@ Item {
                 ctx.fillText(label, lx, ly);
             }
             if (root.electricCurrentActive && !(mode3D && root._interacting3D) && root.lastElectricArcCount === 0)
-                electricCanvas.requestPaint();
+                root._maybeRepaintElectric(false);
         }
     }
 
-    // ─── Traveling Dot Pulse Overlay Canvas (Strictly 1 dot in Local Graph, 1 dot per cluster in Vault Graph, center -> note -> center, sized smaller than notes) ───
+    // ─── Traveling Dot Pulse Overlay Canvas (Perceptibility-gated: hidden when zoomed out / too small to see) ───
     Canvas {
         id: electricCanvas
         anchors.fill: parent
@@ -1919,14 +2109,20 @@ Item {
 
         function _drawTravelDot(ctx, cx, cy, nx, ny, rCenter, rNote, col, roundTripT, compactScale, fadeAlpha) {
             const alpha = Math.max(0.0, Math.min(1.0, fadeAlpha));
-            if (alpha < 0.04) return false;
+            if (alpha < 0.16) return false;
             const fullDx = nx - cx;
             const fullDy = ny - cy;
             const fullDist = Math.sqrt(fullDx * fullDx + fullDy * fullDy);
             const padA = Math.max(0.8, rCenter * 0.75);
             const padB = Math.max(0.8, rNote * 0.75);
             const span = fullDist - padA - padB;
-            if (span < 4.0) return false;
+            // Require a genuinely visible travel span (>= 16px) so cramped zoomed-out edges stay clean
+            if (span < 16.0) return false;
+
+            const minNoteR = Math.min(rCenter, rNote);
+            // Check un-clamped natural pulse radius: hide sub-pixel dots the human eye cannot see
+            const naturalDotR = Math.min(minNoteR * 0.44, 1.32 * compactScale);
+            if (naturalDotR < 0.52) return false;
 
             const ux = fullDx / fullDist;
             const uy = fullDy / fullDist;
@@ -1941,9 +2137,8 @@ Item {
             const px = startX + (endX - startX) * u;
             const py = startY + (endY - startY) * u;
 
-            const minNoteR = Math.max(0.45, Math.min(rCenter, rNote));
-            const dotR = Math.max(0.32, Math.min(minNoteR * 0.44, 1.32 * compactScale));
-            const haloR = Math.min(minNoteR * 0.80, dotR * 1.95);
+            const dotR = naturalDotR;
+            const haloR = Math.min(Math.max(0.45, minNoteR) * 0.80, dotR * 1.95);
 
             ctx.beginPath();
             ctx.arc(px, py, haloR, 0, Math.PI * 2);
@@ -1986,6 +2181,7 @@ Item {
             const eLen = root.resolvedEdges.length;
             if (!nodes || !sxBuf || !syBuf || !eSrc || !eDst || eLen <= 0) {
                 root.lastElectricArcCount = 0;
+                root._electricHasVisibleEdges = false;
                 return;
             }
 
@@ -2000,7 +2196,7 @@ Item {
             const nodeScreenRadius = function(idx) {
                 const b = (baseRadBuf && idx < baseRadBuf.length) ? baseRadBuf[idx] : 1.4;
                 const d = (mode3D && scBuf && idx < scBuf.length) ? scBuf[idx] : 1.0;
-                return Math.max(0.45, b * scaleMul * d);
+                return Math.max(0.0, b * scaleMul * d);
             };
             const depthAttenuation = function(sIdx, tIdx) {
                 if (!mode3D || !zdBuf) return 1.0;
@@ -2011,6 +2207,7 @@ Item {
                 const sIdx = eSrc[e];
                 const tIdx = eDst[e];
                 if (isOrph && (isOrph[sIdx] === 1 || isOrph[tIdx] === 1)) return false;
+                if (mode3D && scBuf && Math.min(scBuf[sIdx], scBuf[tIdx]) < 0.74) return false;
                 const x0 = sxBuf[sIdx], y0 = syBuf[sIdx];
                 const x1 = sxBuf[tIdx], y1 = syBuf[tIdx];
                 if ((x0 < -16 && x1 < -16) || (x0 > width + 16 && x1 > width + 16)
@@ -2018,9 +2215,12 @@ Item {
                     return false;
                 const rA = nodeScreenRadius(sIdx);
                 const rB = nodeScreenRadius(tIdx);
+                if (Math.min(rA, rB) * 0.44 < 0.52)
+                    return false;
                 const dx = x1 - x0;
                 const dy = y1 - y0;
-                return (dx * dx + dy * dy) > ((rA + rB + 6.0) * (rA + rB + 6.0));
+                const minDist = rA * 0.75 + rB * 0.75 + 16.0;
+                return (dx * dx + dy * dy) >= (minDist * minDist);
             };
             const hubScore = function(idx) {
                 const n = nodes[idx];
@@ -2170,6 +2370,14 @@ Item {
                 }
             }
             root.lastElectricArcCount = drawn;
+            // Auto-pause electricAnimTimer at 0% CPU whenever zero edges are human-eye perceptible
+            if (drawn > 0) {
+                root._electricHasVisibleEdges = true;
+            } else {
+                root._electricEmptyViewSig = root._currentElectricViewSig();
+                root._lastElectricEmptyProbeMs = Date.now();
+                root._electricHasVisibleEdges = false;
+            }
         }
     }
 
