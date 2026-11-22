@@ -19,19 +19,90 @@ Rectangle {
     property string linkSourceNodeId: ""
     property bool dirty: false
     property int _nodeSeq: 1
+    property bool notePickerOpen: false
+    property string notePickerQuery: ""
+    readonly property var pickerNotes: {
+        const q = String(canvasRoot.notePickerQuery ?? "").trim().toLowerCase();
+        const seen = {};
+        const out = [];
+        const addItem = item => {
+            if (!item)
+                return;
+            const rel = String(item.relPath ?? "").trim();
+            if (!rel || seen[rel])
+                return;
+            const cat = String(item.category ?? "markdown");
+            if (cat === "canvas" || rel.toLowerCase().endsWith(".canvas"))
+                return;
+            const title = String(item.title || rel.split("/").pop().replace(/\.md$/i, ""));
+            if (q.length > 0 && title.toLowerCase().indexOf(q) === -1 && rel.toLowerCase().indexOf(q) === -1)
+                return;
+            seen[rel] = true;
+            out.push({ "relPath": rel, "title": title });
+        };
+        const recent = canvasRoot.nexus?.recentNotes ?? [];
+        for (let i = 0; i < recent.length; ++i)
+            addItem(recent[i]);
+        const flat = canvasRoot.nexus?.flatFiles ?? [];
+        for (let i = 0; i < flat.length && out.length < 80; ++i)
+            addItem(flat[i]);
+        return out;
+    }
+
+    Timer {
+        id: canvasAutosaveTimer
+        interval: 1200
+        repeat: false
+        onTriggered: canvasRoot.saveCanvas()
+    }
+
+    Timer {
+        id: dotGridRepaintTimer
+        interval: 32
+        repeat: false
+        onTriggered: dotGridCanvas.requestPaint()
+    }
+
+    Timer {
+        id: edgeRepaintTimer
+        interval: 16
+        repeat: false
+        onTriggered: edgeCanvas.requestPaint()
+    }
+
+    focus: true
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Escape && canvasRoot.notePickerOpen) {
+            canvasRoot.notePickerOpen = false;
+            canvasRoot.notePickerQuery = "";
+            event.accepted = true;
+            return;
+        }
+        if ((event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace)
+            && canvasRoot.selectedNodeId.length > 0
+            && canvasRoot.editingNodeId.length === 0) {
+            canvasRoot.deleteSelectedNode();
+            canvasAutosaveTimer.restart();
+            event.accepted = true;
+        }
+    }
 
     color: settledColors?.colLayer0 ?? Appearance.colors.colLayer0
     radius: 12
     clip: true
 
     readonly property var doc: nexus?.currentDoc ?? null
+    property string loadedCanvasPath: ""
 
     onDocChanged: reloadFromDoc()
     Component.onCompleted: reloadFromDoc()
 
     function reloadFromDoc(): void {
-        if (!doc || String(doc.category ?? "") !== "canvas")
+        if (!doc || String(doc.category ?? "") !== "canvas") {
+            canvasAutosaveTimer.stop();
             return;
+        }
+        loadedCanvasPath = String(doc.relPath ?? nexus?.currentPath ?? "");
         try {
             const parsed = JSON.parse(String(doc.content || "{}"));
             canvasNodes = Array.isArray(parsed.nodes) ? parsed.nodes.map(n => Object.assign({}, n)) : [];
@@ -71,16 +142,48 @@ Rectangle {
         edgeCanvas.requestPaint();
     }
 
-    function addCard(kind: string): void {
+    function addNoteCard(relPath: string): void {
+        const cleaned = String(relPath ?? "").trim();
+        if (!cleaned)
+            return;
+        const cx = (viewport.width * 0.5 - panX) / zoom - 110 + (canvasNodes.length % 5) * 24;
+        const cy = (viewport.height * 0.5 - panY) / zoom - 55 + (canvasNodes.length % 4) * 24;
+        const nid = "node-" + Date.now() + "-" + (_nodeSeq++);
+        const obj = { "id": nid, "type": "file", "file": cleaned, "x": cx, "y": cy, "width": 240, "height": 110, "color": "4" };
+        const next = canvasNodes.slice();
+        next.push(obj);
+        canvasNodes = next;
+        selectedNodeId = nid;
+        notePickerOpen = false;
+        notePickerQuery = "";
+        dirty = true;
+        canvasAutosaveTimer.restart();
+        edgeCanvas.requestPaint();
+    }
+
+    function addCard(kind: string, filePath = ""): void {
+        if (kind === "file") {
+            const explicit = String(filePath ?? "").trim();
+            if (explicit.length > 0) {
+                addNoteCard(explicit);
+                return;
+            }
+            notePickerOpen = !notePickerOpen;
+            if (notePickerOpen) {
+                notePickerQuery = "";
+                Qt.callLater(() => {
+                    if (notePickerSearchField && notePickerPopup.visible)
+                        notePickerSearchField.forceActiveFocus();
+                });
+            }
+            return;
+        }
         const cx = (viewport.width * 0.5 - panX) / zoom - 110 + (canvasNodes.length % 5) * 24;
         const cy = (viewport.height * 0.5 - panY) / zoom - 55 + (canvasNodes.length % 4) * 24;
         const nid = "node-" + Date.now() + "-" + (_nodeSeq++);
         let obj;
         if (kind === "group") {
             obj = { "id": nid, "type": "group", "label": "Group", "x": cx - 40, "y": cy - 30, "width": 360, "height": 220, "color": "5" };
-        } else if (kind === "file") {
-            const firstNote = (nexus?.recentNotes?.[0]?.relPath) ?? (nexus?.flatFiles?.[0]?.relPath) ?? "";
-            obj = { "id": nid, "type": "file", "file": String(firstNote), "x": cx, "y": cy, "width": 240, "height": 110, "color": "4" };
         } else {
             obj = { "id": nid, "type": "text", "text": "New idea...", "x": cx, "y": cy, "width": 220, "height": 110, "color": "4" };
         }
@@ -123,9 +226,15 @@ Rectangle {
     }
 
     function saveCanvas(): void {
-        if (!nexus || !nexus.currentPath)
+        if (!nexus)
             return;
-        nexus.saveCanvasFile(nexus.currentPath, { "nodes": canvasNodes, "edges": canvasEdges });
+        const cur = String(nexus.currentPath ?? "");
+        const target = cur.toLowerCase().endsWith(".canvas")
+            ? cur
+            : (loadedCanvasPath.toLowerCase().endsWith(".canvas") ? loadedCanvasPath : "");
+        if (!target)
+            return;
+        nexus.saveCanvasFile(target, { "nodes": canvasNodes, "edges": canvasEdges });
         dirty = false;
     }
 
@@ -212,6 +321,34 @@ Rectangle {
                     }
                 }
 
+                Repeater {
+                    model: ["#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899"]
+                    delegate: Rectangle {
+                        required property string modelData
+                        visible: canvasRoot.selectedNodeId.length > 0
+                        height: 18; width: 18; radius: 9
+                        color: modelData
+                        border.width: 1
+                        border.color: "#ffffff"
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                const nodes = canvasRoot.canvasNodes.slice();
+                                for (let i = 0; i < nodes.length; ++i) {
+                                    if (nodes[i].id === canvasRoot.selectedNodeId) {
+                                        nodes[i] = Object.assign({}, nodes[i], { "color": modelData });
+                                        break;
+                                    }
+                                }
+                                canvasRoot.canvasNodes = nodes;
+                                canvasRoot.dirty = true;
+                                canvasAutosaveTimer.restart();
+                            }
+                        }
+                    }
+                }
+
                 Rectangle {
                     visible: canvasRoot.selectedNodeId.length > 0
                     height: 28; width: 52; radius: 8
@@ -271,6 +408,7 @@ Rectangle {
                     lastY = mouse.y;
                     canvasRoot.selectedNodeId = "";
                     canvasRoot.editingNodeId = "";
+                    canvasRoot.notePickerOpen = false;
                 }
                 onDoubleClicked: canvasRoot.addCard("text")
                 onPositionChanged: mouse => {
@@ -279,9 +417,11 @@ Rectangle {
                         canvasRoot.panY += mouse.y - lastY;
                         lastX = mouse.x;
                         lastY = mouse.y;
-                        edgeCanvas.requestPaint();
+                        if (!edgeRepaintTimer.running)
+                            edgeRepaintTimer.start();
                     }
                 }
+                onReleased: edgeCanvas.requestPaint()
                 onWheel: wheel => {
                     const factor = wheel.angleDelta.y > 0 ? 1.12 : 0.89;
                     const oldZ = canvasRoot.zoom;
@@ -292,13 +432,51 @@ Rectangle {
                         canvasRoot.zoom = newZ;
                         canvasRoot.panX = wheel.x - wx * newZ;
                         canvasRoot.panY = wheel.y - wy * newZ;
-                        edgeCanvas.requestPaint();
+                        if (!edgeRepaintTimer.running)
+                            edgeRepaintTimer.start();
                     }
                     wheel.accepted = true;
                 }
             }
 
-            // Grid + edge arrows layer
+            // Cached dot-grid layer: painted once per zoom/size/theme change (throttled)
+            // and GPU-translated on panX/panY so panning never repaints thousands of dots.
+            Canvas {
+                id: dotGridCanvas
+                readonly property real dotStep: Math.max(12, 32 * canvasRoot.zoom)
+                readonly property bool showDots: (32 * canvasRoot.zoom) >= 12
+                visible: showDots
+                x: ((canvasRoot.panX % dotStep) + dotStep) % dotStep - dotStep
+                y: ((canvasRoot.panY % dotStep) + dotStep) % dotStep - dotStep
+                width: Math.ceil(viewport.width + dotStep * 2)
+                height: Math.ceil(viewport.height + dotStep * 2)
+                renderStrategy: Canvas.Threaded
+                renderTarget: Canvas.Image
+                readonly property real _zoom: canvasRoot.zoom
+                readonly property color _dotColor: canvasRoot.settledColors?.colSubtext ?? "#64748b"
+                on_ZoomChanged: dotGridRepaintTimer.restart()
+                on_DotColorChanged: dotGridRepaintTimer.restart()
+                onWidthChanged: dotGridRepaintTimer.restart()
+                onHeightChanged: dotGridRepaintTimer.restart()
+                Component.onCompleted: requestPaint()
+                onPaint: {
+                    const ctx = getContext("2d");
+                    ctx.clearRect(0, 0, width, height);
+                    const step = 32 * canvasRoot.zoom;
+                    if (step < 12)
+                        return;
+                    ctx.fillStyle = String(_dotColor);
+                    ctx.globalAlpha = 0.22;
+                    for (let gx = 0; gx < width; gx += step) {
+                        for (let gy = 0; gy < height; gy += step) {
+                            ctx.fillRect(gx, gy, 1.5, 1.5);
+                        }
+                    }
+                    ctx.globalAlpha = 1.0;
+                }
+            }
+
+            // Dynamic edge arrows layer (repaints on node/edge updates without redrawing dots)
             Canvas {
                 id: edgeCanvas
                 anchors.fill: parent
@@ -312,21 +490,6 @@ Rectangle {
                     const z = canvasRoot.zoom;
                     const px = canvasRoot.panX;
                     const py = canvasRoot.panY;
-
-                    // Subtle dotted grid
-                    const step = 32 * z;
-                    if (step >= 12) {
-                        ctx.fillStyle = String(canvasRoot.settledColors?.colSubtext ?? "#64748b");
-                        ctx.globalAlpha = 0.22;
-                        const ox = ((px % step) + step) % step;
-                        const oy = ((py % step) + step) % step;
-                        for (let x = ox; x < width; x += step) {
-                            for (let y = oy; y < height; y += step) {
-                                ctx.fillRect(x, y, 1.5, 1.5);
-                            }
-                        }
-                        ctx.globalAlpha = 1.0;
-                    }
 
                     const byId = {};
                     for (let i = 0; i < canvasRoot.canvasNodes.length; ++i)
@@ -524,6 +687,153 @@ Rectangle {
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // Inline Vault Note Picker popup for `+ Note`
+            Rectangle {
+                id: notePickerPopup
+                objectName: "canvasNotePickerPopup"
+                visible: canvasRoot.notePickerOpen
+                z: 40
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.margins: 12
+                width: Math.min(340, Math.max(220, viewport.width - 24))
+                height: Math.min(320, Math.max(120, notePickerCol.implicitHeight + 16))
+                radius: 10
+                color: canvasRoot.settledColors?.colLayer1 ?? Appearance.colors.colLayer1
+                border.width: 1
+                border.color: canvasRoot.settledColors?.colLayer0Border ?? Appearance.colors.colLayer0Border
+
+                ColumnLayout {
+                    id: notePickerCol
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 6
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        TextField {
+                            id: notePickerSearchField
+                            objectName: "canvasNotePickerSearch"
+                            Layout.fillWidth: true
+                            implicitHeight: 30
+                            placeholderText: "Pick a vault note..."
+                            color: canvasRoot.settledColors?.colOnLayer1 ?? Appearance.colors.colOnLayer1
+                            placeholderTextColor: canvasRoot.settledColors?.colSubtext ?? Appearance.colors.colSubtext
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            background: Rectangle {
+                                radius: 6
+                                color: canvasRoot.settledColors?.colLayer0 ?? Appearance.colors.colLayer0
+                                border.width: 1
+                                border.color: notePickerSearchField.activeFocus
+                                    ? (canvasRoot.settledColors?.colPrimary ?? Appearance.colors.colPrimary)
+                                    : (canvasRoot.settledColors?.colLayer0Border ?? Appearance.colors.colLayer0Border)
+                            }
+                            onTextChanged: {
+                                if (canvasRoot.notePickerQuery !== text)
+                                    canvasRoot.notePickerQuery = text;
+                            }
+                            Connections {
+                                target: canvasRoot
+                                function onNotePickerQueryChanged(): void {
+                                    if (notePickerSearchField.text !== canvasRoot.notePickerQuery)
+                                        notePickerSearchField.text = canvasRoot.notePickerQuery;
+                                }
+                            }
+                            Keys.onEscapePressed: {
+                                canvasRoot.notePickerOpen = false;
+                                canvasRoot.notePickerQuery = "";
+                            }
+                            Keys.onReturnPressed: {
+                                if (canvasRoot.pickerNotes.length > 0)
+                                    canvasRoot.addNoteCard(canvasRoot.pickerNotes[0].relPath);
+                            }
+                        }
+
+                        Rectangle {
+                            width: 26
+                            height: 26
+                            radius: 6
+                            color: canvasRoot.settledColors?.colLayer2 ?? Appearance.colors.colLayer2
+                            MaterialSymbol {
+                                anchors.centerIn: parent
+                                text: "close"
+                                iconSize: 15
+                                color: canvasRoot.settledColors?.colSubtext ?? Appearance.colors.colSubtext
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    canvasRoot.notePickerOpen = false;
+                                    canvasRoot.notePickerQuery = "";
+                                }
+                            }
+                        }
+                    }
+
+                    ListView {
+                        id: notePickerList
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        implicitHeight: Math.min(250, Math.max(40, contentHeight))
+                        clip: true
+                        spacing: 3
+                        model: canvasRoot.pickerNotes
+                        delegate: Rectangle {
+                            required property var modelData
+                            required property int index
+                            width: notePickerList.width
+                            height: 38
+                            radius: 6
+                            color: pickerRowMouse.containsMouse
+                                ? (canvasRoot.settledColors?.colSecondaryContainer ?? Appearance.colors.colSecondaryContainer)
+                                : "transparent"
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 1
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: String(modelData.title ?? "")
+                                    font.pixelSize: Appearance.font.pixelSize.smaller
+                                    font.weight: Font.Medium
+                                    color: canvasRoot.settledColors?.colOnLayer1 ?? Appearance.colors.colOnLayer1
+                                    elide: Text.ElideRight
+                                }
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: String(modelData.relPath ?? "")
+                                    font.pixelSize: Appearance.font.pixelSize.smallest
+                                    color: canvasRoot.settledColors?.colSubtext ?? Appearance.colors.colSubtext
+                                    elide: Text.ElideMiddle
+                                }
+                            }
+
+                            MouseArea {
+                                id: pickerRowMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: canvasRoot.addNoteCard(modelData.relPath)
+                            }
+                        }
+                    }
+
+                    StyledText {
+                        visible: canvasRoot.pickerNotes.length === 0
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        text: "No matching notes"
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        color: canvasRoot.settledColors?.colSubtext ?? Appearance.colors.colSubtext
                     }
                 }
             }

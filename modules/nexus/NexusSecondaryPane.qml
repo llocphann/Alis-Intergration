@@ -61,50 +61,47 @@ Rectangle {
             }
         }
 
-        ScrollView {
+        ListView {
+            id: secondaryBlocksList
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
+            spacing: 6
+            boundsBehavior: Flickable.StopAtBounds
+            model: Array.isArray(secondaryRoot.doc?.blocks) ? secondaryRoot.doc.blocks : []
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            delegate: Rectangle {
+                required property var modelData
+                width: secondaryBlocksList.width - 6
+                implicitHeight: blkText.implicitHeight + 10
+                height: implicitHeight
+                radius: 6
+                color: secondaryRoot.settledColors?.colLayer0 ?? Appearance.colors.colLayer0
 
-            ColumnLayout {
-                width: Math.max(120, parent.width - 10)
-                spacing: 6
-
-                Repeater {
-                    model: Array.isArray(secondaryRoot.doc?.blocks) ? secondaryRoot.doc.blocks : []
-                    delegate: Rectangle {
-                        required property var modelData
-                        Layout.fillWidth: true
-                        implicitHeight: blkText.implicitHeight + 10
-                        radius: 6
-                        color: secondaryRoot.settledColors?.colLayer0 ?? Appearance.colors.colLayer0
-
-                        StyledText {
-                            id: blkText
-                            anchors.fill: parent
-                            anchors.margins: 6
-                            textFormat: Text.RichText
-                            text: {
-                                const b = modelData || {};
-                                const colTxt = String(secondaryRoot.settledColors?.colOnLayer1 ?? Appearance.colors.colOnLayer1);
-                                const colAcc = String(secondaryRoot.settledColors?.colPrimary ?? Appearance.colors.colPrimary);
-                                const colMut = String(secondaryRoot.settledColors?.colSubtext ?? Appearance.colors.colSubtext);
-                                if (b.kind === "math")
-                                    return Rich.renderLatexToHtml(String(b.text ?? ""), true, colAcc, colTxt);
-                                return Rich.renderInlineMarkdownToHtml(String(b.text ?? ""), colTxt, colAcc, colMut);
-                            }
-                            font.pixelSize: modelData.kind === "heading"
-                                ? Math.max(13, 20 - Number(modelData.level ?? 1) * 2)
-                                : Appearance.font.pixelSize.smaller
-                            font.weight: modelData.kind === "heading" ? Font.Bold : Font.Normal
-                            wrapMode: Text.WordWrap
-                            onLinkActivated: link => {
-                                if (link.startsWith("wikilink://") && secondaryRoot.nexus) {
-                                    secondaryRoot.nexus.openInSecondaryPane(link.slice("wikilink://".length));
-                                } else if (secondaryRoot.nexus) {
-                                    secondaryRoot.nexus.openExternalUrl(link);
-                                }
-                            }
+                StyledText {
+                    id: blkText
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    textFormat: Text.RichText
+                    text: {
+                        const b = modelData || {};
+                        const colTxt = String(secondaryRoot.settledColors?.colOnLayer1 ?? Appearance.colors.colOnLayer1);
+                        const colAcc = String(secondaryRoot.settledColors?.colPrimary ?? Appearance.colors.colPrimary);
+                        const colMut = String(secondaryRoot.settledColors?.colSubtext ?? Appearance.colors.colSubtext);
+                        if (b.kind === "math")
+                            return Rich.renderLatexToHtml(String(b.text ?? ""), true, colAcc, colTxt);
+                        return Rich.renderInlineMarkdownToHtml(String(b.text ?? ""), colTxt, colAcc, colMut);
+                    }
+                    font.pixelSize: modelData.kind === "heading"
+                        ? Math.max(13, 20 - Number(modelData.level ?? 1) * 2)
+                        : Appearance.font.pixelSize.smaller
+                    font.weight: modelData.kind === "heading" ? Font.Bold : Font.Normal
+                    wrapMode: Text.WordWrap
+                    onLinkActivated: link => {
+                        if (link.startsWith("wikilink://") && secondaryRoot.nexus) {
+                            secondaryRoot.nexus.openInSecondaryPane(link.slice("wikilink://".length));
+                        } else if (secondaryRoot.nexus) {
+                            secondaryRoot.nexus.openExternalUrl(link);
                         }
                     }
                 }

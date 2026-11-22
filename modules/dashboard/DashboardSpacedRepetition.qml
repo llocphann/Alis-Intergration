@@ -2408,6 +2408,27 @@ Item {
 
                                 Item { Layout.fillWidth: true }
 
+                                // Word pronunciation TTS button (edge-tts en-US-AvaMultilingualNeural)
+                                FilterChip {
+                                    objectName: "srPronounceCurrentCardButton"
+                                    visible: Boolean(root.backend.currentCard && (root.backend.currentCard.headword || root.backend.currentCard.front))
+                                    iconName: (root.backend.pronouncing ?? false) ? "stop_circle" : "volume_up"
+                                    label: ""
+                                    tooltipText: (root.backend.pronouncing ?? false)
+                                        ? Translation.tr("Stop pronunciation")
+                                        : Translation.tr("Pronounce word")
+                                    onClicked: {
+                                        if (root.backend.pronouncing) {
+                                            if (typeof root.backend.stopPronouncing === "function")
+                                                root.backend.stopPronouncing()
+                                            return
+                                        }
+                                        const word = String(root.backend.currentCard?.headword || root.backend.currentCard?.front || "").trim()
+                                        if (word.length > 0 && typeof root.backend.pronounceWord === "function")
+                                            root.backend.pronounceWord(word)
+                                    }
+                                }
+
                                 // Online Dictionary Enrich button (icon-only with tooltip)
                                 FilterChip {
                                     objectName: "srEnrichCurrentCardButton"

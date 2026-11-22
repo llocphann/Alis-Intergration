@@ -10,8 +10,33 @@ Rectangle {
     property var settledColors: null
 
     property bool showTextDrawer: false
+    property bool searchOpen: false
+    property string searchQuery: ""
     readonly property int totalPages: Math.max(1, Number(nexus?.pdfInfo?.pages ?? 1))
     readonly property int curPage: Math.max(1, Number(nexus?.pdfCurrentPage ?? 1))
+
+    focus: true
+    Keys.onPressed: event => {
+        if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_F) {
+            pdfRoot.searchOpen = !pdfRoot.searchOpen;
+            if (pdfRoot.searchOpen) {
+                pdfRoot.showTextDrawer = true;
+                if (pdfRoot.nexus) pdfRoot.nexus.pdfExtractPageText(pdfRoot.curPage);
+                Qt.callLater(() => pdfSearchField.forceActiveFocus());
+            }
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Escape && pdfRoot.searchOpen) {
+            pdfRoot.searchOpen = false;
+            pdfRoot.searchQuery = "";
+            event.accepted = true;
+        } else if (!pdfSearchField.activeFocus && (event.key === Qt.Key_Left || event.key === Qt.Key_PageUp)) {
+            if (pdfRoot.nexus && pdfRoot.curPage > 1) pdfRoot.nexus.pdfLoadPage(pdfRoot.curPage - 1);
+            event.accepted = true;
+        } else if (!pdfSearchField.activeFocus && (event.key === Qt.Key_Right || event.key === Qt.Key_PageDown)) {
+            if (pdfRoot.nexus && pdfRoot.curPage < pdfRoot.totalPages) pdfRoot.nexus.pdfLoadPage(pdfRoot.curPage + 1);
+            event.accepted = true;
+        }
+    }
 
     color: settledColors?.colLayer0 ?? Appearance.colors.colLayer0
     radius: 10
@@ -154,13 +179,38 @@ Rectangle {
             orientation: Qt.Horizontal
 
             ScrollView {
+                id: pdfScroll
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
                 clip: true
 
                 Item {
-                    width: Math.max(parent.width, pageImage.implicitWidth)
-                    height: Math.max(parent.height, pageImage.implicitHeight + 24)
+                    readonly property real viewportW: Math.max(200, pdfScroll.availableWidth)
+                    readonly property real viewportH: Math.max(200, pdfScroll.availableHeight)
+                    readonly property real targetPageW: {
+                        const dpi = Math.max(60, Math.min(360, Number(pdfRoot.nexus?.pdfDpi ?? 150)))
+                        const baseFitW = Math.max(200, viewportW - 24)
+                        return Math.max(200, Math.round(baseFitW * (dpi / 150.0)))
+                    }
+                    readonly property real targetPageH: (pageImage.sourceSize.width > 0 && pageImage.sourceSize.height > 0)
+                        ? Math.round(targetPageW * (pageImage.sourceSize.height / pageImage.sourceSize.width))
+                        : Math.max(200, pageImage.implicitHeight)
+                    width: Math.max(viewportW, targetPageW + 24)
+                    height: Math.max(viewportH, targetPageH + 24)
+
+                    WheelHandler {
+                        acceptedModifiers: Qt.ControlModifier
+                        onWheel: wheel => {
+                            if (!pdfRoot.nexus) return;
+                            const curDpi = Number(pdfRoot.nexus.pdfDpi ?? 150);
+                            const nextDpi = wheel.angleDelta.y > 0
+                                ? Math.min(270, curDpi + 30)
+                                : Math.max(90, curDpi - 30);
+                            if (nextDpi !== curDpi)
+                                pdfRoot.nexus.pdfLoadPage(pdfRoot.curPage, nextDpi);
+                            wheel.accepted = true;
+                        }
+                    }
 
                     Image {
                         id: pageImage
@@ -171,7 +221,8 @@ Rectangle {
                         asynchronous: true
                         smooth: true
                         fillMode: Image.PreserveAspectFit
-                        width: Math.min(sourceSize.width > 0 ? sourceSize.width : 800, parent.width - 24)
+                        width: parent.targetPageW
+                        height: parent.targetPageH
                     }
 
                     StyledText {
@@ -203,6 +254,18 @@ Rectangle {
                         color: pdfRoot.settledColors?.colOnLayer1 ?? Appearance.colors.colOnLayer1
                     }
 
+                    TextField {
+                        id: pdfSearchField
+                        visible: pdfRoot.searchOpen
+                        Layout.fillWidth: true
+                        implicitHeight: 28
+                        placeholderText: "Find in page text (Ctrl+F)..."
+                        color: pdfRoot.settledColors?.colOnLayer1 ?? Appearance.colors.colOnLayer1
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        onTextChanged: pdfRoot.searchQuery = text
+                        background: Rectangle { radius: 6; color: pdfRoot.settledColors?.colLayer0 ?? Appearance.colors.colLayer0 }
+                    }
+
                     ScrollView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -211,7 +274,13 @@ Rectangle {
                             readOnly: true
                             selectByMouse: true
                             wrapMode: TextEdit.Wrap
-                            text: String(pdfRoot.nexus?.pdfExtractedText ?? "")
+                            text: {
+                                const raw = String(pdfRoot.nexus?.pdfExtractedText ?? "");
+                                const q = String(pdfRoot.searchQuery ?? "").trim().toLowerCase();
+                                if (!q) return raw;
+                                const matched = raw.split("\n").filter(ln => ln.toLowerCase().includes(q));
+                                return matched.length > 0 ? matched.join("\n") : ("No matches for \"" + pdfRoot.searchQuery + "\" on page " + pdfRoot.curPage);
+                            }
                             color: pdfRoot.settledColors?.colOnLayer1 ?? Appearance.colors.colOnLayer1
                             font.pixelSize: Appearance.font.pixelSize.smaller
                             background: Rectangle { radius: 6; color: pdfRoot.settledColors?.colLayer0 ?? Appearance.colors.colLayer0 }

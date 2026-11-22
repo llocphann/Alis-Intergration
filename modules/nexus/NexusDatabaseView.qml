@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Quickshell
 import qs.modules.common
 import qs.modules.common.widgets
 
@@ -194,9 +195,59 @@ Rectangle {
                                 "viewMode": dbRoot.viewMode,
                                 "folder": folderField.text.trim(),
                                 "tag": tagField.text.trim(),
-                                "whereFilters": whereField.text.trim() ? [whereField.text.trim()] : [],
+                                "whereFilters": whereField.text.split(";").map(s => s.trim()).filter(Boolean),
                                 "groupBy": groupField.text.trim()
                             });
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 26; width: 46; radius: 6
+                    color: dbRoot.settledColors?.colLayer0 ?? Appearance.colors.colLayer0
+                    StyledText {
+                        anchors.centerIn: parent
+                        text: "CSV"
+                        horizontalAlignment: Text.AlignHCenter
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        color: dbRoot.settledColors?.colOnLayer1 ?? Appearance.colors.colOnLayer1
+                    }
+                    MouseArea {
+                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            const rows = Array.isArray(dbRoot.nexus?.databaseQueryResult?.rows) ? dbRoot.nexus.databaseQueryResult.rows : [];
+                            const esc = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+                            const lines = ["Title,Path,Folder,Status,Tags"];
+                            for (let i = 0; i < rows.length; ++i) {
+                                const r = rows[i] || {};
+                                lines.push([r.title, r.relPath, r.folder, r.status, Array.isArray(r.tags) ? r.tags.join(" ") : (r.tags ?? "")].map(esc).join(","));
+                            }
+                            Quickshell.clipboardText = lines.join("\n");
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 26; width: 42; radius: 6
+                    color: dbRoot.settledColors?.colLayer0 ?? Appearance.colors.colLayer0
+                    StyledText {
+                        anchors.centerIn: parent
+                        text: "MD"
+                        horizontalAlignment: Text.AlignHCenter
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        color: dbRoot.settledColors?.colOnLayer1 ?? Appearance.colors.colOnLayer1
+                    }
+                    MouseArea {
+                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            const rows = Array.isArray(dbRoot.nexus?.databaseQueryResult?.rows) ? dbRoot.nexus.databaseQueryResult.rows : [];
+                            const clean = v => String(v ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
+                            const lines = ["| Title | Folder | Status | Tags |", "| --- | --- | --- | --- |"];
+                            for (let i = 0; i < rows.length; ++i) {
+                                const r = rows[i] || {};
+                                lines.push("| " + [r.title || r.relPath, r.folder, r.status, Array.isArray(r.tags) ? r.tags.join(", ") : (r.tags ?? "")].map(clean).join(" | ") + " |");
+                            }
+                            Quickshell.clipboardText = lines.join("\n");
                         }
                     }
                 }

@@ -1,4 +1,5 @@
 import QtQuick
+import qs
 
 // Integration workers are disposable objects, never engine-owned singletons.
 Item {
@@ -48,7 +49,10 @@ Item {
     Loader { id: nexusLoader; active: host.nexusEnabled; asynchronous: status !== Loader.Ready; source: "services/NexusService.qml" }
     Loader {
         id: spacedRepetitionLoader
-        active: host.spacedRepetitionEnabled ?? false
+        active: (host.spacedRepetitionEnabled ?? false)
+            && ((host.spacedRepetitionDemanded ?? false)
+                || Boolean(GlobalStates?.dashboardOpen)
+                || Boolean(GlobalStates?.settingsOverlayOpen))
         asynchronous: status !== Loader.Ready
         function syncSource(): void {
             if (active && String(source).length === 0) source = "services/SpacedRepetition.qml"
@@ -59,7 +63,10 @@ Item {
     }
     Loader {
         id: exercisesTrackerLoader
-        active: host.exercisesTrackerEnabled ?? false
+        active: (host.exercisesTrackerEnabled ?? false)
+            && ((host.exercisesTrackerDemanded ?? false)
+                || Boolean(GlobalStates?.dashboardOpen)
+                || Boolean(GlobalStates?.settingsOverlayOpen))
         asynchronous: status !== Loader.Ready
         function syncSource(): void {
             if (active && String(source).length === 0) source = "services/ExercisesTracker.qml"

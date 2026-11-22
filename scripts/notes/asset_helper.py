@@ -4,6 +4,7 @@ import argparse
 import datetime
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +16,60 @@ MIME_EXT = (
     ("image/webp", "webp"),
     ("image/gif", "gif"),
 )
+
+
+def _find_native_dispatch(explicit: str = "") -> str:
+    candidates = []
+    if explicit.strip():
+        candidates.append(Path(explicit.strip()).expanduser())
+    env_dispatch = os.environ.get("ALIS_NATIVE_DISPATCH", "").strip()
+    if env_dispatch:
+        candidates.append(Path(env_dispatch).expanduser())
+    shell_root = os.environ.get("ALIS_SHELL_ROOT", "").strip()
+    if shell_root:
+        candidates.append(Path(shell_root).expanduser() / "scripts" / "native-dispatch")
+    xdg_config = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+    candidates.append(xdg_config / "quickshell" / "alis" / "scripts" / "native-dispatch")
+    # Dev/test sibling repository layout: .../10_Projects/Alis-Intergration/scripts/notes/asset_helper.py
+    here = Path(__file__).resolve()
+    if len(here.parents) >= 4:
+        candidates.append(here.parents[3] / "Alis" / "scripts" / "native-dispatch")
+    for cand in candidates:
+        try:
+            if cand.is_file() and os.access(cand, os.X_OK):
+                return str(cand)
+        except OSError:
+            continue
+    found = shutil.which("native-dispatch")
+    return found or ""
+
+
+def _run_clipboard(args: list[str], *, text: bool, native_dispatch: str = "") -> subprocess.CompletedProcess | None:
+    nd = _find_native_dispatch(native_dispatch)
+    if nd:
+        try:
+            proc = subprocess.run(
+                [nd, "clipboard", "paste", *args],
+                capture_output=True,
+                text=text,
+                check=False,
+            )
+            if proc.returncode != 127:
+                return proc
+        except OSError:
+            pass
+    wl_paste = shutil.which("wl-paste")
+    if wl_paste:
+        try:
+            return subprocess.run(
+                [wl_paste, *args],
+                capture_output=True,
+                text=text,
+                check=False,
+            )
+        except OSError:
+            pass
+    return None
 
 
 def _attachment_dir(vault: Path, current_rel: str, override_folder: str) -> Path:
@@ -48,7 +103,13 @@ def _attachment_dir(vault: Path, current_rel: str, override_folder: str) -> Path
     return target
 
 
-def cmd_paste_image(vault: Path, current_rel: str, folder: str, png_bytes_file: str = "") -> dict:
+def cmd_paste_image(
+    vault: Path,
+    current_rel: str,
+    folder: str,
+    png_bytes_file: str = "",
+    native_dispatch: str = "",
+) -> dict:
     v_canon = vault.resolve()
     if not v_canon.is_dir():
         return {"ok": False, "error": f"Vault directory missing: {vault}"}
@@ -62,8 +123,8 @@ def cmd_paste_image(vault: Path, current_rel: str, folder: str, png_bytes_file: 
         ext = src.suffix.lstrip(".").lower() or "png"
         data = src.read_bytes()
     else:
-        lt = subprocess.run(["wl-paste", "--list-types"], capture_output=True, text=True, check=False)
-        if lt.returncode != 0:
+        lt = _run_clipboard(["--list-types"], text=True, native_dispatch=native_dispatch)
+        if lt is None or lt.returncode != 0:
             return {"ok": True, "hasImage": False, "error": "Clipboard unavailable"}
         types = {line.strip() for line in lt.stdout.splitlines() if line.strip()}
         chosen_mime = ""
@@ -74,8 +135,12 @@ def cmd_paste_image(vault: Path, current_rel: str, folder: str, png_bytes_file: 
                 break
         if not chosen_mime:
             return {"ok": True, "hasImage": False}
-        paste = subprocess.run(["wl-paste", "--no-newline", "--type", chosen_mime], capture_output=True, check=False)
-        if paste.returncode != 0 or not paste.stdout:
+        paste = _run_clipboard(
+            ["--no-newline", "--type", chosen_mime],
+            text=False,
+            native_dispatch=native_dispatch,
+        )
+        if paste is None or paste.returncode != 0 or not paste.stdout:
             return {"ok": True, "hasImage": False, "error": "Clipboard read failed"}
         data = paste.stdout
 
@@ -114,10 +179,17 @@ def main() -> int:
     p.add_argument("--current-rel", default="")
     p.add_argument("--folder", default="")
     p.add_argument("--from-file", default="")
+    p.add_argument("--native-dispatch", default="")
 
     args = parser.parse_args()
     try:
-        out = cmd_paste_image(Path(args.vault), args.current_rel, args.folder, args.from_file)
+        out = cmd_paste_image(
+            Path(args.vault),
+            args.current_rel,
+            args.folder,
+            args.from_file,
+            args.native_dispatch,
+        )
     except Exception as exc:
         out = {"ok": False, "error": str(exc)}
     print(json.dumps(out, ensure_ascii=False))

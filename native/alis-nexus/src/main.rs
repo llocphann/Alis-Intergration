@@ -10380,46 +10380,50 @@ fn parse_flag<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     None
 }
 
-fn run_cli() -> Result<Value, String> {
-    let args: Vec<String> = env::args().skip(1).collect();
+fn run_cli_args(args: &[String], stdin_override: Option<&str>) -> Result<Value, String> {
     let Some(cmd) = args.first().map(|s| s.as_str()) else {
-        return Err("Usage: alis-nexus <scan|read|write|create|daily|calendar|toggle-todo|update-block|link-mention|search|delete|trash|rename|hotkeys|set-frontmatter|journal-weather|search-api|sync-api|finance-add> [--vault <path>] ...".to_string());
+        return Err("Usage: alis-nexus <scan|read|write|create|daily|calendar|toggle-todo|update-block|link-mention|search|delete|trash|rename|hotkeys|set-frontmatter|journal-weather|search-api|sync-api|finance-add|--serve> [--vault <path>] ...".to_string());
     };
+    if cmd == "--serve" {
+        return Err("Nested --serve is not allowed".to_string());
+    }
     if cmd == "search-api" {
-        let vault_opt = parse_flag(&args, "--vault").unwrap_or("");
-        let kind = parse_flag(&args, "--kind")
-            .or_else(|| parse_flag(&args, "--type"))
+        let vault_opt = parse_flag(args, "--vault").unwrap_or("");
+        let kind = parse_flag(args, "--kind")
+            .or_else(|| parse_flag(args, "--type"))
             .unwrap_or("movie");
-        let query = parse_flag(&args, "--query")
-            .or_else(|| parse_flag(&args, "--q"))
+        let query = parse_flag(args, "--query")
+            .or_else(|| parse_flag(args, "--q"))
             .unwrap_or("");
-        let limit = parse_flag(&args, "--limit")
+        let limit = parse_flag(args, "--limit")
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(8);
         return cmd_search_api(vault_opt, kind, query, limit);
     }
-    let vault = parse_flag(&args, "--vault").ok_or_else(|| "Missing --vault <path>".to_string())?;
+    let vault = parse_flag(args, "--vault").ok_or_else(|| "Missing --vault <path>".to_string())?;
 
     match cmd {
         "scan" => cmd_scan_for_date_with_cache_opts(
             vault,
-            parse_flag(&args, "--date"),
-            parse_flag(&args, "--cache-file"),
+            parse_flag(args, "--date"),
+            parse_flag(args, "--cache-file"),
             args.iter().any(|arg| arg == "--skip-if-unchanged"),
         ),
         "journal-weather" => {
-            let path = parse_flag(&args, "--path").ok_or_else(|| "Missing --path <rel_path>".to_string())?;
-            let summary = parse_flag(&args, "--summary").ok_or_else(|| "Missing --summary <weather>".to_string())?;
+            let path = parse_flag(args, "--path").ok_or_else(|| "Missing --path <rel_path>".to_string())?;
+            let summary = parse_flag(args, "--summary").ok_or_else(|| "Missing --summary <weather>".to_string())?;
             cmd_journal_weather(vault, path, summary, args.iter().any(|arg| arg == "--replace"))
         }
         "read" => {
-            let path = parse_flag(&args, "--path").ok_or_else(|| "Missing --path <rel_path>".to_string())?;
+            let path = parse_flag(args, "--path").ok_or_else(|| "Missing --path <rel_path>".to_string())?;
             cmd_read(vault, path)
         }
         "write" => {
-            let path = parse_flag(&args, "--path").ok_or_else(|| "Missing --path <rel_path>".to_string())?;
-            let content = if let Some(c) = parse_flag(&args, "--content") {
+            let path = parse_flag(args, "--path").ok_or_else(|| "Missing --path <rel_path>".to_string())?;
+            let content = if let Some(c) = parse_flag(args, "--content") {
                 c.to_string()
+            } else if let Some(ov) = stdin_override {
+                ov.to_string()
             } else {
                 let mut buf = String::new();
                 std::io::stdin()
@@ -11430,8 +11434,60 @@ pub fn cmd_tag_page(
     }))
 }
 
+fn handle_serve_line(line: &str) -> Value {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return json!({ "ok": false, "error": "empty_request" });
+    }
+    let parsed: Value = match serde_json::from_str(trimmed) {
+        Ok(v) => v,
+        Err(e) => return json!({ "ok": false, "error": format!("invalid_json: {}", e) }),
+    };
+    let req_id = parsed.get("id").cloned().unwrap_or(Value::Null);
+    if parsed.get("op").and_then(|v| v.as_str()) == Some("ping") {
+        return json!({ "id": req_id, "ok": true, "result": { "pong": true } });
+    }
+    let req_args: Vec<String> = match parsed.get("args").and_then(|v| v.as_array()) {
+        Some(arr) => arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect(),
+        None => {
+            return json!({ "id": req_id, "ok": false, "error": "missing_args_array" });
+        }
+    };
+    let stdin_ov = parsed.get("stdin").and_then(|v| v.as_str());
+    match run_cli_args(&req_args, stdin_ov) {
+        Ok(payload) => json!({ "id": req_id, "ok": true, "result": payload }),
+        Err(err) => json!({ "id": req_id, "ok": false, "error": err }),
+    }
+}
+
+fn run_serve_loop() {
+    use std::io::BufRead;
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+    for line_res in stdin.lock().lines() {
+        let Ok(line) = line_res else {
+            break;
+        };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let resp = handle_serve_line(&line);
+        let _ = writeln!(out, "{}", resp);
+        let _ = out.flush();
+    }
+}
+
 fn main() {
-    match run_cli() {
+    let args: Vec<String> = env::args().skip(1).collect();
+    if args.first().map(|s| s.as_str()) == Some("--serve") {
+        run_serve_loop();
+        return;
+    }
+    match run_cli_args(&args, None) {
         Ok(payload) => {
             println!("{}", payload);
         }
@@ -12647,6 +12703,34 @@ mod tests {
 
         let canvas_doc = cmd_read(v_str, "Board.canvas").unwrap();
         assert_eq!(canvas_doc["category"], "canvas");
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn test_serve_ndjson_dispatch_ping_read_and_write() {
+        let vault = make_temp_vault("serve_ndjson");
+        let v_str = vault.to_str().unwrap();
+        fs::write(vault.join("Hello.md"), "# Hello\nInitial text\n").unwrap();
+
+        let ping = handle_serve_line(r#"{"id":1,"op":"ping"}"#);
+        assert_eq!(ping["id"], 1);
+        assert_eq!(ping["ok"], true);
+        assert_eq!(ping["result"]["pong"], true);
+
+        let read_req = json!({"id": 2, "args": ["read", "--vault", v_str, "--path", "Hello.md"]}).to_string();
+        let read_res = handle_serve_line(&read_req);
+        assert_eq!(read_res["id"], 2);
+        assert_eq!(read_res["ok"], true);
+        assert_eq!(read_res["result"]["relPath"], "Hello.md");
+
+        let write_req = json!({"id": 3, "args": ["write", "--vault", v_str, "--path", "Hello.md"], "stdin": "# Hello\nUpdated via serve\n"}).to_string();
+        let write_res = handle_serve_line(&write_req);
+        assert_eq!(write_res["ok"], true);
+        assert!(fs::read_to_string(vault.join("Hello.md")).unwrap().contains("Updated via serve"));
+
+        let nested = handle_serve_line(r#"{"id":4,"args":["--serve"]}"#);
+        assert_eq!(nested["ok"], false);
 
         let _ = fs::remove_dir_all(&vault);
     }

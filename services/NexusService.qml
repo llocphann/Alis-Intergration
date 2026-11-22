@@ -9,8 +9,11 @@ Item {
     property bool _live: true
     Component.onDestruction: {
         root._live = false;
-        const procs = [scanProc, docProc, calendarProc, searchProc, apiSearchProc,
-            secondaryDocProc, previewProc, queryProc, historyProc, assetProc, pdfProc];
+        serveWatchdog.stop();
+        root._servePending = ({});
+        root._serveSendQueue = [];
+        const procs = [serveProc, scanProc, docProc, calendarProc, searchProc, apiSearchProc,
+            secondaryDocProc, previewProc, queryProc, historyProc, assetProc, pdfProc, conflictCheckProc, preWriteProbeProc];
         for (const p of procs) {
             if (p && p.running) {
                 try { p.signal(15); } catch (_e) { p.running = false; }
@@ -393,10 +396,32 @@ Item {
     property var vimUndoStack: []
     property var vimRedoStack: []
 
+    // Persistent alis-nexus --serve JSON-RPC transport (lazy-started on first hot op)
+    property bool _serveDisabled: false
+    property int _serveFailures: 0
+    property int _serveNextId: 1
+    property var _servePending: ({})
+    property var _serveSendQueue: []
+    property bool _serveStarted: false
+    property int _activeDocServeId: 0
+    property bool _calendarServeInFlight: false
+    property bool _searchServeInFlight: false
+    property int _conflictCheckServeId: 0
+
+    // External file modification conflict tracking
+    property bool externalConflictDetected: false
+    property string externalConflictPath: ""
+    property string externalConflictDiskContent: ""
+    property string externalConflictDiskSha: ""
+    property double externalConflictDiskMtime: 0
+    property string _loadedDocPath: ""
+    property string _loadedDocSha: ""
+    property double _loadedDocMtime: 0
+
     // Vault scan state
     readonly property alias scanBusy: scanProc.running
-    readonly property alias docBusy: docProc.running
-    readonly property bool busy: scanProc.running || docProc.running || calendarProc.running || searchProc.running
+    readonly property bool docBusy: docProc.running || preWriteProbeProc.running || root._activeDocServeId > 0
+    readonly property bool busy: scanProc.running || root.docBusy || calendarProc.running || root._calendarServeInFlight || searchProc.running || root._searchServeInFlight
     property bool vaultLoaded: false
     property string errorMessage: ""
     property string vaultName: "Vault"
@@ -1704,7 +1729,7 @@ Item {
         for (let i = 0; i < files.length; ++i) {
             existingSet[String(files[i]?.relPath ?? "")] = true;
         }
-        const cleanBase = String(baseTitle ?? "Untitled").trim() || "Untitled";
+        const cleanBase = String(baseTitle ?? "Untitled").trim().replace(/[\/\\:*?"<>|]/g, " ").replace(/\.\./g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "Untitled";
         let idx = 0;
         let candRel = "";
         let candTitle = cleanBase;
@@ -1724,18 +1749,87 @@ Item {
         root.createNote(candRel, candTitle, "standard");
     }
 
+    function createNoteWithContent(folderRelPath: string, baseTitle: string, markdownBody: string): string {
+        if (!root.vaultConfigured)
+            return "";
+        const folderClean = String(folderRelPath ?? "").trim().replace(/^\/+|\/+$/g, "");
+        const existingSet = {};
+        const files = Array.isArray(root.flatFiles) ? root.flatFiles : [];
+        for (let i = 0; i < files.length; ++i) {
+            existingSet[String(files[i]?.relPath ?? "")] = true;
+        }
+        const cleanBase = String(baseTitle ?? "Companion Note").trim().replace(/[\/\\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim().slice(0, 64) || "Companion Note";
+        let idx = 0;
+        let candRel = "";
+        let candTitle = cleanBase;
+        while (idx < 500) {
+            candTitle = idx === 0 ? cleanBase : (cleanBase + " " + String(idx));
+            const fname = candTitle + ".md";
+            candRel = folderClean.length > 0 ? (folderClean + "/" + fname) : fname;
+            if (!existingSet[candRel])
+                break;
+            idx += 1;
+        }
+        if (folderClean.length > 0) {
+            const nextExp = Object.assign({}, root.expandedFolders);
+            nextExp[folderClean] = true;
+            root.expandedFolders = nextExp;
+        }
+        const bodyText = String(markdownBody ?? "");
+        const hasFrontmatter = bodyText.replace(/^\s+/, "").startsWith("---\n");
+        const finalDoc = hasFrontmatter
+            ? bodyText
+            : (`---\ntitle: "${candTitle.replace(/"/g, '\\"')}"\nsource: alis-companion\n---\n\n# ${candTitle}\n\n${bodyText.trim()}\n`);
+        root._rescanAfterDoc = true;
+        const preserveDirtyBuffer = Boolean(root.isDirty && root.currentPath.length > 0);
+        root._enqueueDocOp({
+            "kind": "write",
+            "relPath": candRel,
+            "recordHistory": !preserveDirtyBuffer,
+            "openCreated": !preserveDirtyBuffer,
+            "backgroundCreate": preserveDirtyBuffer,
+            "useStdin": true,
+            "stdinPayload": finalDoc,
+            "args": [root.binaryPath, "write", "--vault", root.configuredVaultPath, "--path", candRel]
+        });
+        return candRel;
+    }
+
     function refreshCalendar(year: int, month: int): void {
-        if (!root.vaultConfigured || calendarProc.running)
+        if (!root.vaultConfigured || calendarProc.running || root._calendarServeInFlight)
             return;
         const y = year > 0 ? year : root.calendarYear;
         const m = (month >= 1 && month <= 12) ? month : root.calendarMonth;
         root.calendarYear = y;
         root.calendarMonth = m;
         const todayIso = Qt.formatDate(new Date(), "yyyy-MM-dd");
-        calendarProc.response = "";
-        calendarProc.command = [root.binaryPath, "calendar", "--vault", root.configuredVaultPath, "--year", String(y), "--month", String(m), "--today", todayIso];
-        calendarProc.running = true;
-        calendarTimeout.restart();
+        const cliArgs = ["calendar", "--vault", root.configuredVaultPath, "--year", String(y), "--month", String(m), "--today", todayIso];
+        const runSingleShot = () => {
+            if (!root._live || calendarProc.running)
+                return;
+            calendarProc.response = "";
+            calendarProc.command = [root.binaryPath].concat(cliArgs);
+            calendarProc.running = true;
+            calendarTimeout.restart();
+        };
+        if (root._canUseServe()) {
+            root._calendarServeInFlight = true;
+            const reqId = root._sendServeRequest(cliArgs, null, {
+                "onResult": (payload, ok) => {
+                    root._calendarServeInFlight = false;
+                    if (ok && payload)
+                        root._applyCalendarPayload(payload);
+                },
+                "onFallback": () => {
+                    root._calendarServeInFlight = false;
+                    runSingleShot();
+                }
+            });
+            if (reqId > 0)
+                return;
+            root._calendarServeInFlight = false;
+        }
+        runSingleShot();
     }
 
     // ─── Tag Wrangler+ Operations (atomic vault-wide rename, merge, remove, tag page) ───
@@ -1842,23 +1936,206 @@ Item {
         root.refreshCalendar(now.getFullYear(), now.getMonth() + 1);
     }
 
+    function _canUseServe(): bool {
+        return root._live && !root._serveDisabled && root.binaryPath.length > 0;
+    }
+
+    function _isServeHotDocOp(req): bool {
+        if (!req || !Array.isArray(req.args) || req.args.length < 2)
+            return false;
+        if (req.args[0] !== root.binaryPath)
+            return false;
+        const sub = String(req.args[1] ?? "");
+        return sub === "read" || sub === "write" || sub === "toggle-todo" || sub === "set-frontmatter";
+    }
+
+    function _sendServeRequest(cliArgs, stdinPayload, handlers): int {
+        if (!root._canUseServe())
+            return 0;
+        const reqId = root._serveNextId++;
+        const frame = { "id": reqId, "args": cliArgs };
+        if (stdinPayload !== null && stdinPayload !== undefined)
+            frame.stdin = String(stdinPayload);
+        const line = JSON.stringify(frame) + "\n";
+        const pending = Object.assign({}, root._servePending);
+        pending[String(reqId)] = {
+            "id": reqId,
+            "sentAtMs": Date.now(),
+            "onResult": handlers.onResult,
+            "onFallback": handlers.onFallback
+        };
+        root._servePending = pending;
+        if (!serveProc.running) {
+            root._serveStarted = false;
+            serveProc.command = [root.binaryPath, "--serve"];
+            serveProc.stdinEnabled = true;
+            root._serveSendQueue.push(line);
+            serveProc.running = true;
+        } else if (!root._serveStarted) {
+            root._serveSendQueue.push(line);
+        } else {
+            serveProc.write(line);
+        }
+        serveWatchdog.restart();
+        return reqId;
+    }
+
+    function _handleServeLine(rawLine: string): void {
+        const trimmed = String(rawLine ?? "").trim();
+        if (trimmed.length === 0)
+            return;
+        let resp = null;
+        try {
+            resp = JSON.parse(trimmed);
+        } catch (_e) {
+            return;
+        }
+        const key = String(resp?.id ?? "");
+        const entry = root._servePending[key];
+        if (!entry)
+            return;
+        const pending = Object.assign({}, root._servePending);
+        delete pending[key];
+        root._servePending = pending;
+        if (Object.keys(pending).length === 0)
+            serveWatchdog.stop();
+        root._serveFailures = 0;
+        const ok = Boolean(resp?.ok);
+        const payload = ok ? resp.result : { "ok": false, "error": String(resp?.error ?? "Operation failed") };
+        if (typeof entry.onResult === "function")
+            entry.onResult(payload, ok);
+    }
+
+    function _failAllServePending(disableNow: bool): void {
+        serveWatchdog.stop();
+        const pendingMap = root._servePending;
+        root._servePending = ({});
+        root._serveSendQueue = [];
+        root._serveStarted = false;
+        const keys = Object.keys(pendingMap);
+        if (keys.length > 0 || disableNow) {
+            root._serveFailures += 1;
+            if (disableNow || root._serveFailures >= 3)
+                root._serveDisabled = true;
+        }
+        for (let i = 0; i < keys.length; ++i) {
+            const entry = pendingMap[keys[i]];
+            if (entry && typeof entry.onFallback === "function")
+                entry.onFallback();
+        }
+    }
+
     function _enqueueDocOp(req): void {
         root._docQueue.push(req);
         root._runNextDocOp();
     }
 
-    function _runNextDocOp(): void {
-        if (docProc.running || root._docQueue.length === 0)
+    function _startSingleShotDocOp(req): void {
+        if (!root._live || !req)
             return;
-        const nextReq = root._docQueue.shift();
-        root._activeDocReq = nextReq;
+        root._activeDocReq = req;
         root._docStartedAtMs = Date.now();
         docProc.response = "";
-        docProc.stdinPayload = nextReq.stdinPayload ?? "";
-        docProc.stdinEnabled = Boolean(nextReq.useStdin);
-        docProc.command = nextReq.args;
+        docProc.stdinPayload = req.stdinPayload ?? "";
+        docProc.stdinEnabled = Boolean(req.useStdin);
+        docProc.command = req.args;
         docProc.running = true;
         docTimeout.restart();
+    }
+
+    function _handlePreWriteConflict(req, probePayload): bool {
+        const expectedSha = String(req?.expectedSha ?? "");
+        const diskSha = String(probePayload?.sha256 ?? "");
+        if (!probePayload?.ok || expectedSha.length === 0 || diskSha.length === 0 || diskSha === expectedSha)
+            return false;
+        const targetRel = String(req?.relPath ?? "");
+        if (targetRel === root.currentPath && typeof req?.stdinPayload === "string")
+            root.draftContent = req.stdinPayload;
+        root.externalConflictDetected = true;
+        root.externalConflictPath = targetRel;
+        root.externalConflictDiskContent = String(probePayload.content ?? "");
+        root.externalConflictDiskSha = diskSha;
+        root.externalConflictDiskMtime = Number(probePayload.mtimeSecs ?? 0);
+        root.isDirty = true;
+        root.vimStatusMessage = "External file change detected — Reload or Keep & Save";
+        return true;
+    }
+
+    function _runNextDocOp(): void {
+        if (docProc.running || preWriteProbeProc.running || root._activeDocServeId > 0 || root._docQueue.length === 0)
+            return;
+        const nextReq = root._docQueue.shift();
+        const expectedSha = String(nextReq.expectedSha ?? "");
+        const needsConflictProbe = nextReq.kind === "write" && expectedSha.length > 0 && String(nextReq.relPath ?? "").length > 0;
+        if (root._canUseServe() && root._isServeHotDocOp(nextReq)) {
+            root._activeDocReq = nextReq;
+            root._docStartedAtMs = Date.now();
+            const dispatchServeWrite = () => {
+                const cliArgs = nextReq.args.slice(1);
+                const stdinText = nextReq.useStdin ? String(nextReq.stdinPayload ?? "") : null;
+                const reqId = root._sendServeRequest(cliArgs, stdinText, {
+                    "onResult": (payload, _ok) => {
+                        root._activeDocServeId = 0;
+                        const finishedReq = root._activeDocReq;
+                        root._activeDocReq = null;
+                        root._finishDocOp(finishedReq, payload, false);
+                    },
+                    "onFallback": () => {
+                        root._activeDocServeId = 0;
+                        const fallbackReq = root._activeDocReq;
+                        root._activeDocReq = null;
+                        root._startSingleShotDocOp(fallbackReq);
+                    }
+                });
+                if (reqId > 0) {
+                    root._activeDocServeId = reqId;
+                } else {
+                    root._activeDocReq = null;
+                    root._startSingleShotDocOp(nextReq);
+                }
+            };
+            // Pre-write external conflict check when expectedSha is present
+            if (needsConflictProbe) {
+                const probeArgs = ["read", "--vault", root.configuredVaultPath, "--path", String(nextReq.relPath)];
+                const probeId = root._sendServeRequest(probeArgs, null, {
+                    "onResult": (probePayload, probeOk) => {
+                        root._activeDocServeId = 0;
+                        if (probeOk && root._handlePreWriteConflict(nextReq, probePayload)) {
+                            root._activeDocReq = null;
+                            Qt.callLater(() => {
+                                if (root._live)
+                                    root._runNextDocOp();
+                            });
+                            return;
+                        }
+                        dispatchServeWrite();
+                    },
+                    "onFallback": () => {
+                        root._activeDocServeId = 0;
+                        const fallbackReq = root._activeDocReq;
+                        root._activeDocReq = null;
+                        if (fallbackReq) {
+                            preWriteProbeProc.pendingReq = fallbackReq;
+                            preWriteProbeProc.command = [root.binaryPath, "read", "--vault", root.configuredVaultPath, "--path", String(fallbackReq.relPath)];
+                            preWriteProbeProc.running = true;
+                        }
+                    }
+                });
+                if (probeId > 0) {
+                    root._activeDocServeId = probeId;
+                    return;
+                }
+            }
+            dispatchServeWrite();
+            return;
+        }
+        if (needsConflictProbe) {
+            preWriteProbeProc.pendingReq = nextReq;
+            preWriteProbeProc.command = [root.binaryPath, "read", "--vault", root.configuredVaultPath, "--path", String(nextReq.relPath)];
+            preWriteProbeProc.running = true;
+            return;
+        }
+        root._startSingleShotDocOp(nextReq);
     }
 
     function _expandHome(p: string): string {
@@ -2120,10 +2397,98 @@ Item {
         return true;
     }
 
-    function saveCurrentNote(newContent = null, skipSnapshot = false): void {
+    function checkExternalModification(): void {
+        if (!root._live || !root.vaultConfigured || root.currentPath.length === 0)
+            return;
+        if (!root.currentDoc || String(root.currentDoc.relPath ?? "") !== root.currentPath)
+            return;
+        const cat = String(root.currentDoc.category ?? "markdown");
+        if (cat === "pdf" || cat === "image" || cat === "external")
+            return;
+        if (root._loadedDocPath !== root.currentPath || (root._loadedDocSha.length === 0 && root._loadedDocMtime <= 0))
+            return;
+        const targetPath = root.currentPath;
+        const expectedSha = root._loadedDocSha;
+        const expectedMtime = root._loadedDocMtime;
+        const handleProbe = (payload) => {
+            if (!root._live || !payload || !payload.ok || root.currentPath !== targetPath)
+                return;
+            const diskSha = String(payload.sha256 ?? "");
+            const diskMtime = Number(payload.mtimeSecs ?? 0);
+            const changed = (expectedSha.length > 0 && diskSha.length > 0)
+                ? (diskSha !== expectedSha)
+                : (expectedMtime > 0 && diskMtime > 0 && diskMtime !== expectedMtime);
+            if (changed) {
+                root.externalConflictDetected = true;
+                root.externalConflictPath = targetPath;
+                root.externalConflictDiskContent = String(payload.content ?? "");
+                root.externalConflictDiskSha = diskSha;
+                root.externalConflictDiskMtime = diskMtime;
+            }
+        };
+        const cliArgs = ["read", "--vault", root.configuredVaultPath, "--path", targetPath];
+        if (root._canUseServe()) {
+            const reqId = root._sendServeRequest(cliArgs, null, {
+                "onResult": (payload, ok) => {
+                    if (root._conflictCheckServeId === reqId)
+                        root._conflictCheckServeId = 0;
+                    if (ok)
+                        handleProbe(payload);
+                },
+                "onFallback": () => {
+                    if (root._conflictCheckServeId === reqId)
+                        root._conflictCheckServeId = 0;
+                }
+            });
+            if (reqId > 0) {
+                root._conflictCheckServeId = reqId;
+                return;
+            }
+        }
+        if (!conflictCheckProc.running) {
+            conflictCheckProc.targetPath = targetPath;
+            conflictCheckProc.expectedSha = expectedSha;
+            conflictCheckProc.expectedMtime = expectedMtime;
+            conflictCheckProc.command = [root.binaryPath].concat(cliArgs);
+            conflictCheckProc.running = true;
+        }
+    }
+
+    function resolveExternalConflictReload(): void {
+        const target = root.externalConflictPath || root.currentPath;
+        root.externalConflictDetected = false;
+        root.externalConflictPath = "";
+        root.externalConflictDiskContent = "";
+        root.externalConflictDiskSha = "";
+        root.externalConflictDiskMtime = 0;
+        if (target.length > 0)
+            root.openFile(target, false);
+    }
+
+    function resolveExternalConflictKeep(saveNow = true): void {
+        if (root.externalConflictDiskSha.length > 0)
+            root._loadedDocSha = root.externalConflictDiskSha;
+        if (root.externalConflictDiskMtime > 0)
+            root._loadedDocMtime = root.externalConflictDiskMtime;
+        root.externalConflictDetected = false;
+        root.externalConflictPath = "";
+        root.externalConflictDiskContent = "";
+        root.externalConflictDiskSha = "";
+        root.externalConflictDiskMtime = 0;
+        if (saveNow && root.currentPath.length > 0)
+            root.saveCurrentNote(root.draftContent, false, true);
+    }
+
+    function saveCurrentNote(newContent = null, skipSnapshot = false, forceOverwrite = false): void {
         if (!root.vaultConfigured || root.currentPath.length === 0)
             return;
         const body = newContent !== null ? String(newContent) : root.draftContent;
+        if (!forceOverwrite && root.externalConflictDetected && root.externalConflictPath === root.currentPath) {
+            root.draftContent = body;
+            root.isDirty = true;
+            root.vimStatusMessage = "External file change detected — Reload or Keep & Save";
+            return;
+        }
         const prevOnDisk = String(root.currentDoc?.content ?? "");
         if (!skipSnapshot)
             root.pushDocUndo(root.currentPath, prevOnDisk, body);
@@ -2143,12 +2508,19 @@ Item {
                 "args": ["python3", root.historyHelperPath, "snapshot", "--vault", root.configuredVaultPath, "--path", root.currentPath, "--label", "Auto-save snapshot"]
             });
         }
+        const docCategory = String(root.currentDoc?.category ?? "markdown");
+        const expectedSha = (!forceOverwrite && !skipSnapshot
+                && root._loadedDocPath === root.currentPath
+                && root._loadedDocSha.length > 0
+                && docCategory !== "pdf" && docCategory !== "canvas")
+            ? root._loadedDocSha : "";
         root._enqueueDocOp({
             "kind": "write",
             "relPath": root.currentPath,
             "recordHistory": false,
             "useStdin": true,
             "stdinPayload": body,
+            "expectedSha": expectedSha,
             "args": [root.binaryPath, "write", "--vault", root.configuredVaultPath, "--path", root.currentPath]
         });
     }
@@ -2321,6 +2693,11 @@ Item {
         if (!root.vaultConfigured)
             return;
         const args = ["python3", root.assetHelperPath, "paste-image", "--vault", root.configuredVaultPath];
+        const dispatchPath = String(Quickshell.shellPath("scripts/native-dispatch") ?? "").trim();
+        if (dispatchPath.length > 0) {
+            args.push("--native-dispatch");
+            args.push(dispatchPath);
+        }
         if (root.currentPath.length > 0) {
             args.push("--current-rel");
             args.push(root.currentPath);
@@ -3210,16 +3587,40 @@ Item {
     }
 
     function _startPendingSearch(): void {
-        if (searchProc.inFlight || !root._pendingSearch)
+        if (searchProc.inFlight || root._searchServeInFlight || !root._pendingSearch)
             return;
-        searchProc.request = root._pendingSearch;
+        const request = root._pendingSearch;
         root._pendingSearch = null;
-        searchProc.response = "";
-        searchProc.command = [root.binaryPath, "search", "--vault", searchProc.request.vault, "--query", searchProc.request.query];
-        searchProc.started = false;
-        searchProc.inFlight = true;
-        searchProc.running = true;
-        searchTimeout.restart();
+        const cliArgs = ["search", "--vault", request.vault, "--query", request.query];
+        const runSingleShot = () => {
+            if (!root._live || searchProc.inFlight)
+                return;
+            searchProc.request = request;
+            searchProc.response = "";
+            searchProc.command = [root.binaryPath].concat(cliArgs);
+            searchProc.started = false;
+            searchProc.inFlight = true;
+            searchProc.running = true;
+            searchTimeout.restart();
+        };
+        if (root._canUseServe()) {
+            root._searchServeInFlight = true;
+            const reqId = root._sendServeRequest(cliArgs, null, {
+                "onResult": (payload, ok) => {
+                    root._searchServeInFlight = false;
+                    root._applySearchPayload(request, ok, payload);
+                    Qt.callLater(root._startPendingSearch);
+                },
+                "onFallback": () => {
+                    root._searchServeInFlight = false;
+                    runSingleShot();
+                }
+            });
+            if (reqId > 0)
+                return;
+            root._searchServeInFlight = false;
+        }
+        runSingleShot();
     }
 
     // Block folding operations (Logseq-style outliner folding)
@@ -4278,7 +4679,8 @@ Item {
         running: root._live && Quickshell.env("ALIS_NEXUS_HEADLESS_SERVICE_ONLY") !== "1"
         onTriggered: {
             const now = Date.now();
-            const delta = now - root._lastHeartbeatMs;
+            const prevHeartbeatMs = root._lastHeartbeatMs;
+            const delta = now - prevHeartbeatMs;
             root._lastHeartbeatMs = now;
             if (scanProc.running && (now - root._scanStartedAtMs > 11000)) {
                 scanProc.running = false;
@@ -4286,8 +4688,10 @@ Item {
             if (docProc.running && (now - root._docStartedAtMs > 11000)) {
                 docProc.running = false;
             }
-            // If wall clock jumped >35s (woke up from system suspend/sleep), refresh cleanly in background
-            if (delta > 35000 && root.vaultConfigured) {
+            // If wall clock jumped >35s past the active timer interval (suspend/sleep), refresh cleanly in background
+            const expectedIntervalMs = Math.max(5000, sleepResumeWatchdog.interval);
+            const suspendJumpThresholdMs = expectedIntervalMs + 35000;
+            if (prevHeartbeatMs > 0 && delta > suspendJumpThresholdMs && root.vaultConfigured) {
                 root.refreshVault();
                 root.refreshCalendar(root.calendarYear, root.calendarMonth);
             }
@@ -4359,6 +4763,405 @@ Item {
     }
 
     Timer {
+        id: serveWatchdog
+        interval: 10000
+        repeat: false
+        onTriggered: {
+            if (Object.keys(root._servePending).length > 0) {
+                if (serveProc.running) {
+                    try { serveProc.signal(15); } catch (_e) {}
+                    serveProc.running = false;
+                }
+                root._failAllServePending(false);
+            }
+        }
+    }
+
+    Process {
+        id: serveProc
+        stdinEnabled: true
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: line => root._handleServeLine(line)
+        }
+        onStarted: {
+            root._serveStarted = true;
+            const queued = root._serveSendQueue.slice();
+            root._serveSendQueue = [];
+            for (let i = 0; i < queued.length; ++i)
+                serveProc.write(queued[i]);
+        }
+        onRunningChanged: {
+            if (!running && !root._serveStarted && Object.keys(root._servePending).length > 0) {
+                Qt.callLater(() => {
+                    if (!serveProc.running && !root._serveStarted && Object.keys(root._servePending).length > 0)
+                        root._failAllServePending(true);
+                });
+            }
+        }
+        onExited: (code, status) => {
+            root._serveStarted = false;
+            if (root._live && Object.keys(root._servePending).length > 0)
+                root._failAllServePending(false);
+        }
+    }
+
+    Process {
+        id: preWriteProbeProc
+        property var pendingReq: null
+        stdout: StdioCollector { id: preWriteProbeStdout }
+        onExited: (code, status) => {
+            const req = preWriteProbeProc.pendingReq;
+            preWriteProbeProc.pendingReq = null;
+            if (!root._live || !req)
+                return;
+            if (code === 0) {
+                try {
+                    const payload = JSON.parse(preWriteProbeStdout.text);
+                    if (root._handlePreWriteConflict(req, payload)) {
+                        Qt.callLater(() => {
+                            if (root._live)
+                                root._runNextDocOp();
+                        });
+                        return;
+                    }
+                } catch (_e) {}
+            }
+            root._startSingleShotDocOp(req);
+        }
+    }
+
+    Process {
+        id: conflictCheckProc
+        property string targetPath: ""
+        property string expectedSha: ""
+        property double expectedMtime: 0
+        stdout: StdioCollector { id: conflictCheckStdout }
+        onExited: (code, status) => {
+            if (!root._live || code !== 0 || root.currentPath !== conflictCheckProc.targetPath)
+                return;
+            try {
+                const payload = JSON.parse(conflictCheckStdout.text);
+                if (!payload || !payload.ok)
+                    return;
+                const diskSha = String(payload.sha256 ?? "");
+                const diskMtime = Number(payload.mtimeSecs ?? 0);
+                const changed = (conflictCheckProc.expectedSha.length > 0 && diskSha.length > 0)
+                    ? (diskSha !== conflictCheckProc.expectedSha)
+                    : (conflictCheckProc.expectedMtime > 0 && diskMtime > 0 && diskMtime !== conflictCheckProc.expectedMtime);
+                if (changed) {
+                    root.externalConflictDetected = true;
+                    root.externalConflictPath = conflictCheckProc.targetPath;
+                    root.externalConflictDiskContent = String(payload.content ?? "");
+                    root.externalConflictDiskSha = diskSha;
+                    root.externalConflictDiskMtime = diskMtime;
+                }
+            } catch (_e) {}
+        }
+    }
+
+    function _finishDocOp(req, payload, parseFailed: bool): void {
+        if (req && req.kind === "journal-weather") {
+            const pending = Object.assign({}, root._weatherSyncInFlight);
+            const remaining = Math.max(0, Number(pending[req.relPath] ?? 0) - 1);
+            if (remaining > 0) pending[req.relPath] = remaining;
+            else delete pending[req.relPath];
+            root._weatherSyncInFlight = pending;
+        }
+        if (parseFailed) {
+            if (!(req && req.kind === "history-snapshot")) {
+                if (req && req.kind === "delete" && req.relPath)
+                    root._restoreDeleteSnapshot(String(req.relPath));
+                root.errorMessage = "Could not parse document response";
+                root.vimStatusMessage = root.errorMessage;
+            }
+        } else if (!(req && req.kind === "history-snapshot")) {
+            if (payload && payload.ok) {
+                if (req && req.kind === "delete") {
+                    const delPath = String(payload.deletedPath ?? req.relPath ?? "");
+                    if (root._deleteRollbackSnapshots?.[delPath] || root._deleteRollbackSnapshots?.[req.relPath]) {
+                        const nextSnaps = Object.assign({}, root._deleteRollbackSnapshots);
+                        delete nextSnaps[delPath];
+                        delete nextSnaps[req.relPath];
+                        root._deleteRollbackSnapshots = nextSnaps;
+                    }
+                    root.vimStatusMessage = "Moved to .trash: " + delPath;
+                    if (root.currentPath === delPath || (root.currentPath.length > delPath.length && root.currentPath.startsWith(delPath + "/"))) {
+                        root.currentPath = "";
+                        root.currentDoc = null;
+                        root.draftContent = "";
+                        root.isDirty = false;
+                        root._loadedDocPath = "";
+                        root._loadedDocSha = "";
+                        root._loadedDocMtime = 0;
+                        root.externalConflictDetected = false;
+                        root.openHomepage();
+                    }
+                } else if (req && req.kind === "rename") {
+                    const newPath = String(payload.newPath ?? "");
+                    root.vimStatusMessage = "Renamed: " + newPath;
+                    const oldPath = String(payload.oldPath ?? "");
+                    if (oldPath.length > 0) {
+                        const retarget = path => (path === oldPath || path.startsWith(oldPath + "/")) ? newPath + path.slice(oldPath.length) : path;
+                        root._docQueue = root._docQueue.map(op => {
+                            const next = Object.assign({}, op);
+                            next.relPath = retarget(String(op.relPath ?? ""));
+                            if (Array.isArray(op.args)) {
+                                next.args = op.args.map((arg, index, args) => ["--path", "--from", "--to", "--source"].includes(args[index - 1])
+                                    ? retarget(String(arg)) : arg);
+                            }
+                            return next;
+                        });
+                    }
+                    if (oldPath.length > 0 && (root.currentPath === oldPath || root.currentPath.startsWith(oldPath + "/"))) {
+                        const renamedCurrentPath = newPath + root.currentPath.slice(oldPath.length);
+                        root.currentPath = renamedCurrentPath;
+                        if (root._loadedDocPath === oldPath || root._loadedDocPath.startsWith(oldPath + "/"))
+                            root._loadedDocPath = renamedCurrentPath;
+                        if (root.isDirty) {
+                            root.currentDoc = Object.assign({}, root.currentDoc, {
+                                "relPath": renamedCurrentPath,
+                                "absPath": root.configuredVaultPath + "/" + renamedCurrentPath
+                            });
+                        } else {
+                            root.openFile(renamedCurrentPath, false);
+                        }
+                    }
+                } else if (req && req.kind === "create-folder") {
+                    const fol = String(payload.relPath ?? "");
+                    root.vimStatusMessage = "Created folder: " + fol;
+                } else if (req && req.kind === "duplicate") {
+                    const dup = String(payload.relPath ?? "");
+                    root.vimStatusMessage = "Duplicated: " + dup;
+                    root.openFile(dup, true);
+                } else if (req && req.kind === "daily-checkin") {
+                    const newRel = String(payload.relPath ?? "");
+                    const jv = payload.journalView ?? ({});
+                    root.todayJournalInfo = {
+                        "date": String(jv.dateIso ?? Qt.formatDate(new Date(), "yyyy-MM-dd")),
+                        "exists": true,
+                        "relPath": newRel,
+                        "mood": String(jv.mood ?? root.todayJournalInfo?.mood ?? ""),
+                        "energy": String(jv.energy ?? root.todayJournalInfo?.energy ?? ""),
+                        "weight": String(jv.weight ?? root.todayJournalInfo?.weight ?? ""),
+                        "hasMood": jv.hasMood,
+                        "hasEnergy": jv.hasEnergy,
+                        "hasWeight": jv.hasWeight
+                    };
+                    root._syncJournalToCompanion(root.todayJournalInfo.date,
+                        jv.hasMood !== false ? root.todayJournalInfo.mood : undefined,
+                        jv.hasEnergy !== false ? root.todayJournalInfo.energy : undefined,
+                        jv.hasWeight !== false ? root.todayJournalInfo.weight : undefined);
+                    if (newRel.length > 0 && String(jv.weather ?? "").trim().length === 0) {
+                        const liveSummary = root.alisWeatherSummary || root.formatAlisWeatherSummary();
+                        if (liveSummary.length > 0)
+                            Qt.callLater(() => root._queueJournalWeather(newRel, liveSummary, false));
+                    }
+                    if (root.currentPath === newRel && newRel.length > 0) {
+                        root.currentDoc = payload;
+                        root.draftContent = String(payload.content ?? "");
+                        root.isDirty = false;
+                        root._loadedDocPath = newRel;
+                        root._loadedDocSha = String(payload.sha256 ?? "");
+                        root._loadedDocMtime = Number(payload.mtimeSecs ?? 0);
+                        root.externalConflictDetected = false;
+                    }
+                    root.noteSaved(newRel);
+                } else if (req && req.kind === "journal-weather") {
+                    const target = String(payload.relPath ?? "");
+                    if (String(payload.journalView?.weather ?? "").trim().length > 0) {
+                        const recorded = Object.assign({}, root._autoSyncedWeatherPaths);
+                        recorded[target] = true;
+                        root._autoSyncedWeatherPaths = recorded;
+                    }
+                    if (root.currentPath === target && String(root.currentDoc?.relPath ?? "") === target) {
+                        root.currentDoc = payload;
+                        if (!root.isDirty) {
+                            root.draftContent = String(payload.content ?? "");
+                            root._loadedDocPath = target;
+                            root._loadedDocSha = String(payload.sha256 ?? "");
+                            root._loadedDocMtime = Number(payload.mtimeSecs ?? 0);
+                        }
+                    }
+                    if (Boolean(payload.weatherWriteApplied)) {
+                        root.noteSaved(target);
+                        root.vimStatusMessage = "Weather synced from Alis Weather";
+                    }
+                } else if (req && req.kind === "finance-add") {
+                    root.vimStatusMessage = "Added finance entry: " + String(payload.createdPath ?? "");
+                    if (payload.financeSummary)
+                        root.financeSummary = payload.financeSummary;
+                    if (root.currentPath.length > 0 && root.activeView === "document")
+                        root.openFile(root.currentPath, false);
+                } else if (req && req.kind === "link-mention") {
+                    root.vimStatusMessage = "Linked mention in " + String(payload.sourcePath ?? "");
+                    if (root.currentPath.length > 0)
+                        root.openFile(root.currentPath, false);
+                } else if (req && req.kind === "tag-rename") {
+                    const cnt = Number(payload.filesUpdated ?? 0);
+                    root.vimStatusMessage = "Tag #" + String(payload.from ?? "") + " → #" + String(payload.to ?? "") + " (" + String(cnt) + " notes)";
+                    if (root.activeTagFilter.toLowerCase() === String(payload.from ?? "").toLowerCase())
+                        root.activeTagFilter = String(payload.to ?? "");
+                    if (root.currentPath.length > 0 && root.activeView === "document")
+                        root.openFile(root.currentPath, false);
+                } else if (req && req.kind === "tag-remove") {
+                    const cnt = Number(payload.filesUpdated ?? 0);
+                    root.vimStatusMessage = "Removed #" + String(payload.tag ?? "") + " from " + String(cnt) + " notes";
+                    if (root.activeTagFilter.toLowerCase() === String(payload.tag ?? "").toLowerCase())
+                        root.activeTagFilter = "";
+                    if (root.currentPath.length > 0 && root.activeView === "document")
+                        root.openFile(root.currentPath, false);
+                } else if (req && req.kind === "tag-page") {
+                    const relP = String(payload.relPath ?? "");
+                    if (relP.length > 0) {
+                        root.vimStatusMessage = (payload.created ? "Created tag page: " : "Opened tag page: ") + relP;
+                        root.openFile(relP, true);
+                    }
+                } else if (payload.category === "external") {
+                    const absPath = String(payload.absPath ?? "");
+                    root.lastExternalOpenedPath = absPath;
+                    root.openExternally(absPath, "Opened externally: " + String(payload.title ?? "") + "." + String(payload.ext ?? ""));
+                    root.externalFileDispatched(absPath);
+                    root.fileOpened(String(payload.relPath ?? ""), "external");
+                } else if (req && req.backgroundCreate) {
+                    const createdRel = String(payload.relPath ?? req.relPath ?? "");
+                    if (createdRel.length > 0) {
+                        root.noteSaved(createdRel);
+                        root.vimStatusMessage = "Saved " + createdRel;
+                    }
+                } else {
+                    const prevPath = root._currentHistoryMarker();
+                    const newRel = String(payload.relPath ?? "");
+                    if (req && req.recordHistory && prevPath.length > 0 && prevPath !== newRel) {
+                        const back = root.historyBack.slice();
+                        back.push(prevPath);
+                        if (back.length > 50)
+                            back.shift();
+                        root.historyBack = back;
+                        root.historyForward = [];
+                    }
+                    const switchingFile = root.currentPath !== newRel;
+                    const isSaveOnly = Boolean(req && !req.openCreated && (req.kind === "write" || req.kind === "toggle-todo" || req.kind === "update-block" || req.kind === "set-frontmatter" || req.kind === "sync-api"));
+                    if (String(payload.noteKind ?? "") === "journal" && payload.journalView) {
+                        const jDateIso = String(payload.journalView.dateIso ?? "").trim();
+                        const jMood = String(payload.journalView.mood ?? "").trim();
+                        const jEnergy = String(payload.journalView.energy ?? "").trim();
+                        const jWeight = String(payload.journalView.weight ?? "").trim();
+                        if (jDateIso === Qt.formatDate(new Date(), "yyyy-MM-dd")) {
+                            root.todayJournalInfo = {
+                                "date": jDateIso,
+                                "exists": true,
+                                "relPath": newRel,
+                                "mood": jMood,
+                                "energy": jEnergy,
+                                "weight": jWeight,
+                                "hasMood": payload.journalView.hasMood,
+                                "hasEnergy": payload.journalView.hasEnergy,
+                                "hasWeight": payload.journalView.hasWeight
+                            };
+                            const hasMood = payload.journalView.hasMood === undefined ? jMood.length > 0 || isSaveOnly : Boolean(payload.journalView.hasMood);
+                            const hasEnergy = payload.journalView.hasEnergy === undefined ? jEnergy.length > 0 || isSaveOnly : Boolean(payload.journalView.hasEnergy);
+                            const hasWeight = payload.journalView.hasWeight === undefined ? jWeight.length > 0 || isSaveOnly : Boolean(payload.journalView.hasWeight);
+                            if (hasMood || hasEnergy || hasWeight) {
+                                root._syncJournalToCompanion(jDateIso, hasMood ? jMood : undefined, hasEnergy ? jEnergy : undefined, hasWeight ? jWeight : undefined);
+                            }
+                        }
+                        const existingWeather = String(payload.journalView.weather ?? "").trim();
+                        if (existingWeather.length === 0) {
+                            const liveSummary = root.formatAlisWeatherSummary();
+                            Qt.callLater(() => root._syncAvailableJournalWeather(newRel));
+                            if (liveSummary.length === 0 && Quickshell.env("ALIS_NEXUS_DISABLE_XDG_OPEN") !== "1" && typeof HostServices.Weather?.getData === "function") {
+                                HostServices.Weather.getData();
+                            }
+                        }
+                    }
+                    root.currentPath = newRel;
+                    root.currentDoc = payload;
+                    root.draftContent = String(payload.content ?? "");
+                    root.isDirty = false;
+                    root._loadedDocPath = newRel;
+                    root._loadedDocSha = String(payload.sha256 ?? "");
+                    root._loadedDocMtime = Number(payload.mtimeSecs ?? 0);
+                    root.externalConflictDetected = false;
+                    root.externalConflictPath = "";
+                    root.externalConflictDiskContent = "";
+                    root.externalConflictDiskSha = "";
+                    root.externalConflictDiskMtime = 0;
+                    const docCategory = String(payload.category ?? "markdown");
+                    if (!isSaveOnly)
+                        root.activeView = (docCategory === "canvas") ? "canvas" : "document";
+                    root._registerOpenTab(newRel, String(payload.title ?? ""), docCategory);
+                    if (!isSaveOnly && docCategory === "pdf" && String(payload.absPath ?? "").length > 0) {
+                        const absPdf = String(payload.absPath);
+                        Qt.callLater(() => {
+                            if (root._live)
+                                root.pdfLoadInfo(absPdf);
+                        });
+                    }
+                    if (switchingFile) {
+                        root.foldedBlocks = ({});
+                        root.editingBlockId = -1;
+                        root.editorMode = "hybrid";
+                        root.vimMode = "NORMAL";
+                        root.vimCountBuffer = "";
+                        root.vimKeyBuffer = "";
+                        root.vimVisualAnchor = -1;
+                    }
+                    if (req && (req.kind === "write" || req.kind === "toggle-todo" || req.kind === "update-block" || req.kind === "set-frontmatter" || req.kind === "sync-api")) {
+                        root.noteSaved(newRel);
+                        root.vimStatusMessage = req.kind === "sync-api" ? ("Synced metadata: " + newRel) : ("Saved " + newRel);
+                    } else {
+                        root.vimStatusMessage = newRel;
+                    }
+                    root.fileOpened(newRel, docCategory);
+                    if (req && req.kind === "read")
+                        root.fileRead(newRel);
+                }
+            } else {
+                if (req && req.kind === "delete" && req.relPath)
+                    root._restoreDeleteSnapshot(String(req.relPath));
+                root.errorMessage = String(payload?.error ?? "Document operation failed");
+                root.vimStatusMessage = root.errorMessage;
+            }
+        }
+
+        if (root._rescanAfterDoc) {
+            root._rescanAfterDoc = false;
+            root._forceFreshScan = true;
+            root._lastAppliedScanDigest = "";
+            if (root._live) {
+                root.refreshVault();
+                root.refreshCalendar(root.calendarYear, root.calendarMonth);
+            }
+        }
+        Qt.callLater(() => {
+            if (root._live)
+                root._runNextDocOp();
+        });
+    }
+
+    function _applyCalendarPayload(payload): void {
+        if (payload && payload.ok) {
+            root.calendarHeader = String(payload.headerLabel ?? "");
+            root.calendarCells = payload.cells ?? [];
+            root.calendarShowWeeklyNote = Boolean(payload.showWeeklyNote ?? false);
+            root.calendarWordsPerDot = Math.max(1, Number(payload.wordsPerDot ?? 250));
+            root.calendarWeekStart = String(payload.weekStart ?? "monday");
+            root._calendarLoadedFromCli = true;
+        }
+    }
+
+    function _applySearchPayload(request, ok: bool, payload): void {
+        if (ok && payload?.ok && request
+            && request.generation === root._searchGeneration
+            && request.vault === root.configuredVaultPath
+            && request.query === root.searchQuery.trim()
+            && String(payload.query ?? "") === request.query) {
+            root.searchResults = payload.results ?? [];
+        }
+    }
+
+    Timer {
         id: docTimeout
         interval: 10000
         repeat: false
@@ -4387,260 +5190,16 @@ Item {
             docTimeout.stop();
             const req = root._activeDocReq;
             root._activeDocReq = null;
-            if (req && req.kind === "journal-weather") {
-                const pending = Object.assign({}, root._weatherSyncInFlight);
-                const remaining = Math.max(0, Number(pending[req.relPath] ?? 0) - 1);
-                if (remaining > 0) pending[req.relPath] = remaining;
-                else delete pending[req.relPath];
-                root._weatherSyncInFlight = pending;
-            }
-            try {
-                if (req && req.kind === "history-snapshot") {
-                    // Best-effort pre-save snapshot; never block the queued write.
-                } else {
-                    const payload = JSON.parse(docStdoutCollector.text);
-                    if (payload && payload.ok) {
-                        if (req && req.kind === "delete") {
-                        const delPath = String(payload.deletedPath ?? req.relPath ?? "");
-                        if (root._deleteRollbackSnapshots?.[delPath] || root._deleteRollbackSnapshots?.[req.relPath]) {
-                            const nextSnaps = Object.assign({}, root._deleteRollbackSnapshots);
-                            delete nextSnaps[delPath];
-                            delete nextSnaps[req.relPath];
-                            root._deleteRollbackSnapshots = nextSnaps;
-                        }
-                        root.vimStatusMessage = "Moved to .trash: " + delPath;
-                        if (root.currentPath === delPath || (root.currentPath.length > delPath.length && root.currentPath.startsWith(delPath + "/"))) {
-                            root.currentPath = "";
-                            root.currentDoc = null;
-                            root.draftContent = "";
-                            root.isDirty = false;
-                            root.openHomepage();
-                        }
-                    } else if (req && req.kind === "rename") {
-                        const newPath = String(payload.newPath ?? "");
-                        root.vimStatusMessage = "Renamed: " + newPath;
-                        const oldPath = String(payload.oldPath ?? "");
-                        if (oldPath.length > 0) {
-                            const retarget = path => (path === oldPath || path.startsWith(oldPath + "/")) ? newPath + path.slice(oldPath.length) : path;
-                            root._docQueue = root._docQueue.map(op => {
-                                const next = Object.assign({}, op);
-                                next.relPath = retarget(String(op.relPath ?? ""));
-                                if (Array.isArray(op.args)) {
-                                    next.args = op.args.map((arg, index, args) => ["--path", "--from", "--to", "--source"].includes(args[index - 1])
-                                        ? retarget(String(arg)) : arg);
-                                }
-                                return next;
-                            });
-                        }
-                        if (oldPath.length > 0 && (root.currentPath === oldPath || root.currentPath.startsWith(oldPath + "/"))) {
-                            const renamedCurrentPath = newPath + root.currentPath.slice(oldPath.length);
-                            root.currentPath = renamedCurrentPath;
-                            if (root.isDirty) {
-                                root.currentDoc = Object.assign({}, root.currentDoc, {
-                                    "relPath": renamedCurrentPath,
-                                    "absPath": root.configuredVaultPath + "/" + renamedCurrentPath
-                                });
-                            } else {
-                                root.openFile(renamedCurrentPath, false);
-                            }
-                        }
-                    } else if (req && req.kind === "create-folder") {
-                        const fol = String(payload.relPath ?? "");
-                        root.vimStatusMessage = "Created folder: " + fol;
-                    } else if (req && req.kind === "duplicate") {
-                        const dup = String(payload.relPath ?? "");
-                        root.vimStatusMessage = "Duplicated: " + dup;
-                        root.openFile(dup, true);
-                    } else if (req && req.kind === "daily-checkin") {
-                        const newRel = String(payload.relPath ?? "");
-                        const jv = payload.journalView ?? ({});
-                        root.todayJournalInfo = {
-                            "date": String(jv.dateIso ?? Qt.formatDate(new Date(), "yyyy-MM-dd")),
-                            "exists": true,
-                            "relPath": newRel,
-                            "mood": String(jv.mood ?? root.todayJournalInfo?.mood ?? ""),
-                            "energy": String(jv.energy ?? root.todayJournalInfo?.energy ?? ""),
-                            "weight": String(jv.weight ?? root.todayJournalInfo?.weight ?? ""),
-                            "hasMood": jv.hasMood,
-                            "hasEnergy": jv.hasEnergy,
-                            "hasWeight": jv.hasWeight
-                        };
-                        root._syncJournalToCompanion(root.todayJournalInfo.date,
-                            jv.hasMood !== false ? root.todayJournalInfo.mood : undefined,
-                            jv.hasEnergy !== false ? root.todayJournalInfo.energy : undefined,
-                            jv.hasWeight !== false ? root.todayJournalInfo.weight : undefined);
-                        if (newRel.length > 0 && String(jv.weather ?? "").trim().length === 0) {
-                            const liveSummary = root.alisWeatherSummary || root.formatAlisWeatherSummary();
-                            if (liveSummary.length > 0)
-                                Qt.callLater(() => root._queueJournalWeather(newRel, liveSummary, false));
-                        }
-                        if (root.currentPath === newRel && newRel.length > 0) {
-                            root.currentDoc = payload;
-                            root.draftContent = String(payload.content ?? "");
-                            root.isDirty = false;
-                        }
-                        root.noteSaved(newRel);
-                    } else if (req && req.kind === "journal-weather") {
-                        const target = String(payload.relPath ?? "");
-                        if (String(payload.journalView?.weather ?? "").trim().length > 0) {
-                            const recorded = Object.assign({}, root._autoSyncedWeatherPaths);
-                            recorded[target] = true;
-                            root._autoSyncedWeatherPaths = recorded;
-                        }
-                        if (root.currentPath === target && String(root.currentDoc?.relPath ?? "") === target) {
-                            root.currentDoc = payload;
-                            if (!root.isDirty)
-                                root.draftContent = String(payload.content ?? "");
-                        }
-                        if (Boolean(payload.weatherWriteApplied)) {
-                            root.noteSaved(target);
-                            root.vimStatusMessage = "Weather synced from Alis Weather";
-                        }
-                    } else if (req && req.kind === "finance-add") {
-                        root.vimStatusMessage = "Added finance entry: " + String(payload.createdPath ?? "");
-                        if (payload.financeSummary)
-                            root.financeSummary = payload.financeSummary;
-                        if (root.currentPath.length > 0 && root.activeView === "document")
-                            root.openFile(root.currentPath, false);
-                    } else if (req && req.kind === "link-mention") {
-                        root.vimStatusMessage = "Linked mention in " + String(payload.sourcePath ?? "");
-                        if (root.currentPath.length > 0)
-                            root.openFile(root.currentPath, false);
-                    } else if (req && req.kind === "tag-rename") {
-                        const cnt = Number(payload.filesUpdated ?? 0);
-                        root.vimStatusMessage = "Tag #" + String(payload.from ?? "") + " → #" + String(payload.to ?? "") + " (" + String(cnt) + " notes)";
-                        if (root.activeTagFilter.toLowerCase() === String(payload.from ?? "").toLowerCase())
-                            root.activeTagFilter = String(payload.to ?? "");
-                        if (root.currentPath.length > 0 && root.activeView === "document")
-                            root.openFile(root.currentPath, false);
-                    } else if (req && req.kind === "tag-remove") {
-                        const cnt = Number(payload.filesUpdated ?? 0);
-                        root.vimStatusMessage = "Removed #" + String(payload.tag ?? "") + " from " + String(cnt) + " notes";
-                        if (root.activeTagFilter.toLowerCase() === String(payload.tag ?? "").toLowerCase())
-                            root.activeTagFilter = "";
-                        if (root.currentPath.length > 0 && root.activeView === "document")
-                            root.openFile(root.currentPath, false);
-                    } else if (req && req.kind === "tag-page") {
-                        const relP = String(payload.relPath ?? "");
-                        if (relP.length > 0) {
-                            root.vimStatusMessage = (payload.created ? "Created tag page: " : "Opened tag page: ") + relP;
-                            root.openFile(relP, true);
-                        }
-                    } else if (payload.category === "external") {
-                        const absPath = String(payload.absPath ?? "");
-                        root.lastExternalOpenedPath = absPath;
-                        root.openExternally(absPath, "Opened externally: " + String(payload.title ?? "") + "." + String(payload.ext ?? ""));
-                        root.externalFileDispatched(absPath);
-                        root.fileOpened(String(payload.relPath ?? ""), "external");
-                    } else {
-                        const prevPath = root._currentHistoryMarker();
-                        const newRel = String(payload.relPath ?? "");
-                        if (req && req.recordHistory && prevPath.length > 0 && prevPath !== newRel) {
-                            const back = root.historyBack.slice();
-                            back.push(prevPath);
-                            if (back.length > 50)
-                                back.shift();
-                            root.historyBack = back;
-                            root.historyForward = [];
-                        }
-                        const switchingFile = root.currentPath !== newRel;
-                        const isSaveOnly = Boolean(req && (req.kind === "write" || req.kind === "toggle-todo" || req.kind === "update-block" || req.kind === "set-frontmatter" || req.kind === "sync-api"));
-                        if (String(payload.noteKind ?? "") === "journal" && payload.journalView) {
-                            const jDateIso = String(payload.journalView.dateIso ?? "").trim();
-                            const jMood = String(payload.journalView.mood ?? "").trim();
-                            const jEnergy = String(payload.journalView.energy ?? "").trim();
-                            const jWeight = String(payload.journalView.weight ?? "").trim();
-                            if (jDateIso === Qt.formatDate(new Date(), "yyyy-MM-dd")) {
-                                root.todayJournalInfo = {
-                                    "date": jDateIso,
-                                    "exists": true,
-                                    "relPath": newRel,
-                                    "mood": jMood,
-                                    "energy": jEnergy,
-                                    "weight": jWeight,
-                                    "hasMood": payload.journalView.hasMood,
-                                    "hasEnergy": payload.journalView.hasEnergy,
-                                    "hasWeight": payload.journalView.hasWeight
-                                };
-                                const hasMood = payload.journalView.hasMood === undefined ? jMood.length > 0 || isSaveOnly : Boolean(payload.journalView.hasMood);
-                                const hasEnergy = payload.journalView.hasEnergy === undefined ? jEnergy.length > 0 || isSaveOnly : Boolean(payload.journalView.hasEnergy);
-                                const hasWeight = payload.journalView.hasWeight === undefined ? jWeight.length > 0 || isSaveOnly : Boolean(payload.journalView.hasWeight);
-                                if (hasMood || hasEnergy || hasWeight) {
-                                    root._syncJournalToCompanion(jDateIso, hasMood ? jMood : undefined, hasEnergy ? jEnergy : undefined, hasWeight ? jWeight : undefined);
-                                }
-                            }
-                            const existingWeather = String(payload.journalView.weather ?? "").trim();
-                            if (existingWeather.length === 0) {
-                                const liveSummary = root.formatAlisWeatherSummary();
-                                Qt.callLater(() => root._syncAvailableJournalWeather(newRel));
-                                if (liveSummary.length === 0 && Quickshell.env("ALIS_NEXUS_DISABLE_XDG_OPEN") !== "1" && typeof HostServices.Weather?.getData === "function") {
-                                    HostServices.Weather.getData();
-                                }
-                            }
-                        }
-                        root.currentPath = newRel;
-                        root.currentDoc = payload;
-                        root.draftContent = String(payload.content ?? "");
-                        root.isDirty = false;
-                        const docCategory = String(payload.category ?? "markdown");
-                        if (!isSaveOnly)
-                            root.activeView = (docCategory === "canvas") ? "canvas" : "document";
-                        root._registerOpenTab(newRel, String(payload.title ?? ""), docCategory);
-                        if (!isSaveOnly && docCategory === "pdf" && String(payload.absPath ?? "").length > 0) {
-                            const absPdf = String(payload.absPath);
-                            Qt.callLater(() => {
-                                if (root._live)
-                                    root.pdfLoadInfo(absPdf);
-                            });
-                        }
-                        if (switchingFile) {
-                            root.foldedBlocks = ({});
-                            root.editingBlockId = -1;
-                            root.editorMode = "hybrid";
-                            root.vimMode = "NORMAL";
-                            root.vimCountBuffer = "";
-                            root.vimKeyBuffer = "";
-                            root.vimVisualAnchor = -1;
-                        }
-                        if (req && (req.kind === "write" || req.kind === "toggle-todo" || req.kind === "update-block" || req.kind === "set-frontmatter" || req.kind === "sync-api")) {
-                            root.noteSaved(newRel);
-                            root.vimStatusMessage = req.kind === "sync-api" ? ("Synced metadata: " + newRel) : ("Saved " + newRel);
-                        } else {
-                            root.vimStatusMessage = newRel;
-                        }
-                        root.fileOpened(newRel, docCategory);
-                        if (req && req.kind === "read")
-                            root.fileRead(newRel);
-                    }
-                    } else {
-                        if (req && req.kind === "delete" && req.relPath)
-                            root._restoreDeleteSnapshot(String(req.relPath));
-                        root.errorMessage = String(payload?.error ?? "Document operation failed");
-                        root.vimStatusMessage = root.errorMessage;
-                    }
-                }
-            } catch (e) {
-                if (!(req && req.kind === "history-snapshot")) {
-                    if (req && req.kind === "delete" && req.relPath)
-                        root._restoreDeleteSnapshot(String(req.relPath));
-                    root.errorMessage = "Could not parse document response";
-                    root.vimStatusMessage = root.errorMessage;
+            let payload = null;
+            let parseFailed = false;
+            if (!(req && req.kind === "history-snapshot")) {
+                try {
+                    payload = JSON.parse(docStdoutCollector.text);
+                } catch (_e) {
+                    parseFailed = true;
                 }
             }
-
-            if (root._rescanAfterDoc) {
-                root._rescanAfterDoc = false;
-                root._forceFreshScan = true;
-                root._lastAppliedScanDigest = "";
-                if (root._live) {
-                    root.refreshVault();
-                    root.refreshCalendar(root.calendarYear, root.calendarMonth);
-                }
-            }
-            Qt.callLater(() => {
-                if (root._live)
-                    root._runNextDocOp();
-            });
+            root._finishDocOp(req, payload, parseFailed);
         }
     }
 
@@ -4663,15 +5222,7 @@ Item {
         onExited: (code, status) => {
             calendarTimeout.stop();
             try {
-                const payload = JSON.parse(calendarStdoutCollector.text);
-                if (payload && payload.ok) {
-                    root.calendarHeader = String(payload.headerLabel ?? "");
-                    root.calendarCells = payload.cells ?? [];
-                    root.calendarShowWeeklyNote = Boolean(payload.showWeeklyNote ?? false);
-                    root.calendarWordsPerDot = Math.max(1, Number(payload.wordsPerDot ?? 250));
-                    root.calendarWeekStart = String(payload.weekStart ?? "monday");
-                    root._calendarLoadedFromCli = true;
-                }
+                root._applyCalendarPayload(JSON.parse(calendarStdoutCollector.text));
             } catch (e) {}
         }
     }
@@ -4716,14 +5267,7 @@ Item {
             searchProc.inFlight = false;
             searchProc.request = null;
             try {
-                const payload = JSON.parse(searchStdoutCollector.text);
-                if (code === 0 && payload?.ok && request
-                    && request.generation === root._searchGeneration
-                    && request.vault === root.configuredVaultPath
-                    && request.query === root.searchQuery.trim()
-                    && String(payload.query ?? "") === request.query) {
-                    root.searchResults = payload.results ?? [];
-                }
+                root._applySearchPayload(request, code === 0, JSON.parse(searchStdoutCollector.text));
             } catch (e) {}
             Qt.callLater(root._startPendingSearch);
         }

@@ -33,8 +33,14 @@ ColumnLayout {
         const cur = String(editor.text ?? "");
         const s = Math.max(0, Math.min(cur.length, replaceStart));
         const e = Math.max(s, Math.min(cur.length, replaceEnd));
-        const nextText = cur.slice(0, s) + textStr + cur.slice(e);
-        editor.text = nextText;
+        if (typeof editor.remove === "function" && typeof editor.insert === "function") {
+            if (e > s)
+                editor.remove(s, e);
+            if (textStr.length > 0)
+                editor.insert(s, textStr);
+        } else {
+            editor.text = cur.slice(0, s) + textStr + cur.slice(e);
+        }
         const nextPos = Math.max(s, s + textStr.length - Math.max(0, cursorBackOffset));
         editor.cursorPosition = nextPos;
         editor.forceActiveFocus();
@@ -76,6 +82,101 @@ ColumnLayout {
         slashMenu.isOpen = true;
     }
 
+    function _wrapSelection(editor, prefix: string, suffix: string, placeholder: string): void {
+        if (!editor || editor.readOnly)
+            return;
+        const txt = String(editor.text ?? "");
+        const s = Math.min(editor.selectionStart, editor.selectionEnd);
+        const e = Math.max(editor.selectionStart, editor.selectionEnd);
+        const canSplice = typeof editor.remove === "function" && typeof editor.insert === "function";
+        if (s !== e) {
+            const selected = txt.slice(s, e);
+            // Toggle off if already wrapped by exact prefix/suffix
+            if (s >= prefix.length
+                    && txt.slice(s - prefix.length, s) === prefix
+                    && txt.slice(e, e + suffix.length) === suffix) {
+                if (canSplice) {
+                    editor.remove(s - prefix.length, e + suffix.length);
+                    editor.insert(s - prefix.length, selected);
+                } else {
+                    editor.text = txt.slice(0, s - prefix.length) + selected + txt.slice(e + suffix.length);
+                }
+                editor.select(s - prefix.length, e - prefix.length);
+            } else {
+                const wrapped = prefix + selected + suffix;
+                if (canSplice) {
+                    editor.remove(s, e);
+                    editor.insert(s, wrapped);
+                } else {
+                    editor.text = txt.slice(0, s) + wrapped + txt.slice(e);
+                }
+                editor.select(s + prefix.length, e + prefix.length);
+            }
+        } else {
+            const pos = Math.max(0, Math.min(txt.length, editor.cursorPosition));
+            const wrapped = prefix + placeholder + suffix;
+            if (canSplice) {
+                editor.insert(pos, wrapped);
+            } else {
+                editor.text = txt.slice(0, pos) + wrapped + txt.slice(pos);
+            }
+            editor.select(pos + prefix.length, pos + prefix.length + placeholder.length);
+        }
+        editor.forceActiveFocus();
+    }
+
+    function _handleSmartListEnter(editor): bool {
+        if (!editor || editor.readOnly || editor.selectionStart !== editor.selectionEnd)
+            return false;
+        const txt = String(editor.text ?? "");
+        const pos = Math.max(0, Math.min(txt.length, editor.cursorPosition));
+        const lineStart = pos > 0 ? (txt.lastIndexOf("\n", pos - 1) + 1) : 0;
+        const beforeCursor = txt.slice(lineStart, pos);
+
+        // 1. Checkbox task item: "  - [ ] text" or "  - [x] text"
+        let m = /^([ \t]*)([-*+])[ \t]+\[[ xX]\][ \t]*(.*)$/.exec(beforeCursor);
+        if (m) {
+            if (m[3].length === 0 && (pos === txt.length || txt.charAt(pos) === "\n")) {
+                documentViewRoot._insertAtEditor(editor, "", lineStart, pos, 0);
+            } else {
+                documentViewRoot._insertAtEditor(editor, "\n" + m[1] + m[2] + " [ ] ", pos, pos, 0);
+            }
+            return true;
+        }
+        // 2. Unordered bullet item: "  - text" / "  * text" / "  + text"
+        m = /^([ \t]*)([-*+])[ \t]+(.*)$/.exec(beforeCursor);
+        if (m) {
+            if (m[3].length === 0 && (pos === txt.length || txt.charAt(pos) === "\n")) {
+                documentViewRoot._insertAtEditor(editor, "", lineStart, pos, 0);
+            } else {
+                documentViewRoot._insertAtEditor(editor, "\n" + m[1] + m[2] + " ", pos, pos, 0);
+            }
+            return true;
+        }
+        // 3. Ordered numbered item: "  1. text" or "  1) text"
+        m = /^([ \t]*)(\d+)([.)])[ \t]+(.*)$/.exec(beforeCursor);
+        if (m) {
+            if (m[4].length === 0 && (pos === txt.length || txt.charAt(pos) === "\n")) {
+                documentViewRoot._insertAtEditor(editor, "", lineStart, pos, 0);
+            } else {
+                const nextNum = parseInt(m[2], 10) + 1;
+                documentViewRoot._insertAtEditor(editor, "\n" + m[1] + String(nextNum) + m[3] + " ", pos, pos, 0);
+            }
+            return true;
+        }
+        // 4. Blockquote line: "> text"
+        m = /^([ \t]*>[ \t]?)(.*)$/.exec(beforeCursor);
+        if (m) {
+            if (m[2].length === 0 && (pos === txt.length || txt.charAt(pos) === "\n")) {
+                documentViewRoot._insertAtEditor(editor, "", lineStart, pos, 0);
+            } else {
+                documentViewRoot._insertAtEditor(editor, "\n" + m[1], pos, pos, 0);
+            }
+            return true;
+        }
+        return false;
+    }
+
     function _handleEditorPreKey(editor, event): bool {
         if (slashMenu.isOpen && documentViewRoot._activeSlashEditor === editor) {
             if (event.key === Qt.Key_Down) {
@@ -94,6 +195,27 @@ ColumnLayout {
                 slashMenu.close();
                 return true;
             }
+        }
+        const ctrlOnly = (event.modifiers & Qt.ControlModifier) !== 0
+            && (event.modifiers & (Qt.AltModifier | Qt.ShiftModifier | Qt.MetaModifier)) === 0;
+        if (ctrlOnly && !editor.readOnly) {
+            if (event.key === Qt.Key_B) {
+                documentViewRoot._wrapSelection(editor, "**", "**", "bold");
+                return true;
+            }
+            if (event.key === Qt.Key_I) {
+                documentViewRoot._wrapSelection(editor, "*", "*", "italic");
+                return true;
+            }
+            if (event.key === Qt.Key_K) {
+                documentViewRoot._wrapSelection(editor, "[", "](url)", "text");
+                return true;
+            }
+        }
+        const noMod = (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.ShiftModifier | Qt.MetaModifier)) === 0;
+        if (noMod && !editor.readOnly && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+            if (documentViewRoot._handleSmartListEnter(editor))
+                return true;
         }
         if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_V) {
             const isShift = (event.modifiers & Qt.ShiftModifier) !== 0;
@@ -160,8 +282,17 @@ ColumnLayout {
         }
     }
 
+    onVisibleChanged: {
+        if (visible && root.nexus)
+            root.nexus.checkExternalModification();
+    }
+
     Connections {
         target: root.nexus
+        function onIsOpenChanged(): void {
+            if (root.nexus?.isOpen && documentViewRoot.visible)
+                root.nexus.checkExternalModification();
+        }
         function onScrollToLineSerialChanged(): void {
             if (root.nexus)
                 documentViewRoot._scrollToRequestedLine(root.nexus.scrollToLineRequest);
@@ -363,6 +494,87 @@ ColumnLayout {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
                 onClicked: if (root.nexus) root.nexus.openHistoryModal()
+            }
+        }
+    }
+
+    // Non-destructive external file modification conflict banner
+    Rectangle {
+        id: externalConflictBanner
+        objectName: "nexusExternalConflictBanner"
+        visible: Boolean(root.nexus?.externalConflictDetected && root.nexus?.externalConflictPath === root.nexus?.currentPath)
+        Layout.fillWidth: true
+        implicitHeight: visible ? Math.max(38, conflictBannerRow.implicitHeight + 12) : 0
+        radius: 8
+        color: settledColors.colLayer2
+        border.width: 1
+        border.color: settledColors.colPrimary
+
+        RowLayout {
+            id: conflictBannerRow
+            anchors.fill: parent
+            anchors.leftMargin: 12
+            anchors.rightMargin: 10
+            spacing: 8
+
+            MaterialSymbol {
+                text: "warning"
+                iconSize: 16
+                color: settledColors.colPrimary
+            }
+
+            StyledText {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                text: "File modified externally on disk"
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                font.weight: Font.Medium
+                color: settledColors.colOnLayer1
+                elide: Text.ElideRight
+            }
+
+            Rectangle {
+                objectName: "nexusConflictReloadButton"
+                height: 26
+                width: reloadConflictTxt.implicitWidth + 16
+                radius: 6
+                color: settledColors.colSecondaryContainer
+                StyledText {
+                    id: reloadConflictTxt
+                    anchors.centerIn: parent
+                    horizontalAlignment: Text.AlignHCenter
+                    text: "Reload"
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.weight: Font.DemiBold
+                    color: settledColors.colPrimary
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (root.nexus) root.nexus.resolveExternalConflictReload()
+                }
+            }
+
+            Rectangle {
+                objectName: "nexusConflictKeepButton"
+                height: 26
+                width: keepConflictTxt.implicitWidth + 16
+                radius: 6
+                color: settledColors.colPrimary
+                StyledText {
+                    id: keepConflictTxt
+                    anchors.centerIn: parent
+                    horizontalAlignment: Text.AlignHCenter
+                    text: "Keep & Save"
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.weight: Font.DemiBold
+                    color: settledColors.colOnPrimary
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (root.nexus) root.nexus.resolveExternalConflictKeep(true)
+                }
             }
         }
     }

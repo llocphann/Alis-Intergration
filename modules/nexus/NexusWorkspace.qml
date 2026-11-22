@@ -38,6 +38,17 @@ FocusScope {
     property bool transitionSettled: true
     property string liveDateTimeStr: root.formatHomepageDateTime(new Date())
 
+    TapHandler {
+        acceptedButtons: Qt.BackButton | Qt.ForwardButton
+        onTapped: (eventPoint, button) => {
+            if (!root.nexus) return;
+            if (button === Qt.BackButton && typeof root.nexus.navigateBack === "function")
+                root.nexus.navigateBack();
+            else if (button === Qt.ForwardButton && typeof root.nexus.navigateForward === "function")
+                root.nexus.navigateForward();
+        }
+    }
+
     function formatHomepageDateTime(dt): string {
         const d = dt || new Date();
         return Qt.formatDateTime(d, "dddd, MMM dd, yyyy,").toLowerCase() + "\n" + Qt.formatDateTime(d, "HH:mm:ss");
@@ -4802,37 +4813,81 @@ FocusScope {
                         columnSpacing: 6
                         rowSpacing: 6
 
-                        // Homepage pill button
-                        Rectangle {
+                        // Back / Forward + Homepage navigation cluster
+                        Row {
                             Layout.preferredHeight: 28
-                            Layout.preferredWidth: homeBtnRow.implicitWidth + 14
-                            radius: 7
-                            color: (root.nexus?.activeView === "homepage") ? settledColors.colSecondaryContainer : (homeMouse.containsMouse ? settledColors.colLayer2Hover : "transparent")
+                            Layout.preferredWidth: implicitWidth
+                            spacing: 4
 
-                            RowLayout {
-                                id: homeBtnRow
-                                anchors.centerIn: parent
-                                spacing: 5
+                            Rectangle {
+                                objectName: "nexusNavBackButton"
+                                height: 28; width: 26; radius: 7
+                                color: navBackMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
                                 MaterialSymbol {
-                                    text: "home"
-                                    iconSize: 15
-                                    color: (root.nexus?.activeView === "homepage") ? settledColors.colPrimary : settledColors.colSubtext
+                                    anchors.centerIn: parent
+                                    text: "chevron_left"
+                                    iconSize: 16
+                                    color: (root.nexus?.canGoBack ?? true) ? settledColors.colOnLayer1 : settledColors.colSubtext
                                 }
-                                StyledText {
-                                    text: "Homepage"
-                                    font.pixelSize: Appearance.font.pixelSize.smaller
-                                    font.weight: Font.DemiBold
-                                    color: (root.nexus?.activeView === "homepage") ? settledColors.colOnSecondaryContainer : settledColors.colOnLayer1
+                                MouseArea {
+                                    id: navBackMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: if (root.nexus && typeof root.nexus.navigateBack === "function") root.nexus.navigateBack()
                                 }
                             }
-                            MouseArea {
-                                id: homeMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (root.nexus)
-                                        root.nexus.openHomepage();
+
+                            Rectangle {
+                                objectName: "nexusNavForwardButton"
+                                height: 28; width: 26; radius: 7
+                                color: navFwdMouse.containsMouse ? settledColors.colLayer2Hover : "transparent"
+                                MaterialSymbol {
+                                    anchors.centerIn: parent
+                                    text: "chevron_right"
+                                    iconSize: 16
+                                    color: (root.nexus?.canGoForward ?? true) ? settledColors.colOnLayer1 : settledColors.colSubtext
+                                }
+                                MouseArea {
+                                    id: navFwdMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: if (root.nexus && typeof root.nexus.navigateForward === "function") root.nexus.navigateForward()
+                                }
+                            }
+
+                            Rectangle {
+                                height: 28
+                                width: homeBtnRow.implicitWidth + 14
+                                radius: 7
+                                color: (root.nexus?.activeView === "homepage") ? settledColors.colSecondaryContainer : (homeMouse.containsMouse ? settledColors.colLayer2Hover : "transparent")
+
+                                RowLayout {
+                                    id: homeBtnRow
+                                    anchors.centerIn: parent
+                                    spacing: 5
+                                    MaterialSymbol {
+                                        text: "home"
+                                        iconSize: 15
+                                        color: (root.nexus?.activeView === "homepage") ? settledColors.colPrimary : settledColors.colSubtext
+                                    }
+                                    StyledText {
+                                        text: "Homepage"
+                                        font.pixelSize: Appearance.font.pixelSize.smaller
+                                        font.weight: Font.DemiBold
+                                        color: (root.nexus?.activeView === "homepage") ? settledColors.colOnSecondaryContainer : settledColors.colOnLayer1
+                                    }
+                                }
+                                MouseArea {
+                                    id: homeMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (root.nexus)
+                                            root.nexus.openHomepage();
+                                    }
                                 }
                             }
                         }
@@ -6898,6 +6953,30 @@ FocusScope {
                         }
                     }
 
+                    // LRU idle-evict inactive heavy view Loaders after 120s to bound QML scene RAM
+                    Timer {
+                        id: viewLruEvictTimer
+                        interval: 60000
+                        repeat: true
+                        running: root.visible
+                        onTriggered: {
+                            const now = Date.now();
+                            const idleLimitMs = 120000;
+                            if (fullGraphLoader.active && !fullGraphLoader.shouldLoad && fullGraphLoader.lastActiveMs > 0 && (now - fullGraphLoader.lastActiveMs) > idleLimitMs)
+                                fullGraphLoader.active = false;
+                            if (collectionViewLoader.source.toString().length > 0 && !collectionViewLoader.shouldLoad && collectionViewLoader.lastActiveMs > 0 && (now - collectionViewLoader.lastActiveMs) > idleLimitMs)
+                                collectionViewLoader.source = "";
+                            if (documentViewLoader.source.toString().length > 0 && !documentViewLoader.shouldLoad && !Boolean(documentViewLoader.item?.dirty) && documentViewLoader.lastActiveMs > 0 && (now - documentViewLoader.lastActiveMs) > idleLimitMs)
+                                documentViewLoader.source = "";
+                            if (canvasViewLoader.source.toString().length > 0 && !canvasViewLoader.shouldLoad && !Boolean(canvasViewLoader.item?.dirty) && canvasViewLoader.lastActiveMs > 0 && (now - canvasViewLoader.lastActiveMs) > idleLimitMs)
+                                canvasViewLoader.source = "";
+                            if (databaseViewLoader.source.toString().length > 0 && !databaseViewLoader.shouldLoad && databaseViewLoader.lastActiveMs > 0 && (now - databaseViewLoader.lastActiveMs) > idleLimitMs)
+                                databaseViewLoader.source = "";
+                            if (secondaryPaneLoader.source.toString().length > 0 && !secondaryPaneLoader.shouldLoad && secondaryPaneLoader.lastActiveMs > 0 && (now - secondaryPaneLoader.lastActiveMs) > idleLimitMs)
+                                secondaryPaneLoader.source = "";
+                        }
+                    }
+
                     // ───────────────────────────────────────────────────────
                     // VIEW 2: FULL VAULT GRAPH VIEW
                     // ───────────────────────────────────────────────────────
@@ -6909,9 +6988,11 @@ FocusScope {
                         anchors.rightMargin: secondaryPaneLoader.visible ? (secondaryPaneLoader.width + 20) : 14
                         asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
                         readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "graph"
+                        property double lastActiveMs: 0
                         visible: shouldLoad
                         active: false
                         function _syncActive(): void {
+                            lastActiveMs = Date.now();
                             if (shouldLoad && !active)
                                 active = true;
                         }
@@ -6961,8 +7042,10 @@ FocusScope {
                         anchors.rightMargin: secondaryPaneLoader.visible ? (secondaryPaneLoader.width + 20) : 16
                         asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
                         readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "collection"
+                        property double lastActiveMs: 0
                         visible: shouldLoad
                         function _syncSource(): void {
+                            lastActiveMs = Date.now();
                             if (shouldLoad && source.toString().length === 0)
                                 setSource(Qt.resolvedUrl("NexusCollectionsView.qml"), { workspace: root });
                         }
@@ -6981,8 +7064,10 @@ FocusScope {
                         anchors.rightMargin: secondaryPaneLoader.visible ? (secondaryPaneLoader.width + 20) : 16
                         asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
                         readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "document" && Boolean(root.nexus?.currentDoc)
+                        property double lastActiveMs: 0
                         visible: shouldLoad
                         function _syncSource(): void {
+                            lastActiveMs = Date.now();
                             if (shouldLoad && source.toString().length === 0)
                                 setSource(Qt.resolvedUrl("NexusDocumentView.qml"), { workspace: root });
                         }
@@ -7001,8 +7086,10 @@ FocusScope {
                         anchors.rightMargin: secondaryPaneLoader.visible ? (secondaryPaneLoader.width + 20) : 16
                         asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
                         readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "canvas"
+                        property double lastActiveMs: 0
                         visible: shouldLoad
                         function _syncSource(): void {
+                            lastActiveMs = Date.now();
                             if (shouldLoad && source.toString().length === 0)
                                 setSource(Qt.resolvedUrl("NexusCanvasView.qml"), { nexus: root.nexus, settledColors: settledColors });
                         }
@@ -7027,8 +7114,10 @@ FocusScope {
                         anchors.rightMargin: secondaryPaneLoader.visible ? (secondaryPaneLoader.width + 20) : 16
                         asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
                         readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "database"
+                        property double lastActiveMs: 0
                         visible: shouldLoad
                         function _syncSource(): void {
+                            lastActiveMs = Date.now();
                             if (shouldLoad && source.toString().length === 0)
                                 setSource(Qt.resolvedUrl("NexusDatabaseView.qml"), { nexus: root.nexus, settledColors: settledColors });
                         }
@@ -7055,8 +7144,10 @@ FocusScope {
                         width: Math.max(280, Math.round(mainBodyArea.width * 0.42))
                         asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
                         readonly property bool shouldLoad: Boolean(root.nexus?.splitPaneOpen ?? false)
+                        property double lastActiveMs: 0
                         visible: shouldLoad
                         function _syncSource(): void {
+                            lastActiveMs = Date.now();
                             if (shouldLoad && source.toString().length === 0)
                                 setSource(Qt.resolvedUrl("NexusSecondaryPane.qml"), { nexus: root.nexus, settledColors: settledColors });
                         }

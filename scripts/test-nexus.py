@@ -1899,8 +1899,128 @@ def test_real_vault_notes_obsidian_nexus_compatibility():
             assert re_doc["noteKind"] == expected_kind, f"noteKind changed after Nexus edit in {rel}"
 
 
+def test_asset_helper_native_clipboard():
+    helper = ROOT / "scripts/notes/asset_helper.py"
+    assert helper.is_file(), f"Missing {helper}"
+    png_bytes = b"\x89PNG\r\n\x1a\nfake-png-payload"
+    with tempfile.TemporaryDirectory(prefix="alis-asset-helper-") as tmp:
+        tmp_path = Path(tmp)
+        vault = tmp_path / "Vault"
+        vault.mkdir()
+        (vault / "Note.md").write_text("# Test\n", encoding="utf-8")
+
+        # 1. Primary path: native-dispatch clipboard paste --list-types / --no-newline --type image/png
+        log_file = tmp_path / "nd-calls.log"
+        fake_nd = tmp_path / "native-dispatch"
+        fake_nd.write_text(
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            f"with open({str(log_file)!r}, 'a', encoding='utf-8') as f:\n"
+            "    f.write(' '.join(sys.argv[1:]) + '\\n')\n"
+            "if '--list-types' in sys.argv:\n"
+            "    sys.stdout.write('text/plain\\nimage/png\\n')\n"
+            "elif '--type' in sys.argv and 'image/png' in sys.argv:\n"
+            f"    sys.stdout.buffer.write({png_bytes!r})\n"
+            "else:\n"
+            "    sys.exit(1)\n",
+            encoding="utf-8",
+        )
+        fake_nd.chmod(0o755)
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(helper),
+                "paste-image",
+                "--vault",
+                str(vault),
+                "--current-rel",
+                "Note.md",
+                "--native-dispatch",
+                str(fake_nd),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(tmp_path)},
+        )
+        res = json.loads(proc.stdout)
+        assert res["ok"] is True and res["hasImage"] is True, res
+        assert (vault / res["relPath"]).read_bytes() == png_bytes
+        calls = log_file.read_text(encoding="utf-8").splitlines()
+        assert calls == [
+            "clipboard paste --list-types",
+            "clipboard paste --no-newline --type image/png",
+        ], calls
+
+        # 2. Fallback path: unavailable native-dispatch falls back cleanly to wl-paste in PATH
+        fake_bin = tmp_path / "bin"
+        fake_bin.mkdir()
+        wl_log = tmp_path / "wl-calls.log"
+        fake_wl = fake_bin / "wl-paste"
+        fake_wl.write_text(
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            f"with open({str(wl_log)!r}, 'a', encoding='utf-8') as f:\n"
+            "    f.write(' '.join(sys.argv[1:]) + '\\n')\n"
+            "if '--list-types' in sys.argv:\n"
+            "    sys.stdout.write('image/webp\\n')\n"
+            "elif '--type' in sys.argv and 'image/webp' in sys.argv:\n"
+            "    sys.stdout.buffer.write(b'RIFFWEBP')\n"
+            "else:\n"
+            "    sys.exit(1)\n",
+            encoding="utf-8",
+        )
+        fake_wl.chmod(0o755)
+        # Missing native-dispatch stub returning 127 forces wl-paste fallback
+        missing_nd = tmp_path / "missing-nd"
+        missing_nd.write_text("#!/bin/sh\nexit 127\n", encoding="utf-8")
+        missing_nd.chmod(0o755)
+        proc_fb = subprocess.run(
+            [
+                sys.executable,
+                str(helper),
+                "paste-image",
+                "--vault",
+                str(vault),
+                "--native-dispatch",
+                str(missing_nd),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(tmp_path)},
+        )
+        res_fb = json.loads(proc_fb.stdout)
+        assert res_fb["ok"] is True and res_fb["hasImage"] is True and res_fb["filename"].endswith(".webp"), res_fb
+        assert (vault / res_fb["relPath"]).read_bytes() == b"RIFFWEBP"
+        assert wl_log.read_text(encoding="utf-8").splitlines() == [
+            "--list-types",
+            "--no-newline --type image/webp",
+        ]
+
+        # 3. Graceful no-clipboard path when neither native-dispatch nor wl-paste works
+        proc_none = subprocess.run(
+            [
+                sys.executable,
+                str(helper),
+                "paste-image",
+                "--vault",
+                str(vault),
+                "--native-dispatch",
+                str(missing_nd),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={"PATH": "", "HOME": str(tmp_path)},
+        )
+        res_none = json.loads(proc_none.stdout)
+        assert res_none["ok"] is True and res_none["hasImage"] is False, res_none
+
+
 if __name__ == "__main__":
     test_rust_engine()
+    test_asset_helper_native_clipboard()
     test_real_vault_notes_obsidian_nexus_compatibility()
     test_qml_workspace_runtime()
     print("ALIS_NEXUS_PASS Rust engine scan/graph/outliner/calendar/external/schedule/hotkeys/custom-views/api-sync/finance + Obsidian-compat + QML workspace/vim/planner-sync/Bases/Overlay-Window")

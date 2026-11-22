@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 
+import qs
 import qs.modules.common
 import qs.services
 import qs.services as HostServices
@@ -23,6 +24,7 @@ Item {
     property int nextId: 100
     property bool ready: false
     property bool lookupBusy: false
+    property bool pronouncing: false
     property var lastLookupResult: null
     property string errorMessage: ""
 
@@ -266,7 +268,7 @@ Item {
         id: deferredBootLoadTimer
         interval: 2500
         repeat: false
-        running: !root._loadStarted && Boolean(HostServices.GlobalStates?.lateFeaturesReady ?? false)
+        running: !root._loadStarted && Boolean(GlobalStates?.deferredPanelsReady ?? false)
         onTriggered: root.ensureLoaded()
     }
 
@@ -1017,4 +1019,75 @@ Item {
             root.errorMessage = Translation.tr("Could not save Spaced Repetition progress.")
         }
     }
+
+    property string _pendingPronounceText: ""
+
+    function stopPronouncing(): void {
+        root._pendingPronounceText = ""
+        if (pronounceProc.running) {
+            try { pronounceProc.signal(15) } catch (_e) { pronounceProc.running = false }
+        }
+        root.pronouncing = false
+    }
+
+    function _launchPronounce(cleaned: string): void {
+        const script = [
+            "set -u",
+            "text=\"$1\"",
+            "tts_bin=\"\"",
+            "if command -v edge-tts >/dev/null 2>&1; then tts_bin=\"$(command -v edge-tts)\"",
+            "elif [ -x \"$HOME/.local/bin/edge-tts\" ]; then tts_bin=\"$HOME/.local/bin/edge-tts\"",
+            "elif [ -x \"$HOME/.local/state/quickshell/.venv/bin/edge-tts\" ]; then tts_bin=\"$HOME/.local/state/quickshell/.venv/bin/edge-tts\"",
+            "fi",
+            "tmp=\"$(mktemp \"${TMPDIR:-/tmp}/alis-sr-tts.XXXXXX.mp3\" 2>/dev/null || true)\"",
+            "[ -n \"$tmp\" ] || exit 0",
+            "child=\"\"",
+            "cleanup() { if [ -n \"$child\" ]; then kill -TERM \"$child\" 2>/dev/null || true; child=\"\"; fi; rm -f -- \"$tmp\"; }",
+            "trap cleanup EXIT",
+            "trap 'cleanup; exit 0' TERM INT HUP",
+            "if [ -n \"$tts_bin\" ]; then \"$tts_bin\" --voice en-US-AvaMultilingualNeural --text=\"$text\" --write-media \"$tmp\" >/dev/null 2>&1 & child=$!; wait \"$child\" 2>/dev/null || exit 0; child=\"\"",
+            "elif command -v python3 >/dev/null 2>&1 && python3 -c 'import edge_tts' >/dev/null 2>&1; then python3 -m edge_tts --voice en-US-AvaMultilingualNeural --text=\"$text\" --write-media \"$tmp\" >/dev/null 2>&1 & child=$!; wait \"$child\" 2>/dev/null || exit 0; child=\"\"",
+            "else exit 0; fi",
+            "[ -s \"$tmp\" ] || exit 0",
+            "if command -v mpv >/dev/null 2>&1; then mpv --no-video --really-quiet \"$tmp\" >/dev/null 2>&1 & child=$!; wait \"$child\" 2>/dev/null || true",
+            "elif command -v ffplay >/dev/null 2>&1; then ffplay -nodisp -autoexit -loglevel quiet \"$tmp\" >/dev/null 2>&1 & child=$!; wait \"$child\" 2>/dev/null || true",
+            "elif command -v pw-play >/dev/null 2>&1; then pw-play \"$tmp\" >/dev/null 2>&1 & child=$!; wait \"$child\" 2>/dev/null || true",
+            "elif command -v paplay >/dev/null 2>&1; then paplay \"$tmp\" >/dev/null 2>&1 & child=$!; wait \"$child\" 2>/dev/null || true",
+            "fi"
+        ].join("\n")
+        pronounceProc.command = ["/usr/bin/bash", "-c", script, "alis-sr-tts", cleaned]
+        root.pronouncing = true
+        pronounceProc.running = true
+    }
+
+    function pronounceWord(rawText: string): void {
+        const cleaned = String(rawText ?? "").replace(/\s+/g, " ").trim().slice(0, 180)
+        if (!cleaned.length)
+            return
+        if (pronounceProc.running) {
+            root._pendingPronounceText = cleaned
+            try { pronounceProc.signal(15) } catch (_e) { pronounceProc.running = false }
+            return
+        }
+        root._launchPronounce(cleaned)
+    }
+
+    Process {
+        id: pronounceProc
+        onExited: {
+            const queued = root._pendingPronounceText
+            root._pendingPronounceText = ""
+            if (queued.length > 0) {
+                Qt.callLater(() => root._launchPronounce(queued))
+                return
+            }
+            root.pronouncing = false
+        }
+        onRunningChanged: {
+            if (!running && root._pendingPronounceText.length === 0)
+                root.pronouncing = false
+        }
+    }
+
+    Component.onDestruction: root.stopPronouncing()
 }

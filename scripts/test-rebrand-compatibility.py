@@ -93,7 +93,7 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
     assert legacy_reader.inspect_package(candidate)['available'], 'API 1 host cannot load new display metadata'
     assert manager.discovery.inspect_package(candidate)['available']
     for path in old_files:
-        if path == 'assets/helpers/alis-battery-charge-limit':
+        if path in ('assets/helpers/alis-battery-charge-limit', 'assets/helpers/alis-thinkfan'):
             assert (candidate / path).read_bytes() == (ROOT / path).read_bytes(), path
         elif path.startswith(('assets/helpers/', 'assets/polkit/', 'assets/tlp/')):
             assert (candidate / path).read_bytes() == old_files[path], path

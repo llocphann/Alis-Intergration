@@ -96,7 +96,8 @@ for path in ('README.md', 'ARCHITECTURE.md', 'STRUCTURE.md', 'CONTRIBUTING.md', 
 # policy's wording requires an explicit compatible security migration.
 expected = {
     'assets/helpers/alis-battery-charge-limit': '9ca3b1aee470a130fdc0e8861953858a9d2da218ee910ff3b4e2dc39398fba03',
-    'assets/helpers/alis-thinkfan': 'dfab10c593032322d89b2e06b796fbdaf6a36cbc55fba272acac85500166f06a',
+    # Updated in commit 1898b0a for stale /run/thinkfan.pid cleanup before systemctl enable --now.
+    'assets/helpers/alis-thinkfan': 'b8b2c9cf721aff50b31ea1a0cae6d4f91d18d266d479f185deb86217830f1d67',
     'assets/polkit/org.alis.battery-charge-limit.policy': 'a1e82cdf472a6df24fe0539e47012acd70f6e90aaadc328406787eb6917597b0',
     'assets/polkit/org.alis.thinkfan.policy': 'b50ddbdd2619496e22322a3f02dd7a94522b627e2b9bff08818fd9cfae2fa17d',
     'assets/tlp/tlp-settings-schema.json': 'b23cdaa8b3bb4fd3f8bd36e1bb1c8b61fcce0018eaa5175656353af42d309adb',

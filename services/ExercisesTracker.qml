@@ -151,6 +151,8 @@ Item {
     readonly property var plannerWorkouts: {
         void root.revision
         void root._plannerTrigger
+        if (!root.presentationActive)
+            return []
         const dateObj = Engine.parseLocalDate(root.selectedDate)
         const results = []
         const seenKeys = ({})
@@ -186,7 +188,7 @@ Item {
     }
 
     Connections {
-        target: HostServices.Events
+        target: root.presentationActive ? HostServices.Events : null
         function onEventAdded() { root._plannerTrigger++ }
         function onEventUpdated() { root._plannerTrigger++ }
         function onEventRemoved() { root._plannerTrigger++ }
@@ -194,7 +196,7 @@ Item {
     }
 
     Connections {
-        target: HostServices.CalendarSync
+        target: root.presentationActive ? HostServices.CalendarSync : null
         function onEventsUpdated() { root._plannerTrigger++ }
     }
 
@@ -359,7 +361,16 @@ Item {
         photoDeleteProc.running = true
     }
 
-    function _commitState(nextState, loggedWorkoutDate = ""): void {
+    property var _undoStack: []
+    readonly property bool canUndo: _undoStack.length > 0
+
+    function _commitState(nextState, loggedWorkoutDate = "", skipUndo = false): void {
+        if (!skipUndo && root.state) {
+            try {
+                const snap = JSON.parse(JSON.stringify(root.state))
+                root._undoStack = root._undoStack.concat([snap]).slice(-20)
+            } catch (_e) {}
+        }
         root.state = Engine.normalizeState(nextState, root.todayStr)
         root.revision++
         root._savePending = true
@@ -372,6 +383,42 @@ Item {
         root.stateUpdated()
         if (loggedWorkoutDate.length > 0)
             root.workoutLogged(loggedWorkoutDate)
+    }
+
+    function undoLastAction(): bool {
+        if (root._undoStack.length === 0)
+            return false
+        const copy = root._undoStack.slice()
+        const prev = copy.pop()
+        root._undoStack = copy
+        root.statusMessage = "Undid last workout change"
+        root._commitState(prev, "", true)
+        return true
+    }
+
+    function copyLastSession(targetDateStr = ""): bool {
+        const target = Engine.formatDateStr(targetDateStr || root.selectedDate)
+        const logs = root.state?.days || {}
+        const prevDates = Object.keys(logs)
+            .filter(d => d < target && Array.isArray(logs[d]?.exercises) && logs[d].exercises.length > 0)
+            .sort()
+        if (prevDates.length === 0) {
+            root.statusMessage = "No previous session to copy"
+            return false
+        }
+        const srcDay = logs[prevDates[prevDates.length - 1]]
+        const clonedExercises = srcDay.exercises.map(ex => Object.assign({}, ex, {
+            completedSets: 0,
+            completed: false
+        }))
+        const nextDays = Object.assign({}, logs)
+        const curDay = Object.assign({}, logs[target] || {})
+        curDay.exercises = clonedExercises
+        nextDays[target] = curDay
+        const nextState = Object.assign({}, root.state, { days: nextDays })
+        root.statusMessage = "Copied session from " + prevDates[prevDates.length - 1]
+        root._commitState(nextState, target)
+        return true
     }
 
     function _performSave(): void {

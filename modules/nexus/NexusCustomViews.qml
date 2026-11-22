@@ -563,21 +563,32 @@ Item {
         return tips;
     }
 
+    readonly property var gameBodyEditor: gameCustomViewLoader.item?.gameBodyEditor ?? null
+    readonly property var dossierBodyEditor: dossierCustomViewLoader.item?.dossierBodyEditor ?? null
+    readonly property var exBodyEditor: exerciseCustomViewLoader.item?.exBodyEditor ?? null
+    readonly property var weightInputField: journalCustomViewLoader.item?.weightInputField ?? null
+    readonly property var dailyLogEditor: journalCustomViewLoader.item?.dailyLogEditor ?? null
+    readonly property var cornellBodyEditor: cornellCustomViewLoader.item?.cornellBodyEditor ?? null
+    readonly property var zettelBodyEditor: zettelkastenCustomViewLoader.item?.zettelBodyEditor ?? null
+    readonly property var recipeDescEditor: recipeCustomViewLoader.item?.recipeDescEditor ?? null
+    readonly property var recipePersonalNoteEditor: recipeCustomViewLoader.item?.recipePersonalNoteEditor ?? null
+    readonly property var financeBodyEditor: financeCustomViewLoader.item?.financeBodyEditor ?? null
+
     function commitActiveNoteBodyEdit(): void {
         if (!root.service)
             return;
-        if (root.noteKind === "game" && typeof gameBodyEditor !== "undefined") {
-            root.service.saveNoteBodyMarkdown(gameBodyEditor.text);
-        } else if (root.noteKind === "exercise" && typeof exBodyEditor !== "undefined") {
-            root.service.saveNoteBodyMarkdown(exBodyEditor.text);
-        } else if (root.noteKind === "cornell" && typeof cornellBodyEditor !== "undefined") {
-            root.service.saveNoteBodyMarkdown(cornellBodyEditor.text);
-        } else if (root.noteKind === "zettelkasten" && typeof zettelBodyEditor !== "undefined") {
-            root.service.saveNoteBodyMarkdown(zettelBodyEditor.text);
-        } else if (root.noteKind === "finance" && typeof financeBodyEditor !== "undefined") {
-            root.service.saveNoteBodyMarkdown(financeBodyEditor.text);
-        } else if (typeof dossierBodyEditor !== "undefined") {
-            root.service.saveNoteBodyMarkdown(dossierBodyEditor.text);
+        if (root.noteKind === "game" && root.gameBodyEditor) {
+            root.service.saveNoteBodyMarkdown(root.gameBodyEditor.text);
+        } else if (root.noteKind === "exercise" && root.exBodyEditor) {
+            root.service.saveNoteBodyMarkdown(root.exBodyEditor.text);
+        } else if (root.noteKind === "cornell" && root.cornellBodyEditor) {
+            root.service.saveNoteBodyMarkdown(root.cornellBodyEditor.text);
+        } else if (root.noteKind === "zettelkasten" && root.zettelBodyEditor) {
+            root.service.saveNoteBodyMarkdown(root.zettelBodyEditor.text);
+        } else if (root.noteKind === "finance" && root.financeBodyEditor) {
+            root.service.saveNoteBodyMarkdown(root.financeBodyEditor.text);
+        } else if (root.dossierBodyEditor) {
+            root.service.saveNoteBodyMarkdown(root.dossierBodyEditor.text);
         }
     }
 
@@ -585,14 +596,14 @@ Item {
         if (!root.isCustomViewNote)
             return false;
         if (root.noteKind === "journal") {
-            if (typeof dailyLogEditor !== "undefined")
-                dailyLogEditor.text = String(root.jView?.dailyLogText ?? "");
+            if (root.dailyLogEditor)
+                root.dailyLogEditor.text = String(root.jView?.dailyLogText ?? "");
             root.journalEditingDailyLog = true;
             return true;
         }
         if (root.noteKind === "recipe") {
-            if (typeof recipePersonalNoteEditor !== "undefined")
-                recipePersonalNoteEditor.text = String(root.rView?.personalNotes ?? "");
+            if (root.recipePersonalNoteEditor)
+                root.recipePersonalNoteEditor.text = String(root.rView?.personalNotes ?? "");
             root.recipeActiveSection = "notes";
             root.recipeEditingPersonalNote = true;
             return true;
@@ -603,18 +614,18 @@ Item {
             return true;
         }
         const mdBody = root.service ? root.service.getNoteBodyMarkdown() : "";
-        if (root.noteKind === "game" && typeof gameBodyEditor !== "undefined")
-            gameBodyEditor.text = mdBody;
-        else if (root.noteKind === "exercise" && typeof exBodyEditor !== "undefined")
-            exBodyEditor.text = mdBody;
-        else if (root.noteKind === "cornell" && typeof cornellBodyEditor !== "undefined")
-            cornellBodyEditor.text = mdBody;
-        else if (root.noteKind === "zettelkasten" && typeof zettelBodyEditor !== "undefined")
-            zettelBodyEditor.text = mdBody;
-        else if (root.noteKind === "finance" && typeof financeBodyEditor !== "undefined")
-            financeBodyEditor.text = mdBody;
-        else if (typeof dossierBodyEditor !== "undefined")
-            dossierBodyEditor.text = mdBody;
+        if (root.noteKind === "game" && root.gameBodyEditor)
+            root.gameBodyEditor.text = mdBody;
+        else if (root.noteKind === "exercise" && root.exBodyEditor)
+            root.exBodyEditor.text = mdBody;
+        else if (root.noteKind === "cornell" && root.cornellBodyEditor)
+            root.cornellBodyEditor.text = mdBody;
+        else if (root.noteKind === "zettelkasten" && root.zettelBodyEditor)
+            root.zettelBodyEditor.text = mdBody;
+        else if (root.noteKind === "finance" && root.financeBodyEditor)
+            root.financeBodyEditor.text = mdBody;
+        else if (root.dossierBodyEditor)
+            root.dossierBodyEditor.text = mdBody;
         root.editingNoteBody = true;
         return true;
     }
@@ -622,14 +633,14 @@ Item {
     function finishOrCancelInlineEditing(): bool {
         let handled = false;
         if (root.journalEditingDailyLog) {
-            if (root.service && typeof dailyLogEditor !== "undefined" && dailyLogEditor.text !== String(root.jView?.dailyLogText ?? ""))
-                root.service.saveJournalDailyLog(dailyLogEditor.text);
+            if (root.service && root.dailyLogEditor && root.dailyLogEditor.text !== String(root.jView?.dailyLogText ?? ""))
+                root.service.saveJournalDailyLog(root.dailyLogEditor.text);
             root.journalEditingDailyLog = false;
             handled = true;
         }
         if (root.journalEditingWeight) {
-            if (typeof weightInputField !== "undefined" && typeof weightInputField.commitWeight === "function")
-                weightInputField.commitWeight();
+            if (root.weightInputField && typeof root.weightInputField.commitWeight === "function")
+                root.weightInputField.commitWeight();
             else
                 root.journalEditingWeight = false;
             handled = true;
@@ -644,8 +655,8 @@ Item {
             handled = true;
         }
         if (root.recipeEditingField === "description") {
-            if (root.service && typeof recipeDescEditor !== "undefined")
-                root.service.updateNoteFrontmatter({ "description": recipeDescEditor.text.trim() });
+            if (root.service && root.recipeDescEditor)
+                root.service.updateNoteFrontmatter({ "description": root.recipeDescEditor.text.trim() });
             root.recipeEditingField = "";
             root.recipeEditingIndex = -1;
             handled = true;
@@ -655,8 +666,8 @@ Item {
             handled = true;
         }
         if (root.recipeEditingPersonalNote) {
-            if (root.service && typeof recipePersonalNoteEditor !== "undefined" && recipePersonalNoteEditor.text !== String(root.rView?.personalNotes ?? ""))
-                root.service.saveRecipePersonalNotes(recipePersonalNoteEditor.text);
+            if (root.service && root.recipePersonalNoteEditor && root.recipePersonalNoteEditor.text !== String(root.rView?.personalNotes ?? ""))
+                root.service.saveRecipePersonalNotes(root.recipePersonalNoteEditor.text);
             root.recipeEditingPersonalNote = false;
             handled = true;
         }
@@ -1161,13 +1172,24 @@ Item {
         // =====================================================================
         // 1A. ABYSSAL GAME DOSSIER CUSTOM VIEW (`Custom_Views/Game/Game.{html,js,css}`)
         // =====================================================================
-        ColumnLayout {
-            id: gameCustomView
+        Loader {
+            id: gameCustomViewLoader
             objectName: "nexusGameCustomView"
-            Layout.minimumWidth: 0
-            visible: root.noteKind === "game"
             Layout.fillWidth: true
-            spacing: 22
+            Layout.minimumWidth: 0
+            Layout.preferredHeight: visible && item ? item.implicitHeight : 0
+            readonly property bool _wantActive: root.noteKind === "game"
+            property bool _activated: false
+            on_WantActiveChanged: if (_wantActive) _activated = true
+            Component.onCompleted: if (_wantActive) _activated = true
+            active: _activated
+            visible: _wantActive
+            asynchronous: status !== Loader.Ready
+            sourceComponent: Component {
+                ColumnLayout {
+                    id: gameCustomView
+                    readonly property var gameBodyEditor: gameBodyEditor
+                    spacing: 22
 
             // Game Hero (`cv-game-hero`)
             Rectangle {
@@ -2314,15 +2336,33 @@ Item {
                 }
             }
         }
+            }
+        }
 
         // =====================================================================
-        // 1. HERO / DOSSIER BANNER (for Media, Place, Book, Clipping, Website, Settings)
+        // 1. HERO / DOSSIER BANNER + 1B. 2-COLUMN BODY (Media, Place, Book, Clipping, Website, Settings)
         // =====================================================================
+        Loader {
+            id: dossierCustomViewLoader
+            objectName: "nexusDocumentDossierBanner"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            Layout.preferredHeight: visible && item ? item.implicitHeight : 0
+            readonly property bool _wantActive: root.isDossierBannerNote && root.noteKind !== "game" && root.noteKind !== "exercise"
+            property bool _activated: false
+            on_WantActiveChanged: if (_wantActive) _activated = true
+            Component.onCompleted: if (_wantActive) _activated = true
+            active: _activated
+            visible: _wantActive
+            asynchronous: status !== Loader.Ready
+            sourceComponent: Component {
+                ColumnLayout {
+                    readonly property var dossierBodyEditor: dossierBodyEditor
+                    spacing: mainCol.spacing
+
         Rectangle {
             id: dossierBannerCard
-            objectName: "nexusDocumentDossierBanner"
             Layout.minimumWidth: 0
-            visible: root.isDossierBannerNote && root.noteKind !== "game" && root.noteKind !== "exercise"
             Layout.fillWidth: true
             implicitHeight: dossierBannerCol.implicitHeight + 32
             radius: 10
@@ -3698,17 +3738,31 @@ Item {
                 }
             }
         }
+                }
+            }
+        }
 
         // =====================================================================
         // 1C. EXERCISE CUSTOM VIEW (`90_System/93_Configuration/Custom_Views/Exercise/Exercise.{html,css,js}` + `muscle-map.svg`)
         // =====================================================================
-        ColumnLayout {
-            id: exerciseCustomView
+        Loader {
+            id: exerciseCustomViewLoader
             objectName: "nexusExerciseCustomView"
-            Layout.minimumWidth: 0
-            visible: root.noteKind === "exercise"
             Layout.fillWidth: true
-            spacing: 14
+            Layout.minimumWidth: 0
+            Layout.preferredHeight: visible && item ? item.implicitHeight : 0
+            readonly property bool _wantActive: root.noteKind === "exercise"
+            property bool _activated: false
+            on_WantActiveChanged: if (_wantActive) _activated = true
+            Component.onCompleted: if (_wantActive) _activated = true
+            active: _activated
+            visible: _wantActive
+            asynchronous: status !== Loader.Ready
+            sourceComponent: Component {
+                ColumnLayout {
+                    id: exerciseCustomView
+                    readonly property var exBodyEditor: exBodyEditor
+                    spacing: 14
 
             readonly property string previewUrlStr: String(root.eView.previewUrl || root.dossier.posterUrl || "")
             readonly property string animUrlStr: String(root.eView.animationUrl || root.dossier.featuredImageUrl || "")
@@ -5110,17 +5164,29 @@ Item {
                 }
             }
         }
+            }
+        }
 
         // =====================================================================
         // 1D. SETTINGS CUSTOM VIEW (Obsidian Settings.html/.css/.js 1:1 Parity + Globe Map API)
         // =====================================================================
-        Rectangle {
-            id: settingsCustomView
+        Loader {
+            id: settingsCustomViewLoader
             objectName: "nexusSettingsCustomView"
-            visible: root.noteKind === "settings"
             Layout.fillWidth: true
             Layout.minimumWidth: 0
-            implicitHeight: Math.max(root.minDocumentSurfaceHeight, settingsRootCol.implicitHeight + 32)
+            Layout.preferredHeight: visible && item ? item.implicitHeight : 0
+            readonly property bool _wantActive: root.noteKind === "settings"
+            property bool _activated: false
+            on_WantActiveChanged: if (_wantActive) _activated = true
+            Component.onCompleted: if (_wantActive) _activated = true
+            active: _activated
+            visible: _wantActive
+            asynchronous: status !== Loader.Ready
+            sourceComponent: Component {
+                Rectangle {
+                    id: settingsCustomView
+                    implicitHeight: Math.max(root.minDocumentSurfaceHeight, settingsRootCol.implicitHeight + 32)
             radius: 12
             color: root.cardBg
             border.width: 1
@@ -6876,17 +6942,31 @@ Item {
                 }
             }
         }
+            }
+        }
 
         // =====================================================================
         // 2. JOURNAL CUSTOM VIEW (`Journal.html` + Screenshot 2 1:1 Parity)
         // =====================================================================
-        Rectangle {
-            id: journalCustomView
+        Loader {
+            id: journalCustomViewLoader
             objectName: "nexusJournalCustomView"
-            Layout.minimumWidth: 0
-            visible: root.noteKind === "journal"
             Layout.fillWidth: true
-            implicitHeight: Math.max(root.minDocumentSurfaceHeight, journalMainCol.implicitHeight + 36)
+            Layout.minimumWidth: 0
+            Layout.preferredHeight: visible && item ? item.implicitHeight : 0
+            readonly property bool _wantActive: root.noteKind === "journal"
+            property bool _activated: false
+            on_WantActiveChanged: if (_wantActive) _activated = true
+            Component.onCompleted: if (_wantActive) _activated = true
+            active: _activated
+            visible: _wantActive
+            asynchronous: status !== Loader.Ready
+            sourceComponent: Component {
+                Rectangle {
+                    id: journalCustomView
+                    readonly property var weightInputField: weightInputField
+                    readonly property var dailyLogEditor: dailyLogEditor
+                    implicitHeight: Math.max(root.minDocumentSurfaceHeight, journalMainCol.implicitHeight + 36)
             radius: 10
             color: root.cardSubtleBg
             border.width: 1
@@ -8369,17 +8449,30 @@ Item {
                 }
             }
         }
+            }
+        }
 
         // =====================================================================
         // 3. CORNELL NOTE CUSTOM VIEW (`Custom_Views/Cornell/Cornell.{html,js,css}`)
         // =====================================================================
-        Rectangle {
-            id: cornellCustomView
+        Loader {
+            id: cornellCustomViewLoader
             objectName: "nexusCornellCustomView"
-            Layout.minimumWidth: 0
-            visible: root.noteKind === "cornell"
             Layout.fillWidth: true
-            implicitHeight: Math.max(root.minDocumentSurfaceHeight, cornellMainCol.implicitHeight + 36)
+            Layout.minimumWidth: 0
+            Layout.preferredHeight: visible && item ? item.implicitHeight : 0
+            readonly property bool _wantActive: root.noteKind === "cornell"
+            property bool _activated: false
+            on_WantActiveChanged: if (_wantActive) _activated = true
+            Component.onCompleted: if (_wantActive) _activated = true
+            active: _activated
+            visible: _wantActive
+            asynchronous: status !== Loader.Ready
+            sourceComponent: Component {
+                Rectangle {
+                    id: cornellCustomView
+                    readonly property var cornellBodyEditor: cornellBodyEditor
+                    implicitHeight: Math.max(root.minDocumentSurfaceHeight, cornellMainCol.implicitHeight + 36)
             radius: 10
             color: root.cardBg
             border.width: 1
@@ -9448,17 +9541,30 @@ Item {
                 }
             }
         }
+            }
+        }
 
         // =====================================================================
         // 4. ZETTELKASTEN SLIP CARD (`Custom_Views/Zettelkasten/Zettelkasten.{html,js,css}`)
         // =====================================================================
-        Rectangle {
-            id: zettelkastenCustomView
+        Loader {
+            id: zettelkastenCustomViewLoader
             objectName: "nexusZettelkastenCustomView"
-            Layout.minimumWidth: 0
-            visible: root.noteKind === "zettelkasten"
             Layout.fillWidth: true
-            implicitHeight: Math.max(root.minDocumentSurfaceHeight, zkCol.implicitHeight + 34)
+            Layout.minimumWidth: 0
+            Layout.preferredHeight: visible && item ? item.implicitHeight : 0
+            readonly property bool _wantActive: root.noteKind === "zettelkasten"
+            property bool _activated: false
+            on_WantActiveChanged: if (_wantActive) _activated = true
+            Component.onCompleted: if (_wantActive) _activated = true
+            active: _activated
+            visible: _wantActive
+            asynchronous: status !== Loader.Ready
+            sourceComponent: Component {
+                Rectangle {
+                    id: zettelkastenCustomView
+                    readonly property var zettelBodyEditor: zettelBodyEditor
+                    implicitHeight: Math.max(root.minDocumentSurfaceHeight, zkCol.implicitHeight + 34)
             radius: 10
             color: root.cardBg
             border.width: 1
@@ -10195,17 +10301,31 @@ Item {
                 }
             }
         }
+            }
+        }
 
         // =====================================================================
         // 5. RECIPE CUSTOM VIEW (`Custom_Views/Recipe/Recipe.{html,js,css}` adapted to Alis Auto-theming)
         // =====================================================================
-        Rectangle {
-            id: recipeCustomView
+        Loader {
+            id: recipeCustomViewLoader
             objectName: "nexusRecipeCustomView"
-            Layout.minimumWidth: 0
-            visible: root.noteKind === "recipe"
             Layout.fillWidth: true
-            implicitHeight: Math.max(root.minDocumentSurfaceHeight, recipeSheetCol.implicitHeight + 48)
+            Layout.minimumWidth: 0
+            Layout.preferredHeight: visible && item ? item.implicitHeight : 0
+            readonly property bool _wantActive: root.noteKind === "recipe"
+            property bool _activated: false
+            on_WantActiveChanged: if (_wantActive) _activated = true
+            Component.onCompleted: if (_wantActive) _activated = true
+            active: _activated
+            visible: _wantActive
+            asynchronous: status !== Loader.Ready
+            sourceComponent: Component {
+                Rectangle {
+                    id: recipeCustomView
+                    readonly property var recipeDescEditor: recipeDescEditor
+                    readonly property var recipePersonalNoteEditor: recipePersonalNoteEditor
+                    implicitHeight: Math.max(root.minDocumentSurfaceHeight, recipeSheetCol.implicitHeight + 48)
             radius: 22
             color: root.cardSubtleBg
             border.width: 1
@@ -12537,17 +12657,32 @@ Item {
                 }
             }
         }
+            }
+        }
 
         // =====================================================================
         // 6. FINANCE REPORT CUSTOM VIEW (`Custom_Views/Finance/Finance.{html,js,css}`)
         // =====================================================================
-        Rectangle {
-            id: financeCustomView
+        Loader {
+            id: financeCustomViewLoader
             objectName: "nexusFinanceCustomView"
-            Layout.minimumWidth: 0
-            visible: root.noteKind === "finance"
             Layout.fillWidth: true
-            implicitHeight: Math.max(root.minDocumentSurfaceHeight, finCol.implicitHeight + 36)
+            Layout.minimumWidth: 0
+            Layout.preferredHeight: visible && item ? item.implicitHeight : 0
+            readonly property bool _wantActive: root.noteKind === "finance"
+            property bool _activated: false
+            on_WantActiveChanged: if (_wantActive) _activated = true
+            Component.onCompleted: if (_wantActive) _activated = true
+            active: _activated
+            visible: _wantActive
+            asynchronous: status !== Loader.Ready
+            readonly property var activeCategories: item ? item.activeCategories : []
+            readonly property var activeTransactions: item ? item.activeTransactions : []
+            sourceComponent: Component {
+                Rectangle {
+                    id: financeCustomView
+                    readonly property var financeBodyEditor: financeBodyEditor
+                    implicitHeight: Math.max(root.minDocumentSurfaceHeight, finCol.implicitHeight + 36)
             radius: 10
             color: root.cardBg
             border.width: 1
@@ -13549,6 +13684,8 @@ Item {
                         }
                     }
                 }
+            }
+        }
             }
         }
     }
