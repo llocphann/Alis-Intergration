@@ -8,3 +8,13 @@ NexusCommandPaletteModal 1.0 NexusCommandPaletteModal.qml
 NexusNewNoteModal 1.0 NexusNewNoteModal.qml
 NexusWorkspace 1.0 NexusWorkspace.qml
 NexusHost 1.0 NexusHost.qml
+NexusDiagramView 1.0 NexusDiagramView.qml
+NexusSlashMenu 1.0 NexusSlashMenu.qml
+NexusFindReplaceBar 1.0 NexusFindReplaceBar.qml
+NexusHoverPreviewPopup 1.0 NexusHoverPreviewPopup.qml
+NexusPropertiesPanel 1.0 NexusPropertiesPanel.qml
+NexusCanvasView 1.0 NexusCanvasView.qml
+NexusPdfViewer 1.0 NexusPdfViewer.qml
+NexusDatabaseView 1.0 NexusDatabaseView.qml
+NexusHistoryModal 1.0 NexusHistoryModal.qml
+NexusSecondaryPane 1.0 NexusSecondaryPane.qml

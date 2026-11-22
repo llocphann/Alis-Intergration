@@ -138,6 +138,14 @@ FocusScope {
         && !Boolean(Config?.options?.appearance?.reduceAnimations ?? false)
         && !Boolean(Config?.options?.performance?.reduceAnimations ?? false)
 
+    onTreeElectricCanRunChanged: {
+        if (!root.treeElectricCanRun) {
+            treeElectricIntervalTimer.stop();
+            treeElectricSweepTimer.stop();
+            root.treeElectricPhase = 0.0;
+        }
+    }
+
     Timer {
         id: treeElectricIntervalTimer
         objectName: "nexusTreeElectricIntervalTimer"
@@ -1375,6 +1383,18 @@ FocusScope {
             Qt.callLater(root.restoreWorkspaceFocus);
             return true;
         }
+        if (root.nexus.historyModalOpen) {
+            root.nexus.historyModalOpen = false;
+            root.restoreWorkspaceFocus();
+            Qt.callLater(root.restoreWorkspaceFocus);
+            return true;
+        }
+        if (root.nexus.findBarOpen) {
+            root.nexus.findBarOpen = false;
+            root.restoreWorkspaceFocus();
+            Qt.callLater(root.restoreWorkspaceFocus);
+            return true;
+        }
         if (root.tagDialogOpen) {
             root.tagDialogOpen = false;
             root.restoreWorkspaceFocus();
@@ -1795,18 +1815,26 @@ FocusScope {
         readonly property bool _directHovered: topEdgeHover.hovered || barHover.hovered
         property bool _graceHold: false
         readonly property bool revealed: _directHovered || _graceHold
+        readonly property bool _canHoverAnimate: root.surfaceActive && root.transitionSettled
         property real animatedHeight: hoverTabRoot.revealed ? 32 : 0
 
         Behavior on animatedHeight {
-            enabled: Appearance.animationsEnabled
+            enabled: hoverTabRoot._canHoverAnimate && Appearance.animationsEnabled
             NumberAnimation {
                 duration: 180
                 easing.type: Easing.OutCubic
             }
         }
 
+        on_CanHoverAnimateChanged: {
+            if (!hoverTabRoot._canHoverAnimate) {
+                leaveGraceTimer.stop();
+                hoverTabRoot._graceHold = false;
+            }
+        }
+
         on_DirectHoveredChanged: {
-            if (_directHovered) {
+            if (_directHovered && hoverTabRoot._canHoverAnimate) {
                 leaveGraceTimer.stop();
                 _graceHold = true;
             } else {
@@ -1858,14 +1886,14 @@ FocusScope {
                 color: "transparent"
 
                 Behavior on y {
-                    enabled: Appearance.animationsEnabled
+                    enabled: hoverTabRoot._canHoverAnimate && Appearance.animationsEnabled
                     NumberAnimation {
                         duration: 180
                         easing.type: Easing.OutCubic
                     }
                 }
                 Behavior on opacity {
-                    enabled: Appearance.animationsEnabled
+                    enabled: hoverTabRoot._canHoverAnimate && Appearance.animationsEnabled
                     NumberAnimation {
                         duration: 140
                         easing.type: Easing.OutCubic
@@ -4562,7 +4590,7 @@ FocusScope {
                 }
 
                 readonly property var activeLocalGraph: {
-                    if (!root.transitionSettled && !nexusLocalGraphCard._graphSettledOnce && Boolean(root.nexus?.isOpen))
+                    if (!root.transitionSettled && !nexusLocalGraphCard._graphSettledOnce)
                         return { "nodes": [], "edges": [] };
                     if (root.nexus?.activeView === "document" && root.nexus?.currentDoc?.localGraph?.nodes?.length > 0) {
                         return root.nexus.currentDoc.localGraph;
@@ -4594,8 +4622,35 @@ FocusScope {
                             "active": true
                         }
                     ]
-                    trailingText: String((nexusLocalGraphCard.activeLocalGraph?.nodes ?? []).length) + " nodes"
+                    trailingText: String(root.nexus?.localGraphDepth ?? 1) + "H · " + String((nexusLocalGraphCard.activeLocalGraph?.nodes ?? []).length)
                     actions: [
+                        {
+                            "icon": "filter_1",
+                            "tip": "1-Hop",
+                            "active": (root.nexus?.localGraphDepth ?? 1) === 1,
+                            "onClick": () => {
+                                if (root.nexus && typeof root.nexus.setLocalGraphDepth === "function")
+                                    root.nexus.setLocalGraphDepth(1);
+                            }
+                        },
+                        {
+                            "icon": "filter_2",
+                            "tip": "2-Hop",
+                            "active": (root.nexus?.localGraphDepth ?? 1) === 2,
+                            "onClick": () => {
+                                if (root.nexus && typeof root.nexus.setLocalGraphDepth === "function")
+                                    root.nexus.setLocalGraphDepth(2);
+                            }
+                        },
+                        {
+                            "icon": "filter_3",
+                            "tip": "3-Hop",
+                            "active": (root.nexus?.localGraphDepth ?? 1) === 3,
+                            "onClick": () => {
+                                if (root.nexus && typeof root.nexus.setLocalGraphDepth === "function")
+                                    root.nexus.setLocalGraphDepth(3);
+                            }
+                        },
                         {
                             "icon": "center_focus_strong",
                             "tip": "Reset View",
@@ -4629,6 +4684,7 @@ FocusScope {
                         workspace: root
                         isLocal: true
                         compact: true
+                        localMaxHop: root.nexus?.localGraphDepth ?? 1
                         revealStaggerMs: 12
                         graphData: nexusLocalGraphCard.activeLocalGraph
                         currentPath: String(root.nexus?.currentPath ?? "")
@@ -4822,6 +4878,72 @@ FocusScope {
                         Item {
                             visible: (root.nexus?.activeView !== "document")
                             Layout.fillWidth: true
+                        }
+
+                        // Compact Bases, Canvas & Split Pane quick switches
+                        RowLayout {
+                            Layout.fillWidth: false
+                            spacing: 4
+
+                            Rectangle {
+                                height: 28
+                                width: basesBtnRow.implicitWidth + 12
+                                radius: 7
+                                color: (root.nexus?.activeView === "database") ? settledColors.colSecondaryContainer : settledColors.colLayer2
+                                RowLayout {
+                                    id: basesBtnRow
+                                    anchors.centerIn: parent
+                                    spacing: 4
+                                    MaterialSymbol { text: "table_view"; iconSize: 14; color: (root.nexus?.activeView === "database") ? settledColors.colPrimary : settledColors.colSubtext }
+                                    StyledText {
+                                        text: "Bases"
+                                        horizontalAlignment: Text.AlignHCenter
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        color: (root.nexus?.activeView === "database") ? settledColors.colPrimary : settledColors.colOnLayer1
+                                    }
+                                }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: if (root.nexus) root.nexus.openDatabaseView("") }
+                            }
+
+                            Rectangle {
+                                height: 28
+                                width: canvasBtnRow.implicitWidth + 12
+                                radius: 7
+                                color: (root.nexus?.activeView === "canvas") ? settledColors.colSecondaryContainer : settledColors.colLayer2
+                                RowLayout {
+                                    id: canvasBtnRow
+                                    anchors.centerIn: parent
+                                    spacing: 4
+                                    MaterialSymbol { text: "dashboard_customize"; iconSize: 14; color: (root.nexus?.activeView === "canvas") ? settledColors.colPrimary : settledColors.colSubtext }
+                                    StyledText {
+                                        text: "Canvas"
+                                        horizontalAlignment: Text.AlignHCenter
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        color: (root.nexus?.activeView === "canvas") ? settledColors.colPrimary : settledColors.colOnLayer1
+                                    }
+                                }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: if (root.nexus) root.nexus.openCanvasView("") }
+                            }
+
+                            Rectangle {
+                                height: 28
+                                width: paneBtnRow.implicitWidth + 12
+                                radius: 7
+                                color: (root.nexus?.splitPaneOpen ?? false) ? settledColors.colSecondaryContainer : settledColors.colLayer2
+                                RowLayout {
+                                    id: paneBtnRow
+                                    anchors.centerIn: parent
+                                    spacing: 4
+                                    MaterialSymbol { text: "splitscreen"; iconSize: 14; color: (root.nexus?.splitPaneOpen ?? false) ? settledColors.colPrimary : settledColors.colSubtext }
+                                    StyledText {
+                                        text: "Pane"
+                                        horizontalAlignment: Text.AlignHCenter
+                                        font.pixelSize: Appearance.font.pixelSize.smallest
+                                        color: (root.nexus?.splitPaneOpen ?? false) ? settledColors.colPrimary : settledColors.colOnLayer1
+                                    }
+                                }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: if (root.nexus) root.nexus.toggleSplitPane() }
+                            }
                         }
 
                         // Unified Reading / Vim Editor Mode Pill + Split Toggle (when in document view)
@@ -5022,8 +5144,107 @@ FocusScope {
                     }
                 }
 
+                // ── Multi-Tab Open Notes Strip ──
+                Rectangle {
+                    id: openTabsStrip
+                    objectName: "nexusOpenTabsStrip"
+                    visible: (root.nexus?.openTabs?.length ?? 0) > 0
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: visible ? 32 : 0
+                    color: settledColors.colLayer0
+                    clip: true
+
+                    Rectangle {
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+                        height: 1; color: root.borderSubtle
+                    }
+
+                    Flickable {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8; anchors.rightMargin: 8
+                        contentWidth: tabsRow.implicitWidth + 8
+                        contentHeight: height
+                        clip: true
+
+                        RowLayout {
+                            id: tabsRow
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 6
+
+                            Repeater {
+                                model: root.nexus?.openTabs ?? []
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    readonly property bool isCurrentTab: (root.nexus?.currentPath ?? "") === String(modelData.relPath ?? "")
+                                        && (root.nexus?.activeView === "document" || root.nexus?.activeView === "canvas")
+                                    height: 24
+                                    width: Math.min(200, Math.max(76, tabInnerRow.implicitWidth + 14))
+                                    radius: 6
+                                    color: isCurrentTab ? settledColors.colSecondaryContainer : settledColors.colLayer1
+
+                                    RowLayout {
+                                        id: tabInnerRow
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 7; anchors.rightMargin: 5
+                                        spacing: 4
+
+                                        MaterialSymbol {
+                                            visible: Boolean(modelData.pinned)
+                                            text: "push_pin"
+                                            iconSize: 12
+                                            color: settledColors.colPrimary
+                                        }
+
+                                        StyledText {
+                                            Layout.fillWidth: true; Layout.minimumWidth: 0
+                                            text: String(modelData.title ?? modelData.relPath ?? "")
+                                            font.pixelSize: Appearance.font.pixelSize.smallest
+                                            font.weight: isCurrentTab ? Font.DemiBold : Font.Normal
+                                            color: isCurrentTab ? settledColors.colPrimary : settledColors.colOnLayer1
+                                            elide: Text.ElideRight
+                                        }
+
+                                        MaterialSymbol {
+                                            text: "close"
+                                            iconSize: 12
+                                            color: settledColors.colSubtext
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    if (root.nexus)
+                                                        root.nexus.closeTab(String(modelData.relPath ?? ""));
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        anchors.rightMargin: 18
+                                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: mouse => {
+                                            if (!root.nexus) return;
+                                            const rp = String(modelData.relPath ?? "");
+                                            if (mouse.button === Qt.MiddleButton) {
+                                                root.nexus.closeTab(rp);
+                                            } else if (mouse.button === Qt.RightButton) {
+                                                root.nexus.togglePinTab(rp);
+                                            } else {
+                                                root.nexus.activateTab(rp);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // ── Main Body Content Area ──
                 Item {
+                    id: mainBodyArea
                     Layout.fillWidth: true
                     Layout.fillHeight: true
 
@@ -5035,6 +5256,7 @@ FocusScope {
                         objectName: "nexusHomepageView"
                         anchors.fill: parent
                         anchors.margins: 22
+                        anchors.rightMargin: secondaryPaneLoader.visible ? (secondaryPaneLoader.width + 20) : 22
                         visible: (root.nexus?.activeView ?? "homepage") === "homepage"
                         contentWidth: width
                         contentHeight: homepageCol.implicitHeight + 24
@@ -6684,6 +6906,7 @@ FocusScope {
                         objectName: "nexusFullGraphLoader"
                         anchors.fill: parent
                         anchors.margins: 14
+                        anchors.rightMargin: secondaryPaneLoader.visible ? (secondaryPaneLoader.width + 20) : 14
                         asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
                         readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "graph"
                         visible: shouldLoad
@@ -6735,6 +6958,7 @@ FocusScope {
                         objectName: "nexusCollectionViewLoader"
                         anchors.fill: parent
                         anchors.margins: 16
+                        anchors.rightMargin: secondaryPaneLoader.visible ? (secondaryPaneLoader.width + 20) : 16
                         asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
                         readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "collection"
                         visible: shouldLoad
@@ -6747,13 +6971,14 @@ FocusScope {
                     }
 
                     // ───────────────────────────────────────────────────────
-                    // VIEW 3: DOCUMENT VIEW (Markdown Outliner / Vim / Code / Image)
+                    // VIEW 3: DOCUMENT VIEW (Markdown Outliner / Vim / Code / Image / PDF)
                     // ───────────────────────────────────────────────────────
                     Loader {
                         id: documentViewLoader
                         objectName: "nexusDocumentViewLoader"
                         anchors.fill: parent
                         anchors.margins: 16
+                        anchors.rightMargin: secondaryPaneLoader.visible ? (secondaryPaneLoader.width + 20) : 16
                         asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
                         readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "document" && Boolean(root.nexus?.currentDoc)
                         visible: shouldLoad
@@ -6763,6 +6988,86 @@ FocusScope {
                         }
                         Component.onCompleted: _syncSource()
                         onShouldLoadChanged: _syncSource()
+                    }
+
+                    // ───────────────────────────────────────────────────────
+                    // VIEW 4: INFINITE SPATIAL CANVAS (.canvas)
+                    // ───────────────────────────────────────────────────────
+                    Loader {
+                        id: canvasViewLoader
+                        objectName: "nexusCanvasViewLoader"
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        anchors.rightMargin: secondaryPaneLoader.visible ? (secondaryPaneLoader.width + 20) : 16
+                        asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
+                        readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "canvas"
+                        visible: shouldLoad
+                        function _syncSource(): void {
+                            if (shouldLoad && source.toString().length === 0)
+                                setSource(Qt.resolvedUrl("NexusCanvasView.qml"), { nexus: root.nexus, settledColors: settledColors });
+                        }
+                        Component.onCompleted: _syncSource()
+                        onShouldLoadChanged: _syncSource()
+                        onLoaded: {
+                            if (item) {
+                                item.nexus = Qt.binding(() => root.nexus);
+                                item.settledColors = Qt.binding(() => settledColors);
+                            }
+                        }
+                    }
+
+                    // ───────────────────────────────────────────────────────
+                    // VIEW 5: DYNAMIC BASES / DATABASE QUERY VIEW
+                    // ───────────────────────────────────────────────────────
+                    Loader {
+                        id: databaseViewLoader
+                        objectName: "nexusDatabaseViewLoader"
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        anchors.rightMargin: secondaryPaneLoader.visible ? (secondaryPaneLoader.width + 20) : 16
+                        asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
+                        readonly property bool shouldLoad: (root.nexus?.activeView ?? "homepage") === "database"
+                        visible: shouldLoad
+                        function _syncSource(): void {
+                            if (shouldLoad && source.toString().length === 0)
+                                setSource(Qt.resolvedUrl("NexusDatabaseView.qml"), { nexus: root.nexus, settledColors: settledColors });
+                        }
+                        Component.onCompleted: _syncSource()
+                        onShouldLoadChanged: _syncSource()
+                        onLoaded: {
+                            if (item) {
+                                item.nexus = Qt.binding(() => root.nexus);
+                                item.settledColors = Qt.binding(() => settledColors);
+                            }
+                        }
+                    }
+
+                    // ───────────────────────────────────────────────────────
+                    // SECONDARY DOCKED SPLIT PANE (Side-by-Side Note Reference)
+                    // ───────────────────────────────────────────────────────
+                    Loader {
+                        id: secondaryPaneLoader
+                        objectName: "nexusSecondaryPaneLoader"
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        anchors.right: parent.right
+                        anchors.margins: 12
+                        width: Math.max(280, Math.round(mainBodyArea.width * 0.42))
+                        asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
+                        readonly property bool shouldLoad: Boolean(root.nexus?.splitPaneOpen ?? false)
+                        visible: shouldLoad
+                        function _syncSource(): void {
+                            if (shouldLoad && source.toString().length === 0)
+                                setSource(Qt.resolvedUrl("NexusSecondaryPane.qml"), { nexus: root.nexus, settledColors: settledColors });
+                        }
+                        Component.onCompleted: _syncSource()
+                        onShouldLoadChanged: _syncSource()
+                        onLoaded: {
+                            if (item) {
+                                item.nexus = Qt.binding(() => root.nexus);
+                                item.settledColors = Qt.binding(() => settledColors);
+                            }
+                        }
                     }
                     // Bottom 16px hover strip that reveals the status bar on hover
                     Item {
@@ -7495,7 +7800,7 @@ FocusScope {
                     }
                 }
 
-                readonly property var graphData: (root.transitionSettled || nexusVaultGraphCard._graphSettledOnce || !Boolean(root.nexus?.isOpen))
+                readonly property var graphData: (root.transitionSettled || nexusVaultGraphCard._graphSettledOnce)
                     ? (root.nexus?.vaultGraph ?? {
                         "nodes": [],
                         "edges": [],
@@ -7570,6 +7875,7 @@ FocusScope {
                         workspace: root
                         isLocal: false
                         compact: true
+                        allowNoteMotion: false
                         revealStaggerMs: 36
                         graphData: nexusVaultGraphCard.graphData
                         currentPath: String(root.nexus?.currentPath ?? "")
@@ -8302,7 +8608,7 @@ FocusScope {
                             width: ListView.view.width
                             height: 24
                             radius: 5
-                            color: settledColors.colLayer0
+                            color: outlineHover.containsMouse ? settledColors.colLayer2 : settledColors.colLayer0
 
                             StyledText {
                                 anchors.verticalCenter: parent.verticalCenter
@@ -8312,8 +8618,19 @@ FocusScope {
                                 anchors.rightMargin: 6
                                 text: "#".repeat(modelData.level ?? 1) + " " + String(modelData.text ?? "")
                                 font.pixelSize: Appearance.font.pixelSize.smallest
-                                color: settledColors.colOnLayer1
+                                color: outlineHover.containsMouse ? settledColors.colPrimary : settledColors.colOnLayer1
                                 elide: Text.ElideRight
+                            }
+
+                            MouseArea {
+                                id: outlineHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (root.nexus)
+                                        root.nexus.requestScrollToLine(Number(modelData.line ?? 1));
+                                }
                             }
                         }
                     }
@@ -8421,7 +8738,7 @@ FocusScope {
                                 color: settledColors.colOnLayer1
                             }
                             Rectangle {
-                                visible: (root.nexus?.currentDoc?.flashcards ?? []).length > 0
+                                visible: Boolean(root.nexus?.currentDoc) && ((root.nexus?.currentDoc?.flashcards ?? []).length > 0 || String(root.nexus?.currentDoc?.content ?? "").indexOf("{{c") !== -1)
                                 height: 22
                                 width: 78
                                 radius: 5
@@ -8429,6 +8746,7 @@ FocusScope {
                                 StyledText {
                                     anchors.centerIn: parent
                                     text: "Sync Deck"
+                                    horizontalAlignment: Text.AlignHCenter
                                     font.pixelSize: Appearance.font.pixelSize.smallest
                                     color: settledColors.colOnPrimary
                                 }
@@ -8438,6 +8756,75 @@ FocusScope {
                                     onClicked: {
                                         if (root.nexus)
                                             root.nexus.syncDocumentFlashcardsToSpacedRepetition();
+                                    }
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            visible: Boolean(root.nexus?.currentDoc) && String(root.nexus?.currentDoc?.category ?? "") === "markdown"
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            TextField {
+                                id: fcFrontField
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 24
+                                placeholderText: "Question or {{c1::cloze}}..."
+                                font.pixelSize: Appearance.font.pixelSize.smallest
+                                color: settledColors.colOnLayer1
+                                background: Rectangle { radius: 5; color: settledColors.colLayer0 }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+                                TextField {
+                                    id: fcBackField
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 24
+                                    placeholderText: "Answer..."
+                                    font.pixelSize: Appearance.font.pixelSize.smallest
+                                    color: settledColors.colOnLayer1
+                                    background: Rectangle { radius: 5; color: settledColors.colLayer0 }
+                                }
+                                Rectangle {
+                                    height: 24; width: 48; radius: 5
+                                    color: settledColors.colSecondaryContainer
+                                    StyledText {
+                                        anchors.centerIn: parent
+                                        text: "+ Card"
+                                        horizontalAlignment: Text.AlignHCenter
+                                        font.pixelSize: 10
+                                        color: settledColors.colPrimary
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (root.nexus && root.nexus.createFlashcardInCurrentNote(fcFrontField.text, fcBackField.text, false)) {
+                                                fcFrontField.text = "";
+                                                fcBackField.text = "";
+                                            }
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    height: 24; width: 48; radius: 5
+                                    color: settledColors.colLayer0
+                                    StyledText {
+                                        anchors.centerIn: parent
+                                        text: "+ Cloze"
+                                        horizontalAlignment: Text.AlignHCenter
+                                        font.pixelSize: 10
+                                        color: settledColors.colPrimary
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (root.nexus && root.nexus.createFlashcardInCurrentNote(fcFrontField.text, "", true)) {
+                                                fcFrontField.text = "";
+                                                fcBackField.text = "";
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -8461,13 +8848,16 @@ FocusScope {
                                     spacing: 1
                                     StyledText {
                                         Layout.fillWidth: true
-                                        text: "Q: " + String(modelData.front ?? "")
+                                        text: String(modelData.clozeText ?? "").length > 0
+                                            ? ("Cloze: " + String(modelData.clozeText ?? ""))
+                                            : ("Q: " + String(modelData.front ?? ""))
                                         font.pixelSize: 10
                                         font.weight: Font.DemiBold
                                         color: settledColors.colPrimary
                                         elide: Text.ElideRight
                                     }
                                     StyledText {
+                                        visible: String(modelData.clozeText ?? "").length === 0
                                         Layout.fillWidth: true
                                         text: "A: " + String(modelData.back ?? "")
                                         font.pixelSize: 10
@@ -9095,6 +9485,28 @@ FocusScope {
                         onClicked: tagActionInput.accepted()
                     }
                 }
+            }
+        }
+    }
+
+    Loader {
+        id: historyModalLoader
+        objectName: "nexusHistoryModalLoader"
+        anchors.fill: parent
+        z: 755
+        asynchronous: status !== Loader.Ready && Quickshell.env("QT_QUICK_BACKEND") !== "software"
+        readonly property bool shouldLoad: Boolean(root.nexus?.historyModalOpen ?? false)
+        visible: shouldLoad
+        function _syncSource(): void {
+            if (shouldLoad && source.toString().length === 0)
+                setSource(Qt.resolvedUrl("NexusHistoryModal.qml"), { nexus: root.nexus, settledColors: settledColors });
+        }
+        Component.onCompleted: _syncSource()
+        onShouldLoadChanged: _syncSource()
+        onLoaded: {
+            if (item) {
+                item.nexus = Qt.binding(() => root.nexus);
+                item.settledColors = Qt.binding(() => settledColors);
             }
         }
     }

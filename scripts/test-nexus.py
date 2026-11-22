@@ -73,10 +73,11 @@ def test_rust_engine():
             "This paragraph mentions Nexus Spec without brackets.\n",
             encoding="utf-8",
         )
-        # Code file, Image file, and Unsupported External file (PDF)
+        # Code file, Image file, Built-in PDF file, and Unsupported External file
         (vault / "10_Projects/demo.rs").write_text("fn main() { println!(\"hello\"); }\n", encoding="utf-8")
         (vault / "30_Assets/diagram.svg").write_text("<svg xmlns=\"http://www.w3.org/2000/svg\"/>\n", encoding="utf-8")
         (vault / "30_Assets/paper.pdf").write_bytes(b"%PDF-1.4 synthetic pdf bytes")
+        (vault / "30_Assets/archive.docx").write_bytes(b"PK\x03\x04synthetic docx")
 
         # 1. Scan vault (and verify ~/Nexus-Vault tilde expansion + vault-internal absolute path resolution)
         scan, _ = run_cli("scan", "--vault", str(vault))
@@ -146,15 +147,18 @@ def test_rust_engine():
         assert len(cal["cells"]) == 42
         assert any(c["dateStr"] == "2026-11-07" and c["hasJournal"] is True for c in cal["cells"])
 
-        # 6. File categories: code, image, external
+        # 6. File categories: code, image, built-in pdf, external
         code_doc, _ = run_cli("read", "--vault", str(vault), "--path", "10_Projects/demo.rs")
         assert code_doc["category"] == "code" and code_doc["language"] == "rust"
 
         img_doc, _ = run_cli("read", "--vault", str(vault), "--path", "30_Assets/diagram.svg")
         assert img_doc["category"] == "image"
 
-        ext_doc, _ = run_cli("read", "--vault", str(vault), "--path", "30_Assets/paper.pdf")
-        assert ext_doc["category"] == "external" and ext_doc["absPath"].endswith("30_Assets/paper.pdf")
+        pdf_doc, _ = run_cli("read", "--vault", str(vault), "--path", "30_Assets/paper.pdf")
+        assert pdf_doc["category"] == "pdf" and pdf_doc["absPath"].endswith("30_Assets/paper.pdf")
+
+        ext_doc, _ = run_cli("read", "--vault", str(vault), "--path", "30_Assets/archive.docx")
+        assert ext_doc["category"] == "external" and ext_doc["absPath"].endswith("30_Assets/archive.docx")
 
         # 7. Path traversal rejection
         err_traversal, code = run_cli("read", "--vault", str(vault), "--path", "../outside.md", check=False)
@@ -432,6 +436,7 @@ def test_qml_workspace_runtime():
             encoding="utf-8",
         )
         (vault / "20_Notes/Manual.pdf").write_bytes(b"%PDF-1.4 fixture")
+        (vault / "20_Notes/Manual.docx").write_bytes(b"PK\x03\x04fixture")
 
         config = private / "config/alis"
         config.mkdir(parents=True)
@@ -867,9 +872,9 @@ ShellRoot {{
                 check(vimArea.text.startsWith("alpha"), "expected << to unindent line by 2 spaces")
                 nexus.setEditorMode("hybrid")
 
-                // External unsupported file (.pdf) dispatches to xdg-open without opening in editor
-                nexus.openFile("20_Notes/Manual.pdf", true)
-                tryVerify(() => !nexus.docBusy && nexus.lastExternalOpenedPath.endsWith("20_Notes/Manual.pdf"), 4000)
+                // External unsupported file (.docx) dispatches to xdg-open without replacing active markdown doc
+                nexus.openFile("20_Notes/Manual.docx", true)
+                tryVerify(() => !nexus.docBusy && nexus.lastExternalOpenedPath.endsWith("20_Notes/Manual.docx"), 4000)
 
                 // Verify Weekly Planner recurring event projection & weekOffset sync
                 check(ctxCard !== null, "missing nexusContextCard")
@@ -1018,7 +1023,7 @@ ShellRoot {{
                 const mainCardBorderRing = findChild(ws, "nexusMainCardBorderRing")
                 const mainHeaderBar = findChild(ws, "nexusMainHeaderBar")
                 const mainHeaderDivider = findChild(ws, "nexusMainHeaderBottomDivider")
-                const fileTreeCard = findChild(ws, "nexusFileTreeCard")
+                const fileTreeCard = findChild(ws, "nexusFileTreeCardSurface") ?? findChild(ws, "nexusFileTreeCard")
                 const calendarCard = findChild(ws, "nexusCalendarCard")
                 check(mainCard !== null && fileTreeCard !== null && mainCard.border.width === 1 && mainCard.radius === fileTreeCard.radius && mainCard.border.color === ws.borderSubtle && mainCard.border.color === fileTreeCard.border.color, "nexusMainCard in Overlay mode must have border.width=1, radius, and border.color: root.borderSubtle matching sidebar cards")
                 check(mainCardBorderRing !== null && mainCardBorderRing.visible === true && mainCardBorderRing.border.width === 1 && mainCardBorderRing.border.color === ws.borderSubtle && mainCardBorderRing.radius === mainCard.radius && mainCardBorderRing.z === 60, "nexusMainCardBorderRing must render a crisp 1px perimeter border (z=60, border.color=root.borderSubtle) on top of header/content")
@@ -1705,6 +1710,12 @@ ShellRoot {{
                 check(rcCard0 !== null && rcCover0 !== null && rcCoverImg0 !== null, "missing nexusRecipeBaseCard_0, nexusRecipeBaseCover_0, or nexusRecipeBaseCoverImage_0 in Recipe Base")
                 check(String(rcCard0.color) === String(Qt.color(ws.ccStop(2))), "Recipe Base card must use Alis Auto-Theming surface color instead of hardcoded #1b1e26")
                 check(rcCalPill0 !== null && rcCalPill0.visible === true && rcMacroRow0 !== null && rcMacroRow0.visible === true && rcCard0.rcTimeDisplay === "35 min" && rcCard0.rcMacroChips.length === 4, "Recipe Base card must parse Spoonacular calories, macros, and time into cover pill and macro chips (got time=" + rcCard0.rcTimeDisplay + ", chips=" + JSON.stringify(rcCard0.rcMacroChips) + ")")
+
+                // Built-in PDF Viewer opens .pdf inside Document view without external dispatch
+                nexus.openFile("20_Notes/Manual.pdf", true)
+                tryVerify(() => !nexus.docBusy && nexus.activeView === "document" && nexus.currentDoc && nexus.currentDoc.category === "pdf", 4000)
+                const pdfLoader = findChild(ws, "nexusPdfViewerLoader")
+                check(pdfLoader !== null && pdfLoader.shouldLoad === true, "nexusPdfViewerLoader should activate on .pdf file")
 
                 console.info("ALIS_NEXUS_QML_RUNTIME_PASS")
             }} catch (e) {{

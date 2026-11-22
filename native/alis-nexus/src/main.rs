@@ -81,6 +81,9 @@ pub enum FileCategory {
     Markdown,
     Code,
     Image,
+    Pdf,
+    Canvas,
+    Base,
     External,
 }
 
@@ -88,6 +91,9 @@ pub fn classify_extension(ext: &str) -> (FileCategory, &'static str) {
     let lower = ext.trim_start_matches('.').to_ascii_lowercase();
     match lower.as_str() {
         "md" | "markdown" | "mdx" => (FileCategory::Markdown, "markdown"),
+        "pdf" => (FileCategory::Pdf, "pdf"),
+        "canvas" => (FileCategory::Canvas, "json"),
+        "base" => (FileCategory::Base, "yaml"),
         "txt" | "text" => (FileCategory::Code, "plaintext"),
         "json" | "jsonc" | "jsonl" => (FileCategory::Code, "json"),
         "yaml" | "yml" => (FileCategory::Code, "yaml"),
@@ -297,7 +303,7 @@ pub struct HeadingItem {
     pub line: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockItem {
     pub id: usize,
@@ -319,6 +325,15 @@ pub struct BlockItem {
     pub tags: Vec<String>,
     pub table_headers: Vec<String>,
     pub table_rows: Vec<Vec<String>>,
+    pub block_id: String,
+    pub collapsible: bool,
+    pub default_collapsed: bool,
+    pub embed_target: String,
+    pub embed_subpath: String,
+    pub embed_rel_path: String,
+    pub embed_title: String,
+    pub embed_excerpt: String,
+    pub embed_lines: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1132,6 +1147,20 @@ fn parse_list_or_task_line(line: &str) -> Option<(usize, String, String)> {
     None
 }
 
+pub fn split_trailing_block_id(raw: &str) -> (String, String) {
+    let trimmed = raw.trim_end();
+    if let Some(pos) = trimmed.rfind(" ^") {
+        let candidate = &trimmed[pos + 2..];
+        if candidate.len() >= 2
+            && candidate.len() <= 64
+            && candidate.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return (trimmed[..pos].trim_end().to_string(), candidate.to_string());
+        }
+    }
+    (trimmed.to_string(), String::new())
+}
+
 pub fn parse_blocks(
     lines: &[String],
     body_start: usize,
@@ -1195,23 +1224,16 @@ pub fn parse_blocks(
                 blocks.push(BlockItem {
                     id,
                     kind: "code".to_string(),
-                    level: 0,
-                    indent: 0,
                     line_start: line_1based,
                     line_end: end_line,
                     fold_end_line: end_line,
                     foldable: code_lines.len() > 1,
-                    todo_state: String::new(),
-                    callout_type: String::new(),
                     title: if lang.is_empty() { "code".to_string() } else { lang.clone() },
                     lang,
                     text: body.clone(),
                     raw_text: lines[i..end_line].join("\n"),
                     rich_html: html_escape(&body),
-                    wikilinks: Vec::new(),
-                    tags: Vec::new(),
-                    table_headers: Vec::new(),
-                    table_rows: Vec::new(),
+                    ..Default::default()
                 });
             }
             i = if j < n { j + 1 } else { n };
@@ -1247,23 +1269,69 @@ pub fn parse_blocks(
             blocks.push(BlockItem {
                 id,
                 kind: "math".to_string(),
-                level: 0,
-                indent: 0,
                 line_start: line_1based,
                 line_end: end_line,
                 fold_end_line: end_line,
-                foldable: false,
-                todo_state: String::new(),
-                callout_type: String::new(),
                 title: "LaTeX".to_string(),
                 lang: "latex".to_string(),
                 text: body.clone(),
                 raw_text: lines[i..end_line].join("\n"),
                 rich_html: html_escape(&body),
-                wikilinks: Vec::new(),
-                tags: Vec::new(),
-                table_headers: Vec::new(),
-                table_rows: Vec::new(),
+                ..Default::default()
+            });
+            i = end_line;
+            continue;
+        }
+
+        // 2B. HTML <details><summary>Toggle</summary> ... </details>
+        if trimmed.to_ascii_lowercase().starts_with("<details") {
+            let default_collapsed = !trimmed.to_ascii_lowercase().contains("open");
+            let mut j = i + 1;
+            let mut title = String::from("Toggle");
+            let mut body_lines = Vec::new();
+            while j < n {
+                let lt = lines[j].trim();
+                let lt_low = lt.to_ascii_lowercase();
+                if lt_low.starts_with("</details>") {
+                    j += 1;
+                    break;
+                }
+                if let Some(s_pos) = lt_low.find("<summary>") {
+                    if let Some(e_pos) = lt_low.find("</summary>") {
+                        if e_pos > s_pos + 9 {
+                            title = lt[s_pos + 9..e_pos].trim().to_string();
+                            let after = lt[e_pos + 10..].trim();
+                            if !after.is_empty() {
+                                body_lines.push(after.to_string());
+                            }
+                            j += 1;
+                            continue;
+                        }
+                    }
+                }
+                if !lt.is_empty() {
+                    body_lines.push(lt.to_string());
+                }
+                j += 1;
+            }
+            let end_line = j.max(i + 1);
+            let body = body_lines.join("\n");
+            let id = blocks.len();
+            blocks.push(BlockItem {
+                id,
+                kind: "callout".to_string(),
+                line_start: line_1based,
+                line_end: end_line,
+                fold_end_line: end_line,
+                foldable: true,
+                collapsible: true,
+                default_collapsed,
+                callout_type: "TOGGLE".to_string(),
+                title,
+                text: body.clone(),
+                raw_text: lines[i..end_line].join("\n"),
+                rich_html: render_inline_rich_html(&body),
+                ..Default::default()
             });
             i = end_line;
             continue;
@@ -1273,12 +1341,22 @@ pub fn parse_blocks(
         if trimmed.starts_with("> [!") {
             if let Some(close_bracket) = trimmed.find(']') {
                 if close_bracket >= 4 {
-                    let ctype = trimmed[4..close_bracket]
-                        .trim()
+                    let after_bracket = trimmed[close_bracket + 1..].trim_start();
+                    let fold_char = after_bracket.chars().next();
+                    let collapsible = matches!(fold_char, Some('+') | Some('-'));
+                    let default_collapsed = fold_char == Some('-');
+                    let rest_after_fold = if collapsible {
+                        after_bracket[1..].trim()
+                    } else {
+                        trimmed[close_bracket + 1..].trim()
+                    };
+                    let raw_type_inner = trimmed[4..close_bracket].trim();
+                    let type_collapsible = raw_type_inner.ends_with('-') || raw_type_inner.ends_with('+');
+                    let ctype = raw_type_inner
                         .trim_end_matches('+')
                         .trim_end_matches('-')
                         .to_ascii_uppercase();
-                    let mut ctitle = trimmed[close_bracket + 1..].trim().to_string();
+                    let mut ctitle = rest_after_fold.to_string();
                     let mut j = i + 1;
                     let mut body_lines = Vec::new();
                     let mut in_nested_fence = false;
@@ -1327,27 +1405,24 @@ pub fn parse_blocks(
                     blocks.push(BlockItem {
                         id,
                         kind: "callout".to_string(),
-                        level: 0,
-                        indent: 0,
                         line_start: line_1based,
                         line_end: end_line,
                         fold_end_line: end_line,
                         foldable: true,
-                        todo_state: String::new(),
+                        collapsible: collapsible || type_collapsible,
+                        default_collapsed: default_collapsed || raw_type_inner.ends_with('-'),
                         callout_type: ctype.clone(),
                         title: if ctitle.is_empty() {
                             if ctype == "MULTI-COLUMN" { "Overview".to_string() } else { ctype }
                         } else {
                             ctitle
                         },
-                        lang: String::new(),
                         text: body.clone(),
                         raw_text: lines[i..end_line].join("\n"),
                         rich_html: render_inline_rich_html(&body),
                         wikilinks: wlinks,
                         tags: btags,
-                        table_headers: Vec::new(),
-                        table_rows: Vec::new(),
+                        ..Default::default()
                     });
                     i = j;
                     continue;
@@ -1396,23 +1471,16 @@ pub fn parse_blocks(
             blocks.push(BlockItem {
                 id,
                 kind: "table".to_string(),
-                level: 0,
-                indent: 0,
                 line_start: line_1based,
                 line_end: end_line,
                 fold_end_line: end_line,
                 foldable: data_rows.len() > 2,
-                todo_state: String::new(),
-                callout_type: String::new(),
                 title: format!("Table ({} rows)", data_rows.len()),
-                lang: String::new(),
                 text: raw_rows.join("\n"),
                 raw_text: raw_rows.join("\n"),
-                rich_html: String::new(),
-                wikilinks: Vec::new(),
-                tags: Vec::new(),
                 table_headers: headers,
                 table_rows: data_rows,
+                ..Default::default()
             });
             i = j;
             continue;
@@ -1421,7 +1489,7 @@ pub fn parse_blocks(
         // 5. Heading # .. ######
         let hashes = trimmed.chars().take_while(|c| *c == '#').count();
         if (1..=6).contains(&hashes) && trimmed[hashes..].starts_with(' ') {
-            let h_text = trimmed[hashes..].trim().to_string();
+            let (h_text, block_id) = split_trailing_block_id(trimmed[hashes..].trim());
             outline.push(HeadingItem {
                 level: hashes,
                 text: h_text.clone(),
@@ -1471,22 +1539,19 @@ pub fn parse_blocks(
                 id,
                 kind: "heading".to_string(),
                 level: hashes,
-                indent: 0,
                 line_start: line_1based,
                 line_end: line_1based,
                 fold_end_line: line_1based,
                 foldable: true,
-                todo_state: String::new(),
                 callout_type: cornell_marker.to_string(),
                 title: h_text.clone(),
-                lang: String::new(),
                 text: h_text.clone(),
                 raw_text: line.clone(),
                 rich_html: render_inline_rich_html(&h_text),
                 wikilinks: wlinks,
                 tags: btags,
-                table_headers: Vec::new(),
-                table_rows: Vec::new(),
+                block_id,
+                ..Default::default()
             });
             i += 1;
             continue;
@@ -1498,65 +1563,74 @@ pub fn parse_blocks(
             blocks.push(BlockItem {
                 id,
                 kind: "divider".to_string(),
-                level: 0,
-                indent: 0,
                 line_start: line_1based,
                 line_end: line_1based,
                 fold_end_line: line_1based,
-                foldable: false,
-                todo_state: String::new(),
-                callout_type: String::new(),
-                title: String::new(),
-                lang: String::new(),
                 text: "---".to_string(),
                 raw_text: line.clone(),
-                rich_html: String::new(),
-                wikilinks: Vec::new(),
-                tags: Vec::new(),
-                table_headers: Vec::new(),
-                table_rows: Vec::new(),
+                ..Default::default()
             });
             i += 1;
             continue;
         }
 
-        // 7. Standalone image embed ![[image.png|width]]
+        // 7. Standalone image OR note/block transclusion embed ![[target(#subpath)?|alias]]
         if trimmed.starts_with("![[") && trimmed.ends_with("]]") && trimmed.len() > 5 {
             let inner = &trimmed[3..trimmed.len() - 2];
-            let (target_part, size_or_alt) = match inner.split_once('|') {
+            let (target_and_sub, size_or_alt) = match inner.split_once('|') {
                 Some((t, a)) => (t.trim(), a.trim()),
                 None => (inner.trim(), ""),
             };
-            if is_image_target(target_part) {
+            if is_image_target(target_and_sub) {
                 let id = blocks.len();
                 blocks.push(BlockItem {
                     id,
                     kind: "image".to_string(),
-                    level: 0,
-                    indent: 0,
                     line_start: line_1based,
                     line_end: line_1based,
                     fold_end_line: line_1based,
-                    foldable: false,
-                    todo_state: String::new(),
                     callout_type: size_or_alt.to_string(),
-                    title: target_part.rsplit('/').next().unwrap_or(target_part).to_string(),
-                    lang: String::new(),
-                    text: target_part.to_string(),
+                    title: target_and_sub.rsplit('/').next().unwrap_or(target_and_sub).to_string(),
+                    text: target_and_sub.to_string(),
                     raw_text: line.clone(),
                     rich_html: render_inline_rich_html(trimmed),
-                    wikilinks: Vec::new(),
-                    tags: Vec::new(),
-                    table_headers: Vec::new(),
-                    table_rows: Vec::new(),
+                    ..Default::default()
                 });
                 i += 1;
                 continue;
             }
+            let (embed_target, embed_subpath) = match target_and_sub.split_once('#') {
+                Some((t, sub)) => (t.trim().to_string(), sub.trim().to_string()),
+                None => (target_and_sub.to_string(), String::new()),
+            };
+            let display_title = if !size_or_alt.is_empty() {
+                size_or_alt.to_string()
+            } else if !embed_subpath.is_empty() {
+                format!("{} #{}", embed_target, embed_subpath)
+            } else {
+                embed_target.clone()
+            };
+            let id = blocks.len();
+            blocks.push(BlockItem {
+                id,
+                kind: "embed".to_string(),
+                line_start: line_1based,
+                line_end: line_1based,
+                fold_end_line: line_1based,
+                title: display_title,
+                text: target_and_sub.to_string(),
+                raw_text: line.clone(),
+                rich_html: render_inline_rich_html(trimmed),
+                embed_target,
+                embed_subpath,
+                ..Default::default()
+            });
+            i += 1;
+            continue;
         }
 
         // 8. Outliner Bullet / Task item
-        if let Some((indent, todo_state, item_text)) = parse_list_or_task_line(line) {
+        if let Some((indent, todo_state, raw_item_text)) = parse_list_or_task_line(line) {
             if !todo_state.is_empty() {
                 if todo_state == "DONE" {
                     done_tasks += 1;
@@ -1564,6 +1638,7 @@ pub fn parse_blocks(
                     open_tasks += 1;
                 }
             }
+            let (item_text, block_id) = split_trailing_block_id(&raw_item_text);
             let wlinks = extract_wikilinks_from_line(&item_text)
                 .into_iter()
                 .map(|(t, _)| t)
@@ -1577,23 +1652,18 @@ pub fn parse_blocks(
                 } else {
                     "todo".to_string()
                 },
-                level: 0,
                 indent,
                 line_start: line_1based,
                 line_end: line_1based,
                 fold_end_line: line_1based,
-                foldable: false,
                 todo_state,
-                callout_type: String::new(),
-                title: String::new(),
-                lang: String::new(),
                 text: item_text.clone(),
                 raw_text: line.clone(),
                 rich_html: render_inline_rich_html(&item_text),
                 wikilinks: wlinks,
                 tags: btags,
-                table_headers: Vec::new(),
-                table_rows: Vec::new(),
+                block_id,
+                ..Default::default()
             });
             i += 1;
             continue;
@@ -1601,7 +1671,7 @@ pub fn parse_blocks(
 
         // 9. Quote > ...
         if let Some(q_rest) = trimmed.strip_prefix("> ").or_else(|| trimmed.strip_prefix('>')) {
-            let q_text = q_rest.trim().to_string();
+            let (q_text, block_id) = split_trailing_block_id(q_rest.trim());
             let wlinks = extract_wikilinks_from_line(&q_text)
                 .into_iter()
                 .map(|(t, _)| t)
@@ -1611,55 +1681,42 @@ pub fn parse_blocks(
             blocks.push(BlockItem {
                 id,
                 kind: "quote".to_string(),
-                level: 0,
-                indent: 0,
                 line_start: line_1based,
                 line_end: line_1based,
                 fold_end_line: line_1based,
-                foldable: false,
-                todo_state: String::new(),
-                callout_type: String::new(),
-                title: String::new(),
-                lang: String::new(),
                 text: q_text.clone(),
                 raw_text: line.clone(),
                 rich_html: render_inline_rich_html(&q_text),
                 wikilinks: wlinks,
                 tags: btags,
-                table_headers: Vec::new(),
-                table_rows: Vec::new(),
+                block_id,
+                ..Default::default()
             });
             i += 1;
             continue;
         }
 
         // 10. Paragraph line
-        let wlinks = extract_wikilinks_from_line(trimmed)
+        let (p_text, block_id) = split_trailing_block_id(trimmed);
+        let wlinks = extract_wikilinks_from_line(&p_text)
             .into_iter()
             .map(|(t, _)| t)
             .collect();
-        let btags = extract_tags_from_line(trimmed);
+        let btags = extract_tags_from_line(&p_text);
         let id = blocks.len();
         blocks.push(BlockItem {
             id,
             kind: "paragraph".to_string(),
-            level: 0,
-            indent: 0,
             line_start: line_1based,
             line_end: line_1based,
             fold_end_line: line_1based,
-            foldable: false,
-            todo_state: String::new(),
-            callout_type: String::new(),
-            title: String::new(),
-            lang: String::new(),
-            text: trimmed.to_string(),
+            text: p_text.clone(),
             raw_text: line.clone(),
-            rich_html: render_inline_rich_html(trimmed),
+            rich_html: render_inline_rich_html(&p_text),
             wikilinks: wlinks,
             tags: btags,
-            table_headers: Vec::new(),
-            table_rows: Vec::new(),
+            block_id,
+            ..Default::default()
         });
         i += 1;
     }
@@ -2178,6 +2235,9 @@ fn walk_directory_collect_jobs(
                     FileCategory::Markdown => "markdown",
                     FileCategory::Code => "code",
                     FileCategory::Image => "image",
+                    FileCategory::Pdf => "pdf",
+                    FileCategory::Canvas => "canvas",
+                    FileCategory::Base => "base",
                     FileCategory::External => "external",
                 };
                 let folder = Path::new(&rel_path)
@@ -5161,6 +5221,107 @@ pub fn cmd_scan_for_date_with_cache_opts(
     Ok(payload)
 }
 
+fn extract_embed_lines_from_lines(lines: &[String], subpath: &str) -> Vec<String> {
+    let (_, _, _, body_start) = parse_frontmatter(lines);
+    let sub = subpath.trim();
+    if let Some(bid) = sub.strip_prefix('^') {
+        let bid_clean = bid.trim();
+        let needle = format!("^{}", bid_clean);
+        for (idx, line) in lines.iter().enumerate().skip(body_start) {
+            let trimmed = line.trim_end();
+            if trimmed.ends_with(&needle) {
+                let mut out = vec![trimmed[..trimmed.len() - needle.len()].trim_end().to_string()];
+                let base_indent = line.len() - line.trim_start().len();
+                for follow in lines.iter().skip(idx + 1).take(10) {
+                    let ft = follow.trim();
+                    if ft.is_empty() {
+                        break;
+                    }
+                    let f_indent = follow.len() - follow.trim_start().len();
+                    if f_indent > base_indent {
+                        out.push(follow.trim_end().to_string());
+                    } else {
+                        break;
+                    }
+                }
+                return out;
+            }
+        }
+        return Vec::new();
+    }
+    if !sub.is_empty() {
+        let sub_lower = sub.to_ascii_lowercase();
+        let mut found_level = 0usize;
+        let mut collected = Vec::new();
+        for line in lines.iter().skip(body_start) {
+            let t = line.trim();
+            let hashes = t.chars().take_while(|c| *c == '#').count();
+            if found_level == 0 {
+                if (1..=6).contains(&hashes) && t[hashes..].starts_with(' ') {
+                    let h_txt = t[hashes..].trim().to_ascii_lowercase();
+                    if h_txt == sub_lower || h_txt.contains(&sub_lower) {
+                        found_level = hashes;
+                        collected.push(t.to_string());
+                    }
+                }
+            } else {
+                if (1..=6).contains(&hashes) && t[hashes..].starts_with(' ') && hashes <= found_level {
+                    break;
+                }
+                collected.push(line.trim_end().to_string());
+                if collected.len() >= 28 {
+                    break;
+                }
+            }
+        }
+        if !collected.is_empty() {
+            return collected;
+        }
+    }
+    let mut out = Vec::new();
+    for line in lines.iter().skip(body_start) {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        out.push(t.to_string());
+        if out.len() >= 14 {
+            break;
+        }
+    }
+    out
+}
+
+fn nearest_heading_and_context(lines: &[String], line_1based: usize) -> (String, String, String) {
+    let idx = line_1based.saturating_sub(1).min(lines.len().saturating_sub(1));
+    let mut heading = String::new();
+    for back in (0..idx).rev() {
+        let t = lines[back].trim();
+        let hashes = t.chars().take_while(|c| *c == '#').count();
+        if (1..=6).contains(&hashes) && t[hashes..].starts_with(' ') {
+            heading = t[hashes..].trim().to_string();
+            break;
+        }
+    }
+    let mut ctx_before = String::new();
+    for back in (0..idx).rev().take(3) {
+        let t = lines[back].trim();
+        if !t.is_empty() && t != "---" {
+            ctx_before = t.chars().take(140).collect();
+            break;
+        }
+    }
+    let mut ctx_after = String::new();
+    for fwd in (idx + 1)..lines.len().min(idx + 4) {
+        let t = lines[fwd].trim();
+        if !t.is_empty() && t != "---" {
+            ctx_after = t.chars().take(140).collect();
+            break;
+        }
+    }
+    (heading, ctx_before, ctx_after)
+}
+
 pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
     let vault_canon = resolve_vault_root(vault_str)?;
     let (target_path, rel_norm) = resolve_inside_vault(&vault_canon, rel_str, true)?;
@@ -5187,6 +5348,58 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
     let abs_str = target_path.to_string_lossy().to_string();
 
     match cat_enum {
+        FileCategory::Pdf => Ok(json!({
+            "ok": true,
+            "category": "pdf",
+            "language": "pdf",
+            "relPath": rel_norm,
+            "absPath": abs_str,
+            "fileUrl": format!("file://{}", abs_str),
+            "title": stem,
+            "ext": ext,
+            "sizeBytes": size_bytes,
+            "mtimeSecs": mtime_secs,
+        })),
+        FileCategory::Canvas => {
+            let bytes = fs::read(&target_path).map_err(|e| format!("Cannot read '{}': {}", rel_norm, e))?;
+            let digest = sha256_hex(&bytes);
+            let content = String::from_utf8_lossy(&bytes).to_string();
+            let line_count = content.lines().count();
+            Ok(json!({
+                "ok": true,
+                "category": "canvas",
+                "language": "json",
+                "relPath": rel_norm,
+                "absPath": abs_str,
+                "title": stem,
+                "ext": ext,
+                "sizeBytes": size_bytes,
+                "mtimeSecs": mtime_secs,
+                "sha256": digest,
+                "content": content,
+                "lineCount": line_count,
+            }))
+        }
+        FileCategory::Base => {
+            let bytes = fs::read(&target_path).map_err(|e| format!("Cannot read '{}': {}", rel_norm, e))?;
+            let digest = sha256_hex(&bytes);
+            let content = String::from_utf8_lossy(&bytes).to_string();
+            let line_count = content.lines().count();
+            Ok(json!({
+                "ok": true,
+                "category": "base",
+                "language": "yaml",
+                "relPath": rel_norm,
+                "absPath": abs_str,
+                "title": stem,
+                "ext": ext,
+                "sizeBytes": size_bytes,
+                "mtimeSecs": mtime_secs,
+                "sha256": digest,
+                "content": content,
+                "lineCount": line_count,
+            }))
+        }
         FileCategory::External => Ok(json!({
             "ok": true,
             "category": "external",
@@ -5272,11 +5485,25 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
             let _ = scan_directory_recursive(&vault_canon, &vault_canon, &mut flat_files, &mut notes);
             let lookup = build_note_lookup(&notes);
 
-            // Resolve inline image blocks and dossier assets via O(1) AssetLookupIndex
+            // Resolve inline image blocks, markdown embeds, and dossier assets via O(1) AssetLookupIndex
             let asset_index = AssetLookupIndex::from_flat_files(&flat_files);
+            let current_lookup_key = rel_norm.trim().trim_end_matches(".md").to_ascii_lowercase();
+            let current_idx_for_embed = lookup.get(&current_lookup_key).copied();
             for b in &mut blocks {
                 if b.kind == "image" {
                     b.lang = resolve_vault_asset_url_with_index(&vault_canon, &b.text, &asset_index);
+                } else if b.kind == "embed" && !b.embed_target.is_empty() {
+                    let t_key = b.embed_target.trim().trim_end_matches(".md").to_ascii_lowercase();
+                    if let Some(&e_idx) = lookup.get(&t_key) {
+                        if Some(e_idx) != current_idx_for_embed && notes[e_idx].rel_path != rel_norm {
+                            let target_note = &notes[e_idx];
+                            b.embed_rel_path = target_note.rel_path.clone();
+                            b.embed_title = target_note.title.clone();
+                            let extracted = extract_embed_lines_from_lines(&target_note.lines, &b.embed_subpath);
+                            b.embed_excerpt = extracted.join("\n");
+                            b.embed_lines = extracted;
+                        }
+                    }
                 }
             }
 
@@ -5304,23 +5531,16 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
                         blocks.push(BlockItem {
                             id: 0,
                             kind: "callout".to_string(),
-                            level: 0,
-                            indent: 0,
                             line_start: 1,
                             line_end: lines.len().max(1),
                             fold_end_line: lines.len().max(1),
-                            foldable: false,
-                            todo_state: String::new(),
                             callout_type: "INFO".to_string(),
                             title: "Synopsis".to_string(),
-                            lang: String::new(),
                             text: clean_plot.clone(),
                             raw_text: clean_plot.clone(),
                             rich_html: render_inline_rich_html(plot),
                             wikilinks: extract_wikilinks_from_line(plot).into_iter().map(|(t, _)| t).collect(),
-                            tags: Vec::new(),
-                            table_headers: Vec::new(),
-                            table_rows: Vec::new(),
+                            ..Default::default()
                         });
                     }
                 }
@@ -6814,11 +7034,15 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
                     if matches_self {
                         neighbors_1hop.insert(idx);
                         linked_lines.insert(*line_no);
+                        let (heading, ctx_before, ctx_after) = nearest_heading_and_context(&other.lines, *line_no);
                         linked_backlinks.push(json!({
                             "relPath": other.rel_path,
                             "title": other.title,
                             "line": line_no,
                             "snippet": snippet,
+                            "heading": heading,
+                            "contextBefore": ctx_before,
+                            "contextAfter": ctx_after,
                         }));
                     }
                 }
@@ -6919,6 +7143,11 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
                 }
             }
 
+            let mut hop2_set: BTreeSet<usize> = BTreeSet::new();
+            for (h2_idx, _) in &hop2_parent_angles {
+                hop2_set.insert(*h2_idx);
+            }
+            let mut hop3_parent_angles: BTreeMap<usize, Vec<f64>> = BTreeMap::new();
             let hop2_vec: Vec<(usize, Vec<f64>)> = hop2_parent_angles.into_iter().collect();
             let hop2_count = hop2_vec.len();
             for (pos, (h2_idx, parent_angles)) in hop2_vec.into_iter().enumerate() {
@@ -6936,6 +7165,43 @@ pub fn cmd_read(vault_str: &str, rel_str: &str) -> Result<Value, String> {
                 let ny = radius * angle.sin();
                 let h2_note = &notes[h2_idx];
                 raw_local_nodes.push((h2_note.rel_path.clone(), h2_note.title.clone(), 2, nx, ny));
+
+                for (t3_raw, _, _) in &h2_note.outgoing_links {
+                    let key3 = t3_raw.trim().trim_end_matches(".md").to_ascii_lowercase();
+                    if let Some(&h3_idx) = lookup.get(&key3) {
+                        if Some(h3_idx) != current_idx
+                            && !neighbors_1hop.contains(&h3_idx)
+                            && !hop2_set.contains(&h3_idx)
+                            && !is_template_note_summary(&notes[h3_idx])
+                            && (hop3_parent_angles.len() < 18 || hop3_parent_angles.contains_key(&h3_idx))
+                        {
+                            hop3_parent_angles.entry(h3_idx).or_default().push(angle);
+                            local_edges.push(json!({
+                                "source": h2_note.rel_path,
+                                "target": notes[h3_idx].rel_path,
+                            }));
+                        }
+                    }
+                }
+            }
+
+            let hop3_vec: Vec<(usize, Vec<f64>)> = hop3_parent_angles.into_iter().collect();
+            let hop3_count = hop3_vec.len();
+            for (pos, (h3_idx, parent_angles)) in hop3_vec.into_iter().enumerate() {
+                let base_angle = if !parent_angles.is_empty() {
+                    let sum_sin: f64 = parent_angles.iter().map(|a| a.sin()).sum();
+                    let sum_cos: f64 = parent_angles.iter().map(|a| a.cos()).sum();
+                    sum_sin.atan2(sum_cos)
+                } else {
+                    ((pos as f64 + 0.5) / hop3_count.max(1) as f64) * std::f64::consts::TAU
+                };
+                let spread = ((pos as f64 % 3.0) - 1.0) * 0.14;
+                let angle = base_angle + spread;
+                let radius = 0.50 + ((pos % 2) as f64) * 0.03;
+                let nx = radius * angle.cos();
+                let ny = radius * angle.sin();
+                let h3_note = &notes[h3_idx];
+                raw_local_nodes.push((h3_note.rel_path.clone(), h3_note.title.clone(), 3, nx, ny));
             }
 
             let mut min_lx = f64::INFINITY;
@@ -10343,8 +10609,377 @@ fn run_cli() -> Result<Value, String> {
             let folder_opt = parse_flag(&args, "--folder");
             cmd_tag_page(vault, tag, folder_opt)
         }
+        "preview" => {
+            let target = parse_flag(&args, "--target")
+                .or_else(|| parse_flag(&args, "--path"))
+                .ok_or_else(|| "Missing --target <wikilink_or_rel_path>".to_string())?;
+            cmd_preview(vault, target)
+        }
+        "query" => {
+            let folder_opt = parse_flag(&args, "--folder");
+            let tag_opt = parse_flag(&args, "--tag");
+            let sort_opt = parse_flag(&args, "--sort");
+            let group_opt = parse_flag(&args, "--group-by");
+            let limit = parse_flag(&args, "--limit")
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(500);
+            let mut where_filters: Vec<String> = Vec::new();
+            for idx in 0..args.len() {
+                if args[idx] == "--where" && idx + 1 < args.len() {
+                    where_filters.push(args[idx + 1].clone());
+                }
+            }
+            cmd_query(vault, folder_opt, tag_opt, &where_filters, sort_opt, group_opt, limit)
+        }
         other => Err(format!("Unknown command '{}'", other)),
     }
+}
+
+pub fn cmd_preview(vault_str: &str, target_raw: &str) -> Result<Value, String> {
+    let vault_canon = resolve_vault_root(vault_str)?;
+    let cleaned = target_raw.trim().trim_start_matches('[').trim_end_matches(']');
+    let (target_part, subpath) = match cleaned.split_once('#') {
+        Some((t, s)) => (t.split('|').next().unwrap_or(t).trim(), s.trim()),
+        None => (cleaned.split('|').next().unwrap_or(cleaned).trim(), ""),
+    };
+    if target_part.is_empty() {
+        return Err("Empty preview target".to_string());
+    }
+
+    let direct_rel = if target_part.ends_with(".md") || target_part.contains('.') {
+        target_part.to_string()
+    } else {
+        format!("{}.md", target_part)
+    };
+    let resolved_path: Option<(PathBuf, String)> = resolve_inside_vault(&vault_canon, &direct_rel, true)
+        .ok()
+        .filter(|(p, _)| p.is_file());
+
+    let (target_path, rel_norm) = if let Some(pair) = resolved_path {
+        pair
+    } else {
+        let mut flat_files = Vec::new();
+        let mut notes = Vec::new();
+        let mut stats = (0usize, 0usize);
+        let _ = scan_directory_recursive_with_cache(
+            &vault_canon,
+            &vault_canon,
+            &mut flat_files,
+            &mut notes,
+            None,
+            None,
+            &mut stats,
+            false,
+        );
+        let key = target_part.trim_end_matches(".md").to_ascii_lowercase();
+        let mut found_rel = String::new();
+        let lookup = build_note_lookup(&notes);
+        if let Some(&idx) = lookup.get(&key) {
+            found_rel = notes[idx].rel_path.clone();
+        } else {
+            for f in &flat_files {
+                let f_stem = f.stem.to_ascii_lowercase();
+                let f_rel = f.rel_path.trim_end_matches(".md").to_ascii_lowercase();
+                if f_stem == key || f_rel == key || f.name.eq_ignore_ascii_case(target_part) {
+                    found_rel = f.rel_path.clone();
+                    break;
+                }
+            }
+        }
+        if found_rel.is_empty() {
+            return Err(format!("Preview target '{}' not found", target_part));
+        }
+        resolve_inside_vault(&vault_canon, &found_rel, true)?
+    };
+
+    let stem = target_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let folder = Path::new(&rel_norm)
+        .parent()
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_default();
+    let ext = target_path
+        .extension()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let (cat_enum, _) = classify_extension(&ext);
+    let cat_str = match cat_enum {
+        FileCategory::Markdown => "markdown",
+        FileCategory::Code => "code",
+        FileCategory::Image => "image",
+        FileCategory::Pdf => "pdf",
+        FileCategory::Canvas => "canvas",
+        FileCategory::Base => "base",
+        FileCategory::External => "external",
+    };
+    if cat_enum != FileCategory::Markdown {
+        return Ok(json!({
+            "ok": true,
+            "relPath": rel_norm,
+            "title": stem,
+            "folder": folder,
+            "category": cat_str,
+            "tags": [],
+            "frontmatter": {},
+            "wordCount": 0,
+            "excerptLines": [format!("File: {}", rel_norm)],
+        }));
+    }
+
+    let raw = fs::read_to_string(&target_path).map_err(|e| format!("Cannot read '{}': {}", rel_norm, e))?;
+    let lines: Vec<String> = raw.lines().map(|l| l.to_string()).collect();
+    let (frontmatter, tags, _, body_start) = parse_frontmatter(&lines);
+    let title = frontmatter
+        .get("title")
+        .or_else(|| frontmatter.get("name"))
+        .cloned()
+        .filter(|s| !s.is_empty() && !s.contains("<%"))
+        .unwrap_or_else(|| stem.clone());
+    let excerpt_lines = extract_embed_lines_from_lines(&lines, subpath);
+    let word_count: usize = lines
+        .iter()
+        .skip(body_start)
+        .map(|l| l.split_whitespace().count())
+        .sum();
+    Ok(json!({
+        "ok": true,
+        "relPath": rel_norm,
+        "title": title,
+        "folder": folder,
+        "category": cat_str,
+        "tags": tags,
+        "frontmatter": frontmatter,
+        "wordCount": word_count,
+        "excerptLines": excerpt_lines,
+    }))
+}
+
+fn parse_where_expr(expr: &str) -> Option<(String, String, String)> {
+    let trimmed = expr.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    for op in ["!exists", "contains", ">=", "<=", "==", "!=", "=", ">", "<"] {
+        if let Some((left, right)) = trimmed.split_once(op) {
+            let k = left.trim().to_string();
+            let v = right.trim().trim_matches('"').trim_matches('\'').to_string();
+            if !k.is_empty() {
+                return Some((k, op.to_string(), v));
+            }
+        }
+    }
+    if let Some((k, _)) = trimmed.split_once(" exists") {
+        let key = k.trim().to_string();
+        if !key.is_empty() {
+            return Some((key, "exists".to_string(), String::new()));
+        }
+    }
+    None
+}
+
+pub fn cmd_query(
+    vault_str: &str,
+    folder_opt: Option<&str>,
+    tag_opt: Option<&str>,
+    where_filters: &[String],
+    sort_opt: Option<&str>,
+    group_by_opt: Option<&str>,
+    limit: usize,
+) -> Result<Value, String> {
+    let vault_canon = resolve_vault_root(vault_str)?;
+    let mut flat_files = Vec::new();
+    let mut notes = Vec::new();
+    let mut stats = (0usize, 0usize);
+    let _ = scan_directory_recursive_with_cache(
+        &vault_canon,
+        &vault_canon,
+        &mut flat_files,
+        &mut notes,
+        None,
+        None,
+        &mut stats,
+        false,
+    );
+
+    let folder_filter = folder_opt.unwrap_or("").trim().trim_matches('/').to_ascii_lowercase();
+    let tag_filter = tag_opt.unwrap_or("").trim().trim_start_matches('#').to_ascii_lowercase();
+    let parsed_wheres: Vec<(String, String, String)> = where_filters
+        .iter()
+        .filter_map(|w| parse_where_expr(w))
+        .collect();
+
+    let mut schema_set: BTreeSet<String> = BTreeSet::new();
+    let mut matched: Vec<&ParsedNoteSummary> = Vec::new();
+    for n in &notes {
+        if is_template_note_summary(n) {
+            continue;
+        }
+        for k in n.frontmatter.keys() {
+            schema_set.insert(k.clone());
+        }
+        if !folder_filter.is_empty() {
+            let f_low = n.folder.to_ascii_lowercase();
+            let r_low = n.rel_path.to_ascii_lowercase();
+            if f_low != folder_filter
+                && !f_low.starts_with(&(folder_filter.clone() + "/"))
+                && !r_low.starts_with(&(folder_filter.clone() + "/"))
+            {
+                continue;
+            }
+        }
+        if !tag_filter.is_empty() {
+            let has_tag = n.tags.iter().any(|t| {
+                let tl = t.trim_start_matches('#').to_ascii_lowercase();
+                tl == tag_filter || tl.starts_with(&(tag_filter.clone() + "/"))
+            });
+            if !has_tag {
+                continue;
+            }
+        }
+        let mut ok_where = true;
+        for (key, op, val) in &parsed_wheres {
+            let raw_opt = match key.as_str() {
+                "title" => Some(n.title.as_str()),
+                "folder" => Some(n.folder.as_str()),
+                "relPath" => Some(n.rel_path.as_str()),
+                _ => n.frontmatter.get(key).map(|s| s.as_str()),
+            };
+            let raw_str = raw_opt.unwrap_or("").trim();
+            let pass = match op.as_str() {
+                "exists" => raw_opt.is_some() && !raw_str.is_empty(),
+                "!exists" => raw_opt.is_none() || raw_str.is_empty(),
+                "contains" => contains_ascii_case_insensitive(raw_str, val),
+                "=" | "==" => raw_str.eq_ignore_ascii_case(val),
+                "!=" => !raw_str.eq_ignore_ascii_case(val),
+                ">" | ">=" | "<" | "<=" => {
+                    if let (Ok(a), Ok(b)) = (raw_str.parse::<f64>(), val.parse::<f64>()) {
+                        match op.as_str() {
+                            ">" => a > b,
+                            ">=" => a >= b,
+                            "<" => a < b,
+                            "<=" => a <= b,
+                            _ => false,
+                        }
+                    } else {
+                        let cmp = raw_str.to_ascii_lowercase().cmp(&val.to_ascii_lowercase());
+                        match op.as_str() {
+                            ">" => cmp.is_gt(),
+                            ">=" => cmp.is_ge(),
+                            "<" => cmp.is_lt(),
+                            "<=" => cmp.is_le(),
+                            _ => false,
+                        }
+                    }
+                }
+                _ => true,
+            };
+            if !pass {
+                ok_where = false;
+                break;
+            }
+        }
+        if ok_where {
+            matched.push(n);
+        }
+    }
+
+    if let Some(sort_spec) = sort_opt.filter(|s| !s.trim().is_empty()) {
+        let (s_key, desc) = match sort_spec.rsplit_once(':') {
+            Some((k, dir)) => (k.trim(), dir.trim().eq_ignore_ascii_case("desc")),
+            None => (sort_spec.trim(), false),
+        };
+        matched.sort_by(|a, b| {
+            let get_val = |item: &ParsedNoteSummary| -> String {
+                match s_key {
+                    "title" => item.title.clone(),
+                    "folder" => item.folder.clone(),
+                    "relPath" => item.rel_path.clone(),
+                    "mtimeSecs" => item.mtime_secs.to_string(),
+                    "openTasks" => item.open_tasks.to_string(),
+                    _ => item.frontmatter.get(s_key).cloned().unwrap_or_default(),
+                }
+            };
+            let va = get_val(a);
+            let vb = get_val(b);
+            let ord = if let (Ok(na), Ok(nb)) = (va.trim().parse::<f64>(), vb.trim().parse::<f64>()) {
+                na.partial_cmp(&nb).unwrap_or(std::cmp::Ordering::Equal)
+            } else {
+                va.to_ascii_lowercase().cmp(&vb.to_ascii_lowercase())
+            };
+            if desc { ord.reverse() } else { ord }
+        });
+    }
+
+    let total = matched.len();
+    let capped = limit.clamp(1, 2000);
+    let mut rows: Vec<Value> = Vec::new();
+    let mut group_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut numeric_agg: BTreeMap<String, (usize, f64, f64, f64)> = BTreeMap::new();
+    let group_key = group_by_opt.unwrap_or("").trim();
+
+    for n in matched.into_iter().take(capped) {
+        if !group_key.is_empty() {
+            let g_val = n
+                .frontmatter
+                .get(group_key)
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("(Uncategorized)")
+                .to_string();
+            *group_counts.entry(g_val).or_insert(0) += 1;
+        }
+        for (k, v) in &n.frontmatter {
+            if let Ok(num) = v.trim().parse::<f64>() {
+                if num.is_finite() {
+                    let entry = numeric_agg.entry(k.clone()).or_insert((0, 0.0, num, num));
+                    entry.0 += 1;
+                    entry.1 += num;
+                    if num < entry.2 { entry.2 = num; }
+                    if num > entry.3 { entry.3 = num; }
+                }
+            }
+        }
+        rows.push(json!({
+            "relPath": n.rel_path,
+            "title": n.title,
+            "folder": n.folder,
+            "mtimeSecs": n.mtime_secs,
+            "tags": n.tags,
+            "openTasks": n.open_tasks,
+            "doneTasks": n.done_tasks,
+            "frontmatter": n.frontmatter,
+            "snippet": n.snippet,
+        }));
+    }
+
+    let mut agg_map = serde_json::Map::new();
+    for (k, (cnt, sum, mn, mx)) in numeric_agg {
+        if cnt > 0 {
+            agg_map.insert(k, json!({
+                "count": cnt,
+                "sum": sum,
+                "avg": sum / (cnt as f64),
+                "min": mn,
+                "max": mx,
+            }));
+        }
+    }
+    let groups_vec: Vec<Value> = group_counts
+        .into_iter()
+        .map(|(g, count)| json!({ "value": g, "count": count }))
+        .collect();
+    let schema_keys: Vec<String> = schema_set.into_iter().collect();
+
+    Ok(json!({
+        "ok": true,
+        "total": total,
+        "rows": rows,
+        "schemaKeys": schema_keys,
+        "groups": groups_vec,
+        "aggregations": Value::Object(agg_map),
+    }))
 }
 
 fn normalize_tag_arg(raw: &str) -> Result<String, String> {
@@ -11069,7 +11704,9 @@ mod tests {
         assert_eq!(classify_extension("qml").0, FileCategory::Code);
         assert_eq!(classify_extension("png").0, FileCategory::Image);
         assert_eq!(classify_extension("webp").0, FileCategory::Image);
-        assert_eq!(classify_extension("pdf").0, FileCategory::External);
+        assert_eq!(classify_extension("pdf").0, FileCategory::Pdf);
+        assert_eq!(classify_extension("canvas").0, FileCategory::Canvas);
+        assert_eq!(classify_extension("base").0, FileCategory::Base);
         assert_eq!(classify_extension("docx").0, FileCategory::External);
         assert_eq!(classify_extension("mp4").0, FileCategory::External);
     }
@@ -11934,6 +12571,82 @@ mod tests {
         assert_eq!(cal["weekStart"], "sunday");
         let cells = cal["cells"].as_array().unwrap();
         assert_eq!(cells[0]["dateStr"], "2026-11-01");
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn test_embeds_toggles_backlink_context_local3hop_preview_and_query() {
+        let vault = make_temp_vault("nexus_upgrades");
+        let v_str = vault.to_str().unwrap();
+
+        fs::create_dir_all(vault.join("Projects")).unwrap();
+        fs::write(
+            vault.join("Target.md"),
+            "---\ntitle: Target Note\ntags: [core]\nstatus: active\nscore: 95\n---\n# Section One\nImportant block line ^b42\nMore details inside section.\n",
+        )
+        .unwrap();
+        fs::write(
+            vault.join("Projects/Source.md"),
+            "---\ntitle: Source Note\nstatus: active\nscore: 80\n---\n# Overview\nBefore line\nWait see [[Target]] here\nAfter line\n![[Target#^b42]]\n> [!NOTE]- Hidden Callout\n> Secret line\n\n<details>\n<summary>Detail Header</summary>\nInside toggle\n</details>\n",
+        )
+        .unwrap();
+        fs::write(vault.join("Hop2.md"), "Links to [[Hop3]]\n").unwrap();
+        fs::write(vault.join("Hop3.md"), "Deep leaf note\n").unwrap();
+        fs::write(vault.join("Target2.md"), "Links [[Hop2]] and [[Projects/Source]]\n").unwrap();
+        fs::write(vault.join("Board.canvas"), r#"{"nodes":[],"edges":[]}"#).unwrap();
+
+        let src_doc = cmd_read(v_str, "Projects/Source.md").unwrap();
+        assert_eq!(src_doc["ok"], true);
+        let blocks = src_doc["blocks"].as_array().unwrap();
+        let embed_blk = blocks.iter().find(|b| b["kind"] == "embed").unwrap();
+        assert_eq!(embed_blk["embedRelPath"], "Target.md");
+        assert!(embed_blk["embedExcerpt"].as_str().unwrap().contains("Important block line"));
+
+        let toggle_callout = blocks
+            .iter()
+            .find(|b| b["kind"] == "callout" && b["calloutType"] == "NOTE")
+            .unwrap();
+        assert_eq!(toggle_callout["collapsible"], true);
+        assert_eq!(toggle_callout["defaultCollapsed"], true);
+
+        let html_toggle = blocks
+            .iter()
+            .find(|b| b["kind"] == "callout" && b["calloutType"] == "TOGGLE")
+            .unwrap();
+        assert_eq!(html_toggle["title"], "Detail Header");
+
+        let tgt_doc = cmd_read(v_str, "Target.md").unwrap();
+        let backlinks = tgt_doc["backlinks"].as_array().unwrap();
+        assert_eq!(backlinks[0]["heading"], "Overview");
+        assert_eq!(backlinks[0]["contextBefore"], "Before line");
+        assert_eq!(backlinks[0]["contextAfter"], "After line");
+
+        let preview = cmd_preview(v_str, "Target#^b42").unwrap();
+        assert_eq!(preview["ok"], true);
+        assert_eq!(preview["title"], "Target Note");
+        assert_eq!(preview["excerptLines"][0], "Important block line");
+
+        let q = cmd_query(
+            v_str,
+            None,
+            None,
+            &["status == active".to_string(), "score >= 80".to_string()],
+            Some("score:desc"),
+            Some("status"),
+            50,
+        )
+        .unwrap();
+        assert_eq!(q["total"], 2);
+        assert_eq!(q["rows"][0]["title"], "Target Note");
+        assert_eq!(q["aggregations"]["score"]["sum"], 175.0);
+
+        let hop3_root = cmd_read(v_str, "Target2.md").unwrap();
+        let local_nodes = hop3_root["localGraph"]["nodes"].as_array().unwrap();
+        assert!(local_nodes.iter().any(|n| n["hop"] == 2 && n["title"] == "Hop3") || local_nodes.iter().any(|n| n["hop"] == 3));
+
+        let canvas_doc = cmd_read(v_str, "Board.canvas").unwrap();
+        assert_eq!(canvas_doc["category"], "canvas");
 
         let _ = fs::remove_dir_all(&vault);
     }

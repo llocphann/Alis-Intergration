@@ -9,7 +9,8 @@ Item {
     property bool _live: true
     Component.onDestruction: {
         root._live = false;
-        const procs = [scanProc, docProc, calendarProc, searchProc, apiSearchProc];
+        const procs = [scanProc, docProc, calendarProc, searchProc, apiSearchProc,
+            secondaryDocProc, previewProc, queryProc, historyProc, assetProc, pdfProc];
         for (const p of procs) {
             if (p && p.running) {
                 try { p.signal(15); } catch (_e) { p.running = false; }
@@ -18,6 +19,9 @@ Item {
     }
 
     readonly property string binaryPath: decodeURIComponent(String(Qt.resolvedUrl("../assets/bin/alis-nexus")).replace(/^(?:file:\/\/|qs:)/, ""))
+    readonly property string pdfHelperPath: decodeURIComponent(String(Qt.resolvedUrl("../scripts/notes/pdf_helper.py")).replace(/^(?:file:\/\/|qs:)/, ""))
+    readonly property string assetHelperPath: decodeURIComponent(String(Qt.resolvedUrl("../scripts/notes/asset_helper.py")).replace(/^(?:file:\/\/|qs:)/, ""))
+    readonly property string historyHelperPath: decodeURIComponent(String(Qt.resolvedUrl("../scripts/notes/history_helper.py")).replace(/^(?:file:\/\/|qs:)/, ""))
     readonly property string configuredVaultPath: {
         void Config.ready;
         void Config.revision;
@@ -59,7 +63,42 @@ Item {
     // Workspace & presentation state
     property bool isOpen: false
     property bool overlayMode: true
-    property string activeView: "homepage" // "homepage" | "document" | "graph" | "collection"
+    property string activeView: "homepage" // "homepage" | "document" | "graph" | "collection" | "canvas" | "database"
+    property var openTabs: [] // [{ relPath, title, category, pinned }]
+    property string secondaryPath: ""
+    property var secondaryDoc: null
+    property bool splitPaneOpen: false
+    property int scrollToLineRequest: -1
+    property int scrollToLineSerial: 0
+    property var docUndoStack: ({}) // relPath -> [{ content, ts }]
+    property var docRedoStack: ({}) // relPath -> [{ content, ts }]
+    property bool findBarOpen: false
+    property bool findBarReplaceMode: false
+    property bool propertiesPanelExpanded: false
+    property int localGraphDepth: 1
+    property var savedGraphPresets: []
+    property var supertagSchemas: ({})
+    property var savedDatabaseViews: []
+    property string databasePath: ""
+    property var queryResults: ({ "ok": false, "total": 0, "rows": [], "schemaKeys": [], "groups": [], "aggregations": ({}) })
+    property bool queryLoading: false
+    property var hoverPreviewCache: ({})
+    property var _hoverPreviewOrder: []
+    property var hoverPreviewData: null
+    property bool hoverPreviewLoading: false
+    property string _pendingPreviewTarget: ""
+    property bool historyModalOpen: false
+    property var historyRevisions: []
+    property string historySelectedRevId: ""
+    property string historyDiffText: ""
+    property bool historyLoading: false
+    property var pdfInfo: null
+    property int pdfCurrentPage: 1
+    property int pdfDpi: 150
+    property string pdfPageImageUrl: ""
+    property string pdfExtractedText: ""
+    property bool pdfBusy: false
+    property string pdfLastTarget: ""
     property string activeCollection: "movies" // "movies" | "tvseries" | "games" | "websites" | "cornell" | "zettelkasten" | "places"
     property string collectionFilterQuery: ""
     property string editorMode: "hybrid" // "hybrid" | "raw" | "split"
@@ -113,7 +152,14 @@ Item {
                     "homepageScheduleHeight": root.homepageScheduleHeight,
                     "cardOrder": root.cardOrder
                 },
-                "shortcuts": root.userShortcuts ?? ({})
+                "shortcuts": root.userShortcuts ?? ({}),
+                "workspaceExtras": {
+                    "openTabs": root.openTabs ?? [],
+                    "localGraphDepth": root.localGraphDepth,
+                    "savedGraphPresets": root.savedGraphPresets ?? [],
+                    "supertagSchemas": root.supertagSchemas ?? ({}),
+                    "savedDatabaseViews": root.savedDatabaseViews ?? []
+                }
             }, null, 2);
             workspacePrefsFileView.setText(payload);
         } catch (e) {}
@@ -221,7 +267,15 @@ Item {
         { "id": "heading3", "obsidianId": "editing-toolbar:header3-text", "obsidianCommand": "editing-toolbar:header3-text", "title": "Heading 3", "category": "Formatting", "defaultKey": "Ctrl+3", "description": "Format active block or line as ### Heading 3" },
         { "id": "heading4", "obsidianId": "editing-toolbar:header4-text", "obsidianCommand": "editing-toolbar:header4-text", "title": "Heading 4", "category": "Formatting", "defaultKey": "Ctrl+4", "description": "Format active block or line as #### Heading 4" },
         { "id": "heading5", "obsidianId": "editing-toolbar:header5-text", "obsidianCommand": "editing-toolbar:header5-text", "title": "Heading 5", "category": "Formatting", "defaultKey": "Ctrl+5", "description": "Format active block or line as ##### Heading 5" },
-        { "id": "heading6", "obsidianId": "editing-toolbar:header6-text", "obsidianCommand": "editing-toolbar:header6-text", "title": "Heading 6", "category": "Formatting", "defaultKey": "Ctrl+6", "description": "Format active block or line as ###### Heading 6" }
+        { "id": "heading6", "obsidianId": "editing-toolbar:header6-text", "obsidianCommand": "editing-toolbar:header6-text", "title": "Heading 6", "category": "Formatting", "defaultKey": "Ctrl+6", "description": "Format active block or line as ###### Heading 6" },
+        { "id": "findInNote", "obsidianId": "editor:open-search-note", "obsidianCommand": "editor:open-search-note", "title": "Find in Note", "category": "Editor", "defaultKey": "Ctrl+F", "description": "Open find bar in active document" },
+        { "id": "replaceInNote", "obsidianId": "editor:open-search-replace", "obsidianCommand": "editor:open-search-replace", "title": "Find & Replace in Note", "category": "Editor", "defaultKey": "Ctrl+H", "description": "Open find and replace bar in active document" },
+        { "id": "undoDocument", "obsidianId": "editor:undo", "obsidianCommand": "editor:undo", "title": "Undo Document Edit", "category": "Editor", "defaultKey": "Ctrl+Z", "description": "Undo recent edit in active note" },
+        { "id": "redoDocument", "obsidianId": "editor:redo", "obsidianCommand": "editor:redo", "title": "Redo Document Edit", "category": "Editor", "defaultKey": "Ctrl+Shift+Z", "description": "Redo reverted edit in active note" },
+        { "id": "toggleSplitPane", "obsidianId": "workspace:split-vertical", "obsidianCommand": "workspace:split-vertical", "title": "Toggle Split Pane", "category": "Workspace", "defaultKey": "Alt+\\", "description": "Toggle side-by-side secondary note pane" },
+        { "id": "openHistory", "obsidianId": "version-history:open", "obsidianCommand": "version-history:open", "title": "Note History & Diffs", "category": "Notes", "defaultKey": "Alt+Shift+H", "description": "Inspect snapshot and Git version history" },
+        { "id": "openDatabase", "obsidianId": "bases:open", "obsidianCommand": "bases:open", "title": "Open Vault Database", "category": "Workspace", "defaultKey": "Alt+B", "description": "Open dynamic Table / Kanban / Gallery / Timeline query view" },
+        { "id": "openCanvas", "obsidianId": "canvas:new-file", "obsidianCommand": "canvas:new-file", "title": "Open / Create Spatial Canvas", "category": "Notes", "defaultKey": "Alt+Shift+C", "description": "Open infinite spatial canvas whiteboard" }
     ]
 
     property int _shortcutRevision: 0
@@ -619,6 +673,9 @@ Item {
     signal noteSaved(string relPath)
     signal focusFileFilterRequested()
     signal focusVaultSearchRequested()
+    signal clipboardImagePasted(string markdownEmbed, string relPath)
+    signal pdfHighlightCaptured(string noteRelPath, int page)
+    signal noteHistoryRestored(string relPath)
 
     Component.onCompleted: {
         root._ensureFallbackCalendar(root.calendarYear, root.calendarMonth);
@@ -1022,6 +1079,299 @@ Item {
         root.vimKeyBuffer = "";
         root.vimVisualAnchor = -1;
         root.vimStatusMessage = "Collection: " + clean;
+    }
+
+    function openDatabaseView(baseRelPath = ""): void {
+        const cleaned = String(baseRelPath ?? "").trim();
+        root.databasePath = cleaned;
+        root.activeView = "database";
+        root.editingBlockId = -1;
+        root.vimMode = "NORMAL";
+        root.vimCountBuffer = "";
+        root.vimKeyBuffer = "";
+        root.vimVisualAnchor = -1;
+        root.vimStatusMessage = cleaned.length > 0 ? ("Database: " + cleaned) : "Vault Database Explorer";
+        if (root.vaultConfigured) {
+            let folderHint = "";
+            if (cleaned.indexOf("/") !== -1)
+                folderHint = cleaned.slice(0, cleaned.lastIndexOf("/"));
+            root.runDatabaseQuery({ "folder": folderHint });
+        }
+    }
+
+    function openCanvasView(canvasRelPath = ""): void {
+        const target = String(canvasRelPath ?? "").trim();
+        if (target.length > 0) {
+            root.openFile(target, true);
+            return;
+        }
+        if (root.currentDoc && String(root.currentDoc.category ?? "") === "canvas") {
+            root.activeView = "canvas";
+            return;
+        }
+        const files = Array.isArray(root.flatFiles) ? root.flatFiles : [];
+        for (let i = 0; i < files.length; ++i) {
+            if (String(files[i]?.relPath ?? "").toLowerCase().endsWith(".canvas")) {
+                root.openFile(String(files[i].relPath), true);
+                return;
+            }
+        }
+        root.createCanvasNote("00_Capture/Untitled Canvas.canvas");
+    }
+
+    function createCanvasNote(relPath = "00_Capture/Untitled Canvas.canvas"): void {
+        if (!root.vaultConfigured)
+            return;
+        let cleaned = String(relPath ?? "").trim().replace(/^\/+/, "");
+        if (!cleaned)
+            cleaned = "00_Capture/Untitled Canvas.canvas";
+        if (!cleaned.toLowerCase().endsWith(".canvas"))
+            cleaned += ".canvas";
+        const starter = JSON.stringify({
+            "nodes": [
+                { "id": "n-start", "type": "text", "text": "# New Canvas\nDouble-click to add nodes or drag edges between handles.", "x": -140, "y": -60, "width": 280, "height": 120, "color": "4" }
+            ],
+            "edges": []
+        }, null, 2);
+        root._rescanAfterDoc = true;
+        root._enqueueDocOp({
+            "kind": "write",
+            "relPath": cleaned,
+            "recordHistory": true,
+            "useStdin": true,
+            "stdinPayload": starter,
+            "args": [root.binaryPath, "write", "--vault", root.configuredVaultPath, "--path", cleaned]
+        });
+    }
+
+    function saveCanvasFile(relPath: string, canvasObj): void {
+        const cleaned = String(relPath ?? root.currentPath ?? "").trim();
+        if (!root.vaultConfigured || cleaned.length === 0 || !canvasObj || typeof canvasObj !== "object")
+            return;
+        const jsonStr = JSON.stringify({
+            "nodes": Array.isArray(canvasObj.nodes) ? canvasObj.nodes : [],
+            "edges": Array.isArray(canvasObj.edges) ? canvasObj.edges : []
+        }, null, 2);
+        root.draftContent = jsonStr;
+        root._rescanAfterDoc = false;
+        root._enqueueDocOp({
+            "kind": "write",
+            "relPath": cleaned,
+            "recordHistory": false,
+            "useStdin": true,
+            "stdinPayload": jsonStr,
+            "args": [root.binaryPath, "write", "--vault", root.configuredVaultPath, "--path", cleaned]
+        });
+    }
+
+    function requestScrollToLine(line1Based: int): void {
+        const ln = Math.max(1, Number(line1Based) || 1);
+        root.scrollToLineRequest = ln;
+        root.scrollToLineSerial += 1;
+    }
+
+    function _registerOpenTab(relPath: string, title = "", category = "markdown"): void {
+        const clean = String(relPath ?? "").trim();
+        if (!clean || category === "external")
+            return;
+        const next = [];
+        let existingPinned = false;
+        const list = Array.isArray(root.openTabs) ? root.openTabs : [];
+        for (let i = 0; i < list.length; ++i) {
+            const t = list[i];
+            if (!t || !t.relPath)
+                continue;
+            if (String(t.relPath) === clean) {
+                existingPinned = Boolean(t.pinned);
+                continue;
+            }
+            next.push(t);
+        }
+        const fallbackTitle = clean.split("/").pop().replace(/\.md$/i, "");
+        const tabObj = {
+            "relPath": clean,
+            "title": String(title ?? "").trim() || fallbackTitle,
+            "category": String(category ?? "markdown"),
+            "pinned": existingPinned
+        };
+        if (existingPinned) {
+            next.unshift(tabObj);
+        } else {
+            next.push(tabObj);
+        }
+        while (next.length > 16) {
+            let dropIdx = -1;
+            for (let i = 0; i < next.length; ++i) {
+                if (!next[i].pinned && next[i].relPath !== clean) {
+                    dropIdx = i;
+                    break;
+                }
+            }
+            if (dropIdx === -1)
+                break;
+            next.splice(dropIdx, 1);
+        }
+        root.openTabs = next;
+        root._saveWorkspacePrefs();
+    }
+
+    function activateTab(relPath: string): void {
+        const clean = String(relPath ?? "").trim();
+        if (!clean)
+            return;
+        if (clean === root.currentPath && root.currentDoc) {
+            root.activeView = String(root.currentDoc.category ?? "") === "canvas" ? "canvas" : "document";
+            return;
+        }
+        root.openFile(clean, true);
+    }
+
+    function closeTab(relPath: string): void {
+        const clean = String(relPath ?? "").trim();
+        const list = Array.isArray(root.openTabs) ? root.openTabs : [];
+        const idx = list.findIndex(t => String(t?.relPath ?? "") === clean);
+        if (idx === -1)
+            return;
+        const next = list.slice();
+        next.splice(idx, 1);
+        root.openTabs = next;
+        root._saveWorkspacePrefs();
+        if (root.currentPath === clean) {
+            if (next.length > 0) {
+                const neighbor = next[Math.min(idx, next.length - 1)];
+                if (neighbor && neighbor.relPath) {
+                    root.openFile(String(neighbor.relPath), false);
+                    return;
+                }
+            }
+            root.currentPath = "";
+            root.currentDoc = null;
+            root.draftContent = "";
+            root.isDirty = false;
+            root.openHomepage();
+        }
+    }
+
+    function togglePinTab(relPath: string): void {
+        const clean = String(relPath ?? "").trim();
+        const list = Array.isArray(root.openTabs) ? root.openTabs : [];
+        let changed = false;
+        const next = list.map(t => {
+            if (String(t?.relPath ?? "") === clean) {
+                changed = true;
+                return Object.assign({}, t, { "pinned": !Boolean(t.pinned) });
+            }
+            return t;
+        });
+        if (changed) {
+            next.sort((a, b) => (Boolean(b.pinned) ? 1 : 0) - (Boolean(a.pinned) ? 1 : 0));
+            root.openTabs = next;
+            root._saveWorkspacePrefs();
+        }
+    }
+
+    function cycleTab(delta = 1): void {
+        const list = Array.isArray(root.openTabs) ? root.openTabs : [];
+        if (list.length === 0)
+            return;
+        let idx = list.findIndex(t => String(t?.relPath ?? "") === root.currentPath);
+        if (idx === -1)
+            idx = 0;
+        const target = list[(idx + delta + list.length) % list.length];
+        if (target && target.relPath)
+            root.activateTab(String(target.relPath));
+    }
+
+    function _resolveVaultFileRelPath(targetOrWikilink: string): string {
+        let raw = String(targetOrWikilink ?? "").trim();
+        if (!raw)
+            return "";
+        const pipeIdx = raw.indexOf("|");
+        if (pipeIdx !== -1)
+            raw = raw.substring(0, pipeIdx).trim();
+        const hashIdx = raw.indexOf("#");
+        if (hashIdx !== -1)
+            raw = raw.substring(0, hashIdx).trim();
+        if (!raw)
+            return "";
+        const lower = raw.replace(/\.md$/i, "").toLowerCase();
+        const files = Array.isArray(root.flatFiles) ? root.flatFiles : [];
+        for (let i = 0; i < files.length; ++i) {
+            const f = files[i];
+            if (!f) continue;
+            const relLower = String(f.relPath ?? "").toLowerCase();
+            const relNoExt = relLower.replace(/\.md$/i, "");
+            const stemLower = String(f.stem ?? "").toLowerCase();
+            if (relLower === raw.toLowerCase() || relLower === lower || relNoExt === lower || stemLower === lower)
+                return String(f.relPath);
+        }
+        return raw;
+    }
+
+    function openInSecondaryPane(relPath: string): void {
+        const cleaned = root._resolveVaultFileRelPath(relPath);
+        if (!root.vaultConfigured || cleaned.length === 0)
+            return;
+        root.secondaryPath = cleaned;
+        root.splitPaneOpen = true;
+        if (secondaryDocProc.running)
+            secondaryDocProc.running = false;
+        secondaryDocProc.command = [root.binaryPath, "read", "--vault", root.configuredVaultPath, "--path", cleaned];
+        secondaryDocProc.running = true;
+        secondaryDocTimeout.restart();
+    }
+
+    function toggleSplitPane(): void {
+        if (root.splitPaneOpen) {
+            root.closeSecondaryPane();
+            return;
+        }
+        let target = root.secondaryPath;
+        if (!target) {
+            const list = Array.isArray(root.openTabs) ? root.openTabs : [];
+            for (let i = list.length - 1; i >= 0; --i) {
+                if (list[i] && list[i].relPath && list[i].relPath !== root.currentPath) {
+                    target = String(list[i].relPath);
+                    break;
+                }
+            }
+        }
+        if (!target && root.currentPath.length > 0)
+            target = root.currentPath;
+        if (target)
+            root.openInSecondaryPane(target);
+        else
+            root.splitPaneOpen = true;
+    }
+
+    function closeSecondaryPane(): void {
+        if (secondaryDocProc.running)
+            secondaryDocProc.running = false;
+        secondaryDocTimeout.stop();
+        root.splitPaneOpen = false;
+        root.secondaryPath = "";
+        root.secondaryDoc = null;
+    }
+
+    function swapPanes(): void {
+        const secRel = String(root.secondaryPath ?? "").trim();
+        const curRel = String(root.currentPath ?? "").trim();
+        if (!secRel)
+            return;
+        if (curRel.length > 0 && curRel !== secRel)
+            root.openInSecondaryPane(curRel);
+        root.openFile(secRel, true);
+    }
+
+    function openExternalUrl(url: string): bool {
+        const raw = String(url ?? "").trim();
+        if (!/^https?:\/\/[^\s"'<>]+$/i.test(raw))
+            return false;
+        root.vimStatusMessage = "Opening URL: " + raw;
+        if (Quickshell.env("ALIS_NEXUS_DISABLE_XDG_OPEN") === "1")
+            return true;
+        Quickshell.execDetached(["xdg-open", raw]);
+        return true;
     }
 
     function toggleFolderExpanded(relPath: string): void {
@@ -1577,8 +1927,10 @@ Item {
                 root.openCollection("contacts");
             } else if (lower.indexOf("finance") !== -1) {
                 root.openCollection("finance");
-            } else {
+            } else if (lower.indexOf("media_tracker") !== -1 || lower.indexOf("movie") !== -1 || lower.indexOf("tv") !== -1) {
                 root.openCollection("movies");
+            } else {
+                root.openDatabaseView(cleaned);
             }
             return;
         }
@@ -1679,12 +2031,118 @@ Item {
         root._restoreHistoryMarker(nextPath);
     }
 
-    function saveCurrentNote(newContent = null): void {
+    function pushDocUndo(relPath: string, prevContent: string, nextContent = undefined): void {
+        const clean = String(relPath ?? root.currentPath ?? "").trim();
+        if (!clean)
+            return;
+        const prev = String(prevContent ?? "");
+        if (nextContent !== undefined && prev === String(nextContent))
+            return;
+        const uMap = Object.assign({}, root.docUndoStack ?? ({}));
+        const stack = Array.isArray(uMap[clean]) ? uMap[clean].slice() : [];
+        if (stack.length > 0 && stack[stack.length - 1] === prev)
+            return;
+        stack.push(prev);
+        if (stack.length > 30)
+            stack.shift();
+        uMap[clean] = stack;
+        root.docUndoStack = uMap;
+        const rMap = Object.assign({}, root.docRedoStack ?? ({}));
+        rMap[clean] = [];
+        root.docRedoStack = rMap;
+    }
+
+    function canUndoDocument(relPath = ""): bool {
+        const clean = String(relPath || root.currentPath || "").trim();
+        const stack = clean ? root.docUndoStack?.[clean] : null;
+        return Array.isArray(stack) && stack.length > 0;
+    }
+
+    function canRedoDocument(relPath = ""): bool {
+        const clean = String(relPath || root.currentPath || "").trim();
+        const stack = clean ? root.docRedoStack?.[clean] : null;
+        return Array.isArray(stack) && stack.length > 0;
+    }
+
+    function undoDocument(): bool {
+        const clean = String(root.currentPath ?? "").trim();
+        if (!clean || !root.canUndoDocument(clean))
+            return false;
+        const uMap = Object.assign({}, root.docUndoStack ?? ({}));
+        const stack = uMap[clean].slice();
+        const prev = String(stack.pop());
+        uMap[clean] = stack;
+        root.docUndoStack = uMap;
+
+        const rMap = Object.assign({}, root.docRedoStack ?? ({}));
+        const redoStack = Array.isArray(rMap[clean]) ? rMap[clean].slice() : [];
+        const curText = String(root.draftContent ?? root.currentDoc?.content ?? "");
+        if (redoStack.length === 0 || redoStack[redoStack.length - 1] !== curText)
+            redoStack.push(curText);
+        if (redoStack.length > 30)
+            redoStack.shift();
+        rMap[clean] = redoStack;
+        root.docRedoStack = rMap;
+
+        root.draftContent = prev;
+        root.isDirty = prev !== String(root.currentDoc?.content ?? "");
+        if (root.editorMode !== "raw")
+            root.saveCurrentNote(prev, true);
+        root.vimStatusMessage = "Undo (" + stack.length + " steps remaining)";
+        return true;
+    }
+
+    function redoDocument(): bool {
+        const clean = String(root.currentPath ?? "").trim();
+        if (!clean || !root.canRedoDocument(clean))
+            return false;
+        const rMap = Object.assign({}, root.docRedoStack ?? ({}));
+        const redoStack = rMap[clean].slice();
+        const nextVal = String(redoStack.pop());
+        rMap[clean] = redoStack;
+        root.docRedoStack = rMap;
+
+        const uMap = Object.assign({}, root.docUndoStack ?? ({}));
+        const stack = Array.isArray(uMap[clean]) ? uMap[clean].slice() : [];
+        const curText = String(root.draftContent ?? root.currentDoc?.content ?? "");
+        if (stack.length === 0 || stack[stack.length - 1] !== curText)
+            stack.push(curText);
+        if (stack.length > 30)
+            stack.shift();
+        uMap[clean] = stack;
+        root.docUndoStack = uMap;
+
+        root.draftContent = nextVal;
+        root.isDirty = nextVal !== String(root.currentDoc?.content ?? "");
+        if (root.editorMode !== "raw")
+            root.saveCurrentNote(nextVal, true);
+        root.vimStatusMessage = "Redo (" + redoStack.length + " remaining)";
+        return true;
+    }
+
+    function saveCurrentNote(newContent = null, skipSnapshot = false): void {
         if (!root.vaultConfigured || root.currentPath.length === 0)
             return;
         const body = newContent !== null ? String(newContent) : root.draftContent;
+        const prevOnDisk = String(root.currentDoc?.content ?? "");
+        if (!skipSnapshot)
+            root.pushDocUndo(root.currentPath, prevOnDisk, body);
         root.draftContent = body;
         root._rescanAfterDoc = false;
+        if (!skipSnapshot && root._live && root.currentDoc
+                && String(root.currentDoc.relPath ?? "") === root.currentPath
+                && prevOnDisk !== body
+                && String(root.currentDoc.category ?? "markdown") !== "pdf"
+                && Quickshell.env("ALIS_NEXUS_DISABLE_SNAPSHOT") !== "1"
+                && Quickshell.env("ALIS_NEXUS_HEADLESS_SERVICE_ONLY") !== "1") {
+            root._enqueueDocOp({
+                "kind": "history-snapshot",
+                "relPath": root.currentPath,
+                "recordHistory": false,
+                "useStdin": false,
+                "args": ["python3", root.historyHelperPath, "snapshot", "--vault", root.configuredVaultPath, "--path", root.currentPath, "--label", "Auto-save snapshot"]
+            });
+        }
         root._enqueueDocOp({
             "kind": "write",
             "relPath": root.currentPath,
@@ -1693,6 +2151,328 @@ Item {
             "stdinPayload": body,
             "args": [root.binaryPath, "write", "--vault", root.configuredVaultPath, "--path", root.currentPath]
         });
+    }
+
+    function fetchHoverPreview(targetWikilink: string): void {
+        const clean = String(targetWikilink ?? "").trim();
+        if (!root.vaultConfigured || clean.length === 0) {
+            root.hoverPreviewData = null;
+            root.hoverPreviewLoading = false;
+            return;
+        }
+        if (root.hoverPreviewCache && root.hoverPreviewCache[clean]) {
+            root.hoverPreviewData = root.hoverPreviewCache[clean];
+            root.hoverPreviewLoading = false;
+            return;
+        }
+        root._pendingPreviewTarget = clean;
+        root.hoverPreviewLoading = true;
+        if (previewProc.running)
+            return;
+        root._startPendingPreview();
+    }
+
+    function _startPendingPreview(): void {
+        const target = String(root._pendingPreviewTarget ?? "").trim();
+        root._pendingPreviewTarget = "";
+        if (!target || !root.vaultConfigured) {
+            root.hoverPreviewLoading = false;
+            return;
+        }
+        if (root.hoverPreviewCache && root.hoverPreviewCache[target]) {
+            root.hoverPreviewData = root.hoverPreviewCache[target];
+            root.hoverPreviewLoading = false;
+            return;
+        }
+        previewProc.targetKey = target;
+        previewProc.command = [root.binaryPath, "preview", "--vault", root.configuredVaultPath, "--target", target];
+        previewProc.running = true;
+        previewTimeout.restart();
+    }
+
+    function clearHoverPreview(): void {
+        root._pendingPreviewTarget = "";
+        root.hoverPreviewData = null;
+        root.hoverPreviewLoading = false;
+    }
+
+    function runDatabaseQuery(querySpec): void {
+        if (!root.vaultConfigured)
+            return;
+        const spec = querySpec && typeof querySpec === "object" ? querySpec : ({});
+        const args = [root.binaryPath, "query", "--vault", root.configuredVaultPath];
+        if (spec.folder && String(spec.folder).trim().length > 0) {
+            args.push("--folder");
+            args.push(String(spec.folder).trim());
+        }
+        if (spec.tag && String(spec.tag).trim().length > 0) {
+            args.push("--tag");
+            args.push(String(spec.tag).trim());
+        }
+        if (Array.isArray(spec.whereFilters)) {
+            for (let i = 0; i < spec.whereFilters.length; ++i) {
+                const w = String(spec.whereFilters[i] ?? "").trim();
+                if (w.length > 0) {
+                    args.push("--where");
+                    args.push(w);
+                }
+            }
+        }
+        if (spec.sort && String(spec.sort).trim().length > 0) {
+            args.push("--sort");
+            args.push(String(spec.sort).trim());
+        }
+        if (spec.groupBy && String(spec.groupBy).trim().length > 0) {
+            args.push("--group-by");
+            args.push(String(spec.groupBy).trim());
+        }
+        if (spec.limit && Number(spec.limit) > 0) {
+            args.push("--limit");
+            args.push(String(Math.round(Number(spec.limit))));
+        }
+        root.queryLoading = true;
+        if (queryProc.running)
+            queryProc.running = false;
+        queryProc.command = args;
+        queryProc.running = true;
+        queryTimeout.restart();
+    }
+
+    function saveDatabaseView(viewObj): void {
+        if (!viewObj || !viewObj.name)
+            return;
+        const name = String(viewObj.name).trim();
+        if (!name)
+            return;
+        const list = (Array.isArray(root.savedDatabaseViews) ? root.savedDatabaseViews : []).filter(v => String(v?.name ?? "") !== name);
+        list.unshift(Object.assign({}, viewObj, { "name": name }));
+        root.savedDatabaseViews = list.slice(0, 24);
+        root._saveWorkspacePrefs();
+        root.vimStatusMessage = "Saved view: " + name;
+    }
+
+    function deleteDatabaseView(name: string): void {
+        const clean = String(name ?? "").trim();
+        root.savedDatabaseViews = (Array.isArray(root.savedDatabaseViews) ? root.savedDatabaseViews : []).filter(v => String(v?.name ?? "") !== clean);
+        root._saveWorkspacePrefs();
+    }
+
+    function setLocalGraphDepth(depth: int): void {
+        const clamped = Math.max(1, Math.min(3, Math.round(Number(depth) || 1)));
+        if (root.localGraphDepth !== clamped) {
+            root.localGraphDepth = clamped;
+            root._saveWorkspacePrefs();
+        }
+    }
+
+    function saveGraphPreset(presetObj): void {
+        if (!presetObj || !presetObj.name)
+            return;
+        const name = String(presetObj.name).trim();
+        if (!name)
+            return;
+        const list = (Array.isArray(root.savedGraphPresets) ? root.savedGraphPresets : []).filter(p => String(p?.name ?? "") !== name);
+        list.unshift(Object.assign({}, presetObj, { "name": name }));
+        root.savedGraphPresets = list.slice(0, 16);
+        root._saveWorkspacePrefs();
+        root.vimStatusMessage = "Saved graph preset: " + name;
+    }
+
+    function deleteGraphPreset(name: string): void {
+        const clean = String(name ?? "").trim();
+        root.savedGraphPresets = (Array.isArray(root.savedGraphPresets) ? root.savedGraphPresets : []).filter(p => String(p?.name ?? "") !== clean);
+        root._saveWorkspacePrefs();
+    }
+
+    function saveSupertagSchema(tagName: string, fieldsArray): void {
+        const key = String(tagName ?? "").trim().replace(/^#+/, "").toLowerCase();
+        if (!key)
+            return;
+        const next = Object.assign({}, root.supertagSchemas ?? ({}));
+        next[key] = Array.isArray(fieldsArray) ? fieldsArray.slice() : [];
+        root.supertagSchemas = next;
+        root._saveWorkspacePrefs();
+        root.vimStatusMessage = "Updated schema for #" + key;
+    }
+
+    function applySupertag(relPath: string, tagName: string): bool {
+        const target = String(relPath ?? root.currentPath ?? "").trim();
+        const tag = String(tagName ?? "").trim().replace(/^#+/, "");
+        if (!root.vaultConfigured || !target || !tag)
+            return false;
+        const schema = root.supertagSchemas?.[tag.toLowerCase()] ?? [];
+        const docFm = root.currentDoc?.frontmatter ?? ({});
+        const existingTags = Array.isArray(docFm.tags) ? docFm.tags.slice() : [];
+        const updates = {};
+        if (!existingTags.some(t => String(t).replace(/^#+/, "").toLowerCase() === tag.toLowerCase()))
+            existingTags.push(tag);
+        updates["tags"] = existingTags;
+        if (Array.isArray(schema)) {
+            for (let i = 0; i < schema.length; ++i) {
+                const f = schema[i];
+                if (f && f.key && docFm[f.key] === undefined)
+                    updates[f.key] = f.defaultVal !== undefined ? String(f.defaultVal) : "";
+            }
+        }
+        return root.setFrontmatter(target, updates);
+    }
+
+    function pasteClipboardImage(fromFile = ""): void {
+        if (!root.vaultConfigured)
+            return;
+        const args = ["python3", root.assetHelperPath, "paste-image", "--vault", root.configuredVaultPath];
+        if (root.currentPath.length > 0) {
+            args.push("--current-rel");
+            args.push(root.currentPath);
+        }
+        if (fromFile && String(fromFile).trim().length > 0) {
+            args.push("--from-file");
+            args.push(String(fromFile).trim());
+        }
+        if (assetProc.running)
+            assetProc.running = false;
+        assetProc.command = args;
+        assetProc.running = true;
+        assetTimeout.restart();
+    }
+
+    function openHistoryModal(): void {
+        if (!root.vaultConfigured || root.currentPath.length === 0)
+            return;
+        root.historyModalOpen = true;
+        root.loadNoteHistory(root.currentPath);
+    }
+
+    function snapshotCurrentNote(label = "Manual snapshot"): void {
+        const target = String(root.currentPath ?? "").trim();
+        if (!root.vaultConfigured || !target)
+            return;
+        root.historyLoading = true;
+        if (historyProc.running)
+            historyProc.running = false;
+        historyProc.opKind = "snapshot";
+        historyProc.targetPath = target;
+        historyProc.command = ["python3", root.historyHelperPath, "snapshot", "--vault", root.configuredVaultPath, "--path", target, "--label", String(label || "Manual snapshot")];
+        historyProc.running = true;
+        historyTimeout.restart();
+    }
+
+    function loadNoteHistory(relPath = ""): void {
+        const target = String(relPath || root.currentPath || "").trim();
+        if (!root.vaultConfigured || !target)
+            return;
+        root.historyLoading = true;
+        root.historyRevisions = [];
+        root.historySelectedRevId = "";
+        root.historyDiffText = "";
+        if (historyProc.running)
+            historyProc.running = false;
+        historyProc.opKind = "list";
+        historyProc.targetPath = target;
+        historyProc.command = ["python3", root.historyHelperPath, "list", "--vault", root.configuredVaultPath, "--path", target];
+        historyProc.running = true;
+        historyTimeout.restart();
+    }
+
+    function diffNoteRevision(revId: string, relPath = ""): void {
+        const target = String(relPath || root.currentPath || "").trim();
+        const rev = String(revId ?? "").trim();
+        if (!root.vaultConfigured || !target || !rev)
+            return;
+        root.historySelectedRevId = rev;
+        root.historyLoading = true;
+        if (historyProc.running)
+            historyProc.running = false;
+        historyProc.opKind = "diff";
+        historyProc.targetPath = target;
+        historyProc.command = ["python3", root.historyHelperPath, "diff", "--vault", root.configuredVaultPath, "--path", target, "--rev", rev];
+        historyProc.running = true;
+        historyTimeout.restart();
+    }
+
+    function restoreNoteRevision(revId: string, relPath = ""): void {
+        const target = String(relPath || root.currentPath || "").trim();
+        const rev = String(revId ?? "").trim();
+        if (!root.vaultConfigured || !target || !rev)
+            return;
+        root.historyLoading = true;
+        if (historyProc.running)
+            historyProc.running = false;
+        historyProc.opKind = "restore";
+        historyProc.targetPath = target;
+        historyProc.command = ["python3", root.historyHelperPath, "restore", "--vault", root.configuredVaultPath, "--path", target, "--rev", rev];
+        historyProc.running = true;
+        historyTimeout.restart();
+    }
+
+    function pdfLoadInfo(absPath: string): void {
+        const clean = String(absPath ?? "").trim();
+        if (!clean)
+            return;
+        root.pdfLastTarget = clean;
+        root.pdfInfo = null;
+        root.pdfPageImageUrl = "";
+        root.pdfExtractedText = "";
+        root.pdfCurrentPage = 1;
+        root.pdfBusy = true;
+        if (pdfProc.running)
+            pdfProc.running = false;
+        pdfProc.opKind = "info";
+        pdfProc.command = ["python3", root.pdfHelperPath, "info", "--pdf", clean];
+        pdfProc.running = true;
+        pdfTimeout.restart();
+    }
+
+    function pdfLoadPage(page = 1, dpi = -1): void {
+        const target = String(root.pdfLastTarget || root.currentDoc?.absPath || "").trim();
+        if (!target)
+            return;
+        const maxPages = Math.max(1, Number(root.pdfInfo?.pages ?? 9999));
+        const p = Math.max(1, Math.min(maxPages, Math.round(Number(page) || 1)));
+        const d = dpi > 0 ? Math.max(72, Math.min(288, Math.round(Number(dpi)))) : root.pdfDpi;
+        root.pdfCurrentPage = p;
+        root.pdfDpi = d;
+        root.pdfBusy = true;
+        if (pdfProc.running)
+            pdfProc.running = false;
+        pdfProc.opKind = "render";
+        pdfProc.command = ["python3", root.pdfHelperPath, "render", "--pdf", target, "--page", String(p), "--dpi", String(d)];
+        pdfProc.running = true;
+        pdfTimeout.restart();
+    }
+
+    function pdfExtractPageText(page = -1): void {
+        const target = String(root.pdfLastTarget || root.currentDoc?.absPath || "").trim();
+        if (!target)
+            return;
+        const p = page > 0 ? Math.round(Number(page)) : root.pdfCurrentPage;
+        root.pdfBusy = true;
+        if (pdfProc.running)
+            pdfProc.running = false;
+        pdfProc.opKind = "extract-text";
+        pdfProc.command = ["python3", root.pdfHelperPath, "extract-text", "--pdf", target, "--page", String(p)];
+        pdfProc.running = true;
+        pdfTimeout.restart();
+    }
+
+    function capturePdfHighlight(quoteText: string, noteRelPath = "", page = -1): void {
+        const pdfRel = String(root.currentPath ?? root.currentDoc?.relPath ?? "").trim();
+        const quote = String(quoteText ?? "").trim();
+        if (!root.vaultConfigured || !pdfRel || !quote)
+            return;
+        const p = page > 0 ? Math.round(Number(page)) : root.pdfCurrentPage;
+        root.pdfBusy = true;
+        if (pdfProc.running)
+            pdfProc.running = false;
+        pdfProc.opKind = "capture-highlight";
+        const args = ["python3", root.pdfHelperPath, "capture-highlight", "--vault", root.configuredVaultPath, "--pdf-rel", pdfRel, "--page", String(p), "--quote", quote];
+        if (noteRelPath && String(noteRelPath).trim().length > 0) {
+            args.push("--note-rel");
+            args.push(String(noteRelPath).trim());
+        }
+        pdfProc.command = args;
+        pdfProc.running = true;
+        pdfTimeout.restart();
     }
 
     function createNote(relPath: string, title = "", template = "standard"): void {
@@ -2643,24 +3423,93 @@ Item {
     }
 
     function syncDocumentFlashcardsToSpacedRepetition(): int {
-        if (!root.currentDoc || !Array.isArray(root.currentDoc.flashcards) || root.currentDoc.flashcards.length === 0)
+        if (!root.currentDoc)
             return 0;
         const sr = HostServices.AlisIntergration?.spacedRepetition ?? HostServices.AlisIntergration?.session?.spacedRepetition ?? null;
-        const lines = [];
-        for (let i = 0; i < root.currentDoc.flashcards.length; ++i) {
-            const card = root.currentDoc.flashcards[i];
-            if (card && card.front && card.back)
-                lines.push(card.front + " :: " + card.back);
+        const existingBasic = Object.create(null);
+        const existingCloze = Object.create(null);
+        const curCards = Array.isArray(sr?.cards) ? sr.cards : [];
+        for (let i = 0; i < curCards.length; ++i) {
+            const c = curCards[i];
+            if (!c)
+                continue;
+            const fk = String(c.front ?? "").trim() + "||" + String(c.back ?? "").trim();
+            if (fk !== "||")
+                existingBasic[fk] = true;
+            const ck = String(c.clozeText ?? "").trim();
+            if (ck.length > 0)
+                existingCloze[ck] = true;
         }
-        if (lines.length === 0)
+        const basicLines = [];
+        const clozeLines = [];
+        const docCards = Array.isArray(root.currentDoc.flashcards) ? root.currentDoc.flashcards : [];
+        for (let i = 0; i < docCards.length; ++i) {
+            const card = docCards[i];
+            if (!card)
+                continue;
+            const rawFront = String(card.front ?? "").trim();
+            const rawBack = String(card.back ?? "").trim();
+            const rawCloze = String(card.clozeText ?? (rawFront.indexOf("{{c") !== -1 ? rawFront : "")).trim();
+            if (rawCloze.indexOf("{{c") !== -1) {
+                if (!existingCloze[rawCloze]) {
+                    existingCloze[rawCloze] = true;
+                    clozeLines.push(rawCloze);
+                }
+            } else if (rawFront.length > 0 && rawBack.length > 0) {
+                const key = rawFront + "||" + rawBack;
+                if (!existingBasic[key]) {
+                    existingBasic[key] = true;
+                    basicLines.push(rawFront + " :: " + rawBack);
+                }
+            }
+        }
+        const contentLines = String(root.currentDoc.content ?? "").split(/\r?\n/);
+        for (let i = 0; i < contentLines.length; ++i) {
+            const trimmed = contentLines[i].trim().replace(/^[-*+]\s+/, "");
+            if (/\{\{c\d+::[^}]+\}\}/.test(trimmed) && !existingCloze[trimmed]) {
+                existingCloze[trimmed] = true;
+                clozeLines.push(trimmed);
+            }
+        }
+        if (basicLines.length === 0 && clozeLines.length === 0) {
+            root.vimStatusMessage = docCards.length > 0 ? "Flashcards already synced to Spaced Repetition" : "No flashcards found in current note";
             return 0;
+        }
         if (sr && typeof sr.importQuickText === "function") {
-            const count = sr.importQuickText(lines.join("\n"), root.currentDoc.title ?? "Nexus", root.currentDoc.tags ?? ["nexus"]);
-            root.vimStatusMessage = "Synced " + count + " flashcards to Spaced Repetition";
+            const deckName = String(root.currentDoc.title ?? "Nexus").trim() || "Nexus";
+            const lang = String(sr.options?.defaultLanguage ?? "en").trim() || "en";
+            let count = 0;
+            if (basicLines.length > 0)
+                count += Number(sr.importQuickText(basicLines.join("\n"), deckName, lang, "knowledge") || 0);
+            if (clozeLines.length > 0)
+                count += Number(sr.importQuickText(clozeLines.join("\n"), deckName, lang, "cloze") || 0);
+            root.vimStatusMessage = "Synced " + count + " new flashcards to Spaced Repetition";
             return count;
         }
         root.vimStatusMessage = "Enable Spaced Repetition integration to sync flashcards";
         return 0;
+    }
+
+    function createFlashcardInCurrentNote(frontOrCloze: string, back = "", isCloze = false): bool {
+        if (!root.vaultConfigured || root.currentPath.length === 0 || !root.currentDoc)
+            return false;
+        const cleanFront = String(frontOrCloze ?? "").trim();
+        const cleanBack = String(back ?? "").trim();
+        if (cleanFront.length === 0)
+            return false;
+        let lineToAppend = "";
+        if (isCloze) {
+            lineToAppend = cleanFront.indexOf("{{c") !== -1 ? cleanFront : ("{{c1::" + cleanFront + "}}");
+        } else {
+            if (cleanBack.length === 0)
+                return false;
+            lineToAppend = cleanFront + " :: " + cleanBack;
+        }
+        const existing = String(root.draftContent || root.currentDoc.content || "").replace(/\s+$/, "");
+        const updated = existing + "\n" + lineToAppend + "\n";
+        root.saveCurrentNote(updated);
+        root.vimStatusMessage = "Added flashcard to " + root.currentPath;
+        return true;
     }
 
     function addQuickTodoTask(text: string): bool {
@@ -3193,6 +4042,30 @@ Item {
             return root.formatHeadingLevel(5);
         case "heading6":
             return root.formatHeadingLevel(6);
+        case "findInNote":
+            root.findBarReplaceMode = false;
+            root.findBarOpen = true;
+            return true;
+        case "replaceInNote":
+            root.findBarReplaceMode = true;
+            root.findBarOpen = true;
+            return true;
+        case "undoDocument":
+            return root.undoDocument();
+        case "redoDocument":
+            return root.redoDocument();
+        case "toggleSplitPane":
+            root.toggleSplitPane();
+            return true;
+        case "openHistory":
+            root.openHistoryModal();
+            return true;
+        case "openDatabase":
+            root.openDatabaseView("");
+            return true;
+        case "openCanvas":
+            root.openCanvasView("");
+            return true;
         default:
             return false;
         }
@@ -3522,9 +4395,12 @@ Item {
                 root._weatherSyncInFlight = pending;
             }
             try {
-                const payload = JSON.parse(docStdoutCollector.text);
-                if (payload && payload.ok) {
-                    if (req && req.kind === "delete") {
+                if (req && req.kind === "history-snapshot") {
+                    // Best-effort pre-save snapshot; never block the queued write.
+                } else {
+                    const payload = JSON.parse(docStdoutCollector.text);
+                    if (payload && payload.ok) {
+                        if (req && req.kind === "delete") {
                         const delPath = String(payload.deletedPath ?? req.relPath ?? "");
                         if (root._deleteRollbackSnapshots?.[delPath] || root._deleteRollbackSnapshots?.[req.relPath]) {
                             const nextSnaps = Object.assign({}, root._deleteRollbackSnapshots);
@@ -3706,15 +4582,25 @@ Item {
                         root.currentDoc = payload;
                         root.draftContent = String(payload.content ?? "");
                         root.isDirty = false;
+                        const docCategory = String(payload.category ?? "markdown");
                         if (!isSaveOnly)
-                            root.activeView = "document";
+                            root.activeView = (docCategory === "canvas") ? "canvas" : "document";
+                        root._registerOpenTab(newRel, String(payload.title ?? ""), docCategory);
+                        if (!isSaveOnly && docCategory === "pdf" && String(payload.absPath ?? "").length > 0) {
+                            const absPdf = String(payload.absPath);
+                            Qt.callLater(() => {
+                                if (root._live)
+                                    root.pdfLoadInfo(absPdf);
+                            });
+                        }
                         if (switchingFile) {
                             root.foldedBlocks = ({});
                             root.editingBlockId = -1;
                             root.editorMode = "hybrid";
                             root.vimMode = "NORMAL";
-                            root.vimUndoStack = [];
-                            root.vimRedoStack = [];
+                            root.vimCountBuffer = "";
+                            root.vimKeyBuffer = "";
+                            root.vimVisualAnchor = -1;
                         }
                         if (req && (req.kind === "write" || req.kind === "toggle-todo" || req.kind === "update-block" || req.kind === "set-frontmatter" || req.kind === "sync-api")) {
                             root.noteSaved(newRel);
@@ -3722,21 +4608,24 @@ Item {
                         } else {
                             root.vimStatusMessage = newRel;
                         }
-                        root.fileOpened(newRel, String(payload.category ?? "markdown"));
+                        root.fileOpened(newRel, docCategory);
                         if (req && req.kind === "read")
                             root.fileRead(newRel);
                     }
-                } else {
-                    if (req && req.kind === "delete" && req.relPath)
-                        root._restoreDeleteSnapshot(String(req.relPath));
-                    root.errorMessage = String(payload?.error ?? "Document operation failed");
-                    root.vimStatusMessage = root.errorMessage;
+                    } else {
+                        if (req && req.kind === "delete" && req.relPath)
+                            root._restoreDeleteSnapshot(String(req.relPath));
+                        root.errorMessage = String(payload?.error ?? "Document operation failed");
+                        root.vimStatusMessage = root.errorMessage;
+                    }
                 }
             } catch (e) {
-                if (req && req.kind === "delete" && req.relPath)
-                    root._restoreDeleteSnapshot(String(req.relPath));
-                root.errorMessage = "Could not parse document response";
-                root.vimStatusMessage = root.errorMessage;
+                if (!(req && req.kind === "history-snapshot")) {
+                    if (req && req.kind === "delete" && req.relPath)
+                        root._restoreDeleteSnapshot(String(req.relPath));
+                    root.errorMessage = "Could not parse document response";
+                    root.vimStatusMessage = root.errorMessage;
+                }
             }
 
             if (root._rescanAfterDoc) {
@@ -3899,6 +4788,223 @@ Item {
         }
     }
 
+    Timer {
+        id: secondaryDocTimeout
+        interval: 8000
+        repeat: false
+        onTriggered: {
+            if (secondaryDocProc.running)
+                secondaryDocProc.running = false;
+        }
+    }
+
+    Process {
+        id: secondaryDocProc
+        stdout: StdioCollector { id: secondaryDocStdout }
+        onExited: (code, status) => {
+            secondaryDocTimeout.stop();
+            try {
+                const payload = JSON.parse(secondaryDocStdout.text);
+                if (code === 0 && payload && payload.ok) {
+                    root.secondaryDoc = payload;
+                } else {
+                    root.errorMessage = String(payload?.error ?? "Could not open secondary note");
+                }
+            } catch (e) {}
+        }
+    }
+
+    Timer {
+        id: previewTimeout
+        interval: 5000
+        repeat: false
+        onTriggered: {
+            if (previewProc.running)
+                previewProc.running = false;
+            root.hoverPreviewLoading = false;
+        }
+    }
+
+    Process {
+        id: previewProc
+        property string targetKey: ""
+        stdout: StdioCollector { id: previewStdout }
+        onExited: (code, status) => {
+            previewTimeout.stop();
+            const key = previewProc.targetKey;
+            try {
+                const payload = JSON.parse(previewStdout.text);
+                if (code === 0 && payload && payload.ok && key) {
+                    const nextCache = Object.assign({}, root.hoverPreviewCache ?? ({}));
+                    const order = (Array.isArray(root._hoverPreviewOrder) ? root._hoverPreviewOrder : []).filter(k => k !== key);
+                    order.push(key);
+                    nextCache[key] = payload;
+                    while (order.length > 32) {
+                        const oldest = order.shift();
+                        delete nextCache[oldest];
+                    }
+                    root._hoverPreviewOrder = order;
+                    root.hoverPreviewCache = nextCache;
+                    root.hoverPreviewData = payload;
+                }
+            } catch (e) {}
+            root.hoverPreviewLoading = false;
+            if (root._pendingPreviewTarget.length > 0 && root._live)
+                Qt.callLater(root._startPendingPreview);
+        }
+    }
+
+    Timer {
+        id: queryTimeout
+        interval: 10000
+        repeat: false
+        onTriggered: {
+            if (queryProc.running)
+                queryProc.running = false;
+            root.queryLoading = false;
+        }
+    }
+
+    Process {
+        id: queryProc
+        stdout: StdioCollector { id: queryStdout }
+        onExited: (code, status) => {
+            queryTimeout.stop();
+            root.queryLoading = false;
+            try {
+                const payload = JSON.parse(queryStdout.text);
+                if (code === 0 && payload && payload.ok) {
+                    root.queryResults = payload;
+                } else {
+                    root.errorMessage = String(payload?.error ?? "Database query failed");
+                }
+            } catch (e) {}
+        }
+    }
+
+    Timer {
+        id: historyTimeout
+        interval: 8000
+        repeat: false
+        onTriggered: {
+            if (historyProc.running)
+                historyProc.running = false;
+            root.historyLoading = false;
+        }
+    }
+
+    Process {
+        id: historyProc
+        property string opKind: ""
+        property string targetPath: ""
+        stdout: StdioCollector { id: historyStdout }
+        onExited: (code, status) => {
+            historyTimeout.stop();
+            root.historyLoading = false;
+            try {
+                const payload = JSON.parse(historyStdout.text);
+                if (!payload || !payload.ok) {
+                    root.vimStatusMessage = String(payload?.error ?? "History operation failed");
+                    return;
+                }
+                if (historyProc.opKind === "snapshot") {
+                    root.vimStatusMessage = "Snapshot saved for " + historyProc.targetPath;
+                    root.loadNoteHistory(historyProc.targetPath);
+                } else if (historyProc.opKind === "list") {
+                    const revs = Array.isArray(payload.revisions) ? payload.revisions : [];
+                    root.historyRevisions = revs;
+                    if (revs.length > 0 && revs[0]?.revId)
+                        Qt.callLater(() => root.diffNoteRevision(String(revs[0].revId), historyProc.targetPath));
+                } else if (historyProc.opKind === "diff") {
+                    root.historyDiffText = String(payload.diff ?? "");
+                } else if (historyProc.opKind === "restore") {
+                    const target = String(payload.relPath ?? historyProc.targetPath);
+                    root.vimStatusMessage = "Restored revision for " + target;
+                    root.noteHistoryRestored(target);
+                    root.openFile(target, false);
+                    root.loadNoteHistory(target);
+                }
+            } catch (e) {}
+        }
+    }
+
+    Timer {
+        id: assetTimeout
+        interval: 8000
+        repeat: false
+        onTriggered: {
+            if (assetProc.running)
+                assetProc.running = false;
+        }
+    }
+
+    Process {
+        id: assetProc
+        stdout: StdioCollector { id: assetStdout }
+        onExited: (code, status) => {
+            assetTimeout.stop();
+            try {
+                const payload = JSON.parse(assetStdout.text);
+                if (payload && payload.ok && payload.hasImage && payload.markdownEmbed) {
+                    const embedStr = String(payload.markdownEmbed);
+                    const relOut = String(payload.relPath ?? "");
+                    root.vimStatusMessage = "Saved image: " + String(payload.filename ?? relOut);
+                    root.clipboardImagePasted(embedStr, relOut);
+                } else if (payload && payload.ok && !payload.hasImage) {
+                    root.vimStatusMessage = "Clipboard does not contain an image";
+                } else if (payload?.error) {
+                    root.errorMessage = String(payload.error);
+                }
+            } catch (e) {}
+        }
+    }
+
+    Timer {
+        id: pdfTimeout
+        interval: 12000
+        repeat: false
+        onTriggered: {
+            if (pdfProc.running)
+                pdfProc.running = false;
+            root.pdfBusy = false;
+        }
+    }
+
+    Process {
+        id: pdfProc
+        property string opKind: ""
+        stdout: StdioCollector { id: pdfStdout }
+        onExited: (code, status) => {
+            pdfTimeout.stop();
+            root.pdfBusy = false;
+            try {
+                const payload = JSON.parse(pdfStdout.text);
+                if (!payload || !payload.ok) {
+                    if (payload?.error)
+                        root.vimStatusMessage = String(payload.error);
+                    return;
+                }
+                if (pdfProc.opKind === "info") {
+                    root.pdfInfo = payload;
+                    Qt.callLater(() => {
+                        if (root._live)
+                            root.pdfLoadPage(1, root.pdfDpi);
+                    });
+                } else if (pdfProc.opKind === "render") {
+                    root.pdfPageImageUrl = String(payload.fileUrl ?? ("file://" + String(payload.imagePath ?? "")));
+                } else if (pdfProc.opKind === "extract-text") {
+                    root.pdfExtractedText = String(payload.text ?? "");
+                } else if (pdfProc.opKind === "capture-highlight") {
+                    const noteRel = String(payload.relPath ?? "");
+                    root.vimStatusMessage = "Saved PDF highlight to " + noteRel;
+                    root._rescanAfterDoc = false;
+                    root.refreshVault();
+                    root.pdfHighlightCaptured(noteRel, Number(payload.page ?? root.pdfCurrentPage));
+                }
+            } catch (e) {}
+        }
+    }
+
     FileView {
         id: workspacePrefsFileView
         path: Qt.resolvedUrl(root.workspaceStatePath)
@@ -3948,6 +5054,19 @@ Item {
                     if (parsed.shortcuts && typeof parsed.shortcuts === "object") {
                         root.userShortcuts = Object.assign({}, parsed.shortcuts);
                         root._shortcutRevision += 1;
+                    }
+                    if (parsed.workspaceExtras && typeof parsed.workspaceExtras === "object") {
+                        const ex = parsed.workspaceExtras;
+                        if (Array.isArray(ex.openTabs))
+                            root.openTabs = ex.openTabs.slice(0, 24);
+                        if (typeof ex.localGraphDepth === "number")
+                            root.localGraphDepth = Math.max(1, Math.min(3, Math.round(ex.localGraphDepth)));
+                        if (Array.isArray(ex.savedGraphPresets))
+                            root.savedGraphPresets = ex.savedGraphPresets.slice(0, 16);
+                        if (ex.supertagSchemas && typeof ex.supertagSchemas === "object")
+                            root.supertagSchemas = Object.assign({}, ex.supertagSchemas);
+                        if (Array.isArray(ex.savedDatabaseViews))
+                            root.savedDatabaseViews = ex.savedDatabaseViews.slice(0, 24);
                     }
                     if (schemaVer < 3)
                         root._saveWorkspacePrefs();

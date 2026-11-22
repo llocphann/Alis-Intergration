@@ -257,13 +257,22 @@ Rectangle {
     }
 
     function computeCommandResults(): var {
-        const extra = [{
-            "id": "__new_note_api_modal__",
-            "title": "New Note / Search External API...",
-            "description": "Create note or search Movie, TV, Book, Game, Recipe & Place APIs",
-            "obsidianCommand": "nexus:new-note-api",
-            "defaultKey": ""
-        }];
+        const extra = [
+            {
+                "id": "__new_note_api_modal__",
+                "title": "New Note / Search External API...",
+                "description": "Create note or search Movie, TV, Book, Game, Recipe & Place APIs",
+                "obsidianCommand": "nexus:new-note-api",
+                "defaultKey": ""
+            },
+            {
+                "id": "__paste_clipboard_image__",
+                "title": "Paste Clipboard Image to Note",
+                "description": "Save image from clipboard into vault attachments and embed",
+                "obsidianCommand": "nexus:paste-clipboard-image",
+                "defaultKey": "Ctrl+Shift+V"
+            }
+        ];
         const catalog = extra.concat(root?.nexus?.shortcutCatalog ?? []);
         const q = String(commandPaletteOverlay.query ?? "").trim().toLowerCase();
         const out = [];
@@ -330,6 +339,8 @@ Rectangle {
                 root.nexus.commandPaletteOpen = false;
                 if (cmd.id === "__new_note_api_modal__") {
                     root.nexus.openNewNoteModal("movie", "");
+                } else if (cmd.id === "__paste_clipboard_image__") {
+                    root.nexus.pasteClipboardImage();
                 } else {
                     root.nexus.triggerShortcutAction(cmd.id);
                 }

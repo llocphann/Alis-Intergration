@@ -20,10 +20,26 @@ Item {
     property bool compact: false
     property bool allow3D: false
     property bool default3DOnOpen: false
+    property bool allowNoteMotion: !root.compact
     property string renderMode: "2d" // "2d" | "3d"
     property bool electricCurrentEnabled: true
     property string currentPath: ""
     property var clusterPalette: []
+    property string filterQuery: ""
+    property string filterFolder: ""
+    property string filterTag: ""
+    property bool hideOrphans: false
+    property bool hideTagNodes: false
+    property string colorByMode: "cluster" // "cluster" | "folder"
+    property int localMaxHop: 2
+    property int matchedNodeCount: -1
+    property bool _filterPanelOpen: false
+    property bool _hasActiveFilters: root.filterQuery.trim().length > 0
+        || root.filterFolder.trim().length > 0
+        || root.filterTag.trim().length > 0
+        || root.hideOrphans
+        || root.hideTagNodes
+        || root.colorByMode !== "cluster"
 
     signal nodeActivated(var nodeData)
 
@@ -93,6 +109,7 @@ Item {
     property int _cachedProjNLen: -1
     property var _cachedProjDataRef: null
     property bool _interacting3D: false
+    property bool _zoomInteracting: false
     property bool _forcePowerSaverForTest: false
     property string _forcePowerProfileForTest: "" // "" | "power-saver" | "balanced" | "performance"
     property int _focusedNodeIndex: -1
@@ -108,6 +125,9 @@ Item {
     property var _driftPhaseZBuf: null
     property var _driftSpeedBuf: null
     property var _driftAmpBuf: null
+    property var _nodeVisibleBuf: null
+    property var _labelWidthCache: ({})
+    property int _labelWidthCacheCount: 0
     property bool _electricHasVisibleEdges: true
     property double _lastElectricEmptyProbeMs: 0
     property string _electricEmptyViewSig: ""
@@ -145,9 +165,9 @@ Item {
     readonly property bool isPowerSaving: root.effectivePowerProfile === "power-saver"
     readonly property bool _reduceAnimations: Boolean(Config.options?.performance?.reduceAnimations ?? false)
         || Boolean(Config.options?.appearance?.reduceAnimations ?? false)
-    // 0 = fixed (Power Saver / Local / reduceAnimations), 1 = Normal (focused/hovered cluster), 2 = Performance (all notes)
+    // 0 = fixed (Power Saver / Local / Sidebar / reduceAnimations), 1 = Normal (focused/hovered cluster), 2 = Performance (all notes)
     readonly property int noteMotionMode: {
-        if (root.isLocal || root._reduceAnimations || root.effectivePowerProfile === "power-saver")
+        if (root.isLocal || root.compact || !root.allowNoteMotion || root._reduceAnimations || root.effectivePowerProfile === "power-saver")
             return 0;
         if (root.effectivePowerProfile === "performance")
             return 2;
@@ -167,6 +187,8 @@ Item {
         ? root._activeMotionSourceIdx
         : -1
     readonly property bool _ambientDriftActive: !root.isLocal
+        && !root.compact
+        && root.allowNoteMotion
         && root.visible
         && root.canRepaintTheme
         && root.nodePositions.length > 0
@@ -177,9 +199,9 @@ Item {
         && root.noteMotionMode === 2
         && root.nodePositions.length > 350
     readonly property bool _fast3DPass: root.is3D
-        && (root._interacting3D || root.autoRotate3D || root.isPowerSaving || root._denseDrift3D)
+        && (root._interacting3D || root._zoomInteracting || root.autoRotate3D || root.isPowerSaving || root._denseDrift3D)
     readonly property bool _ultraFast3DPass: root.is3D
-        && ((root._interacting3D && root.isPowerSaving)
+        && (((root._interacting3D || root._zoomInteracting) && root.isPowerSaving)
             || (root._fast3DPass && root.nodePositions.length > 350))
     readonly property color accentColor: root.workspace ? Qt.color(root.workspace._settledPrimary) : (Appearance.colors?.colPrimary ?? "#82c2cf")
     readonly property color secondaryColor: Appearance.colors?.colSecondary ?? root.accentColor
@@ -275,11 +297,21 @@ Item {
                 return acc;
             if (hop === 1)
                 return root._mixColor(acc, root.tertiaryColor, 0.65);
+            if (hop >= 3)
+                return root._mixColor(acc, muted, 0.34);
             return root._mixColor(acc, muted, 0.52);
         }
         const isOrph = root._isOrphanBuf && idx >= 0 && idx < root._isOrphanBuf.length
             ? (root._isOrphanBuf[idx] === 1)
             : (Boolean(n?.isOrphan) || Number(n?.degree ?? 0) === 0);
+        if (root.colorByMode === "folder") {
+            const rp = String(n?.relPath ?? n?.title ?? "");
+            const topFolder = rp.indexOf("/") > 0 ? rp.split("/")[0] : (Boolean(n?.isTagNode) ? "__tag__" : "__root__");
+            let h = 2166136261;
+            for (let c = 0; c < topFolder.length; ++c)
+                h = ((h ^ topFolder.charCodeAt(c)) * 16777619) >>> 0;
+            return isOrph ? root.orphanNodeColor : root._autoThemedClusterColor(h % 12);
+        }
         if (isOrph)
             return root.orphanNodeColor;
         const cid = root._clusterIdBuf && idx >= 0 && idx < root._clusterIdBuf.length
@@ -288,6 +320,153 @@ Item {
         if (cid >= 0)
             return root._autoThemedClusterColor(cid);
         return acc;
+    }
+
+    function _recomputeFilterMask(): void {
+        const g = root.graphData;
+        if (!g || !Array.isArray(g.nodes) || g.nodes.length === 0) {
+            root._nodeVisibleBuf = null;
+            root.matchedNodeCount = 0;
+            return;
+        }
+        const nodes = g.nodes;
+        const nLen = nodes.length;
+        let mask = root._nodeVisibleBuf;
+        if (!mask || mask.length !== nLen) {
+            mask = new Uint8Array(nLen);
+            root._nodeVisibleBuf = mask;
+        }
+        const q = root.filterQuery.trim().toLowerCase();
+        const fFolder = root.filterFolder.trim().toLowerCase();
+        const fTag = root.filterTag.trim().toLowerCase().replace(/^#+/, "");
+        const hideOrph = root.hideOrphans;
+        const hideTags = root.hideTagNodes;
+        const isOrphBuf = root._isOrphanBuf;
+        const maxHop = Math.max(1, Math.min(3, root.localMaxHop));
+        let count = 0;
+        for (let i = 0; i < nLen; ++i) {
+            const n = nodes[i];
+            if (root.isLocal && Number(n?.hop ?? 0) > maxHop) {
+                mask[i] = 0;
+                continue;
+            }
+            const isTag = Boolean(n?.isTagNode);
+            if (hideTags && isTag) {
+                mask[i] = 0;
+                continue;
+            }
+            const isOrph = isOrphBuf && i < isOrphBuf.length
+                ? (isOrphBuf[i] === 1)
+                : (Boolean(n?.isOrphan) || Number(n?.degree ?? 0) === 0);
+            if (hideOrph && isOrph) {
+                mask[i] = 0;
+                continue;
+            }
+            if (fFolder.length > 0) {
+                const rp = String(n?.relPath ?? "").toLowerCase();
+                if (!isTag && rp.indexOf(fFolder) !== 0 && rp.indexOf("/" + fFolder) === -1) {
+                    mask[i] = 0;
+                    continue;
+                }
+            }
+            if (fTag.length > 0) {
+                const tagName = String(n?.tagName ?? n?.title ?? "").toLowerCase().replace(/^#+/, "");
+                const nodeTags = Array.isArray(n?.tags) ? n.tags : [];
+                let tagOk = isTag && tagName.indexOf(fTag) !== -1;
+                if (!tagOk) {
+                    for (let t = 0; t < nodeTags.length; ++t) {
+                        if (String(nodeTags[t]).toLowerCase().replace(/^#+/, "").indexOf(fTag) !== -1) {
+                            tagOk = true;
+                            break;
+                        }
+                    }
+                }
+                if (!tagOk) {
+                    mask[i] = 0;
+                    continue;
+                }
+            }
+            if (q.length > 0) {
+                const hay = (String(n?.title ?? "") + " " + String(n?.relPath ?? "") + " " + String(n?.tagName ?? "")).toLowerCase();
+                if (hay.indexOf(q) === -1) {
+                    mask[i] = 0;
+                    continue;
+                }
+            }
+            mask[i] = 1;
+            count += 1;
+        }
+        root.matchedNodeCount = count;
+    }
+
+    function focusNodeByQuery(queryText: string): int {
+        const g = root.graphData;
+        if (!g || !Array.isArray(g.nodes) || g.nodes.length === 0)
+            return -1;
+        const q = String(queryText ?? "").trim().toLowerCase();
+        if (q.length === 0)
+            return -1;
+        const nodes = g.nodes;
+        let best = -1;
+        for (let i = 0; i < nodes.length; ++i) {
+            if (root._nodeVisibleBuf && i < root._nodeVisibleBuf.length && root._nodeVisibleBuf[i] === 0)
+                continue;
+            const title = String(nodes[i]?.title ?? "").toLowerCase();
+            const rel = String(nodes[i]?.relPath ?? "").toLowerCase();
+            if (title === q || rel === q) {
+                best = i;
+                break;
+            }
+            if (best < 0 && (title.indexOf(q) !== -1 || rel.indexOf(q) !== -1))
+                best = i;
+        }
+        if (best < 0)
+            return -1;
+        root.autoRotate3D = false;
+        root._velYaw = 0.0;
+        root._velPitch = 0.0;
+        root._focusedNodeIndex = best;
+        root.hoveredIndex = best;
+        if (!root.is3D) {
+            const p = root.nodePositions[best];
+            const m = root._viewportMetrics();
+            const targetZoom = Math.max(root.zoom, 1.8);
+            const targetScreenX = (m.originX + p.x * m.spanX) * targetZoom;
+            const targetScreenY = (m.originY + p.y * m.spanY) * targetZoom;
+            root.zoom = targetZoom;
+            root.panX = root.width * 0.5 - targetScreenX;
+            root.panY = root.height * 0.5 - targetScreenY;
+        } else {
+            const p = root._screenPosForNode(best);
+            root.panX += (root.width * 0.5 - p.x);
+            root.panY += (root.height * 0.5 - p.y);
+            root.zoom = Math.max(root.zoom, 1.6);
+        }
+        root._projCacheValid = false;
+        root.requestPaint();
+        return best;
+    }
+
+    function applyFilterPreset(preset: var): void {
+        if (!preset)
+            return;
+        if (preset.renderMode !== undefined)
+            root.setRenderMode(String(preset.renderMode));
+        root.zoom = Number(preset.zoom ?? 1.0);
+        root.panX = Number(preset.panX ?? 0.0);
+        root.panY = Number(preset.panY ?? 0.0);
+        root.rotYaw = Number(preset.rotYaw ?? 0.42);
+        root.rotPitch = Number(preset.rotPitch ?? 0.28);
+        root.filterQuery = String(preset.filterQuery ?? "");
+        root.filterFolder = String(preset.filterFolder ?? "");
+        root.filterTag = String(preset.filterTag ?? "");
+        root.hideOrphans = Boolean(preset.hideOrphans ?? false);
+        root.hideTagNodes = Boolean(preset.hideTagNodes ?? false);
+        root.colorByMode = String(preset.colorByMode ?? "cluster");
+        root._recomputeFilterMask();
+        root._rebuildNodeColors();
+        root._projCacheValid = false;
+        root.requestPaint();
     }
 
     function _neighborsFor(idx: int): var {
@@ -365,6 +544,8 @@ Item {
         }
         root.resolvedNodeColors = out;
         root._fgHubIndices = fgHubs;
+        root._labelWidthCache = ({});
+        root._labelWidthCacheCount = 0;
         root._colorsThemeSig = root.themeSignature;
         if (bucketMap) {
             const keys = Object.keys(bucketMap);
@@ -460,6 +641,24 @@ Item {
         _interact3DSettleTimer.restart();
     }
 
+    Timer {
+        id: _zoomSettleTimer
+        interval: 140
+        repeat: false
+        onTriggered: {
+            if (root._zoomInteracting) {
+                root._zoomInteracting = false;
+                if (root.canRepaintTheme)
+                    root.requestPaint();
+            }
+        }
+    }
+
+    function markZoomInteracting(): void {
+        root._zoomInteracting = true;
+        _zoomSettleTimer.restart();
+    }
+
     // Vsync-locked single-frame paint coalescer (replaces drifting 16ms Timer so
     // drag/wheel/orbit updates align 1:1 with display vblank even under Power Saver).
     FrameAnimation {
@@ -480,7 +679,7 @@ Item {
             _coalescePaintFrame.running = true;
     }
 
-    // Vsync-aligned, delta-time-normalized 3D orbit, inertia & power-profile note drift driver
+    // Vsync-aligned, delta-time-normalized 3D orbit, inertia & slow weightless note drift driver
     FrameAnimation {
         id: orbitMotionAnim
         running: root.visible && root.canRepaintTheme && (
@@ -498,10 +697,10 @@ Item {
             const hasDrift = root._ambientDriftActive;
             if (!hasOrbit && hasDrift) {
                 root._driftFrameAcc += dt;
-                const minInterval = root.nodePositions.length > 350 ? 0.030 : 0.020;
+                const minInterval = root.nodePositions.length > 350 ? 0.036 : 0.030;
                 if (root._driftFrameAcc < minInterval)
                     return;
-                root._driftTime = (root._driftTime + root._driftFrameAcc) % 6283.185;
+                root._driftTime = (root._driftTime + root._driftFrameAcc * 0.42) % 6283.185;
                 root._driftFrameAcc = 0.0;
                 root.requestPaint();
                 return;
@@ -523,7 +722,7 @@ Item {
             root._driftFrameAcc = 0.0;
             const dtScale = Math.max(0.25, Math.min(3.0, dt / 0.016667));
             if (hasDrift)
-                root._driftTime = (root._driftTime + dt) % 6283.185;
+                root._driftTime = (root._driftTime + dt * 0.42) % 6283.185;
             if (root.is3D && root.autoRotate3D && !graphMouse.pressed) {
                 root.rotYaw += 0.0032 * dtScale;
             }
@@ -550,7 +749,7 @@ Item {
         }
     }
 
-    function zoomBy(factor: real, centerX: real, centerY: real): void {
+    function zoomBy(factor: real, centerX: real, centerY: real, coalesce = false): void {
         const oldZoom = root.zoom;
         const maxZoom = root.compact ? 14.0 : 32.0;
         const newZoom = Math.max(0.35, Math.min(maxZoom, oldZoom * factor));
@@ -561,7 +760,12 @@ Item {
         root.panX = cx - (cx - root.panX) * (newZoom / oldZoom);
         root.panY = cy - (cy - root.panY) * (newZoom / oldZoom);
         root.zoom = newZoom;
-        root.requestPaint();
+        if (coalesce) {
+            root.markZoomInteracting();
+            root.scheduleMotionPaint();
+        } else {
+            root.requestPaint();
+        }
     }
 
     function zoomIn(): void {
@@ -999,22 +1203,25 @@ Item {
             phX[i] = (cidOff + (i * 0.6180339887) * 6.283185) % 6.283185;
             phY[i] = (cidOff * 0.83 + (i * 0.3819660113 + 0.25) * 6.283185) % 6.283185;
             phZ[i] = (cidOff * 1.29 + (i * 0.7548776662 + 0.5) * 6.283185) % 6.283185;
-            spd[i] = 0.55 + ((i * 37) % 100) * 0.0055;
+            spd[i] = 0.14 + ((i * 37) % 100) * 0.0014;
             const isTag = Boolean(nodes[i]?.isTagNode);
             const deg = degBuf[i];
-            amp[i] = (isTag || deg >= 10) ? 0.008 : (deg >= 3 ? 0.011 : 0.015);
+            amp[i] = (isTag || deg >= 10) ? 0.0065 : (deg >= 3 ? 0.009 : 0.012);
         }
         root._driftPhaseXBuf = phX;
         root._driftPhaseYBuf = phY;
         root._driftPhaseZBuf = phZ;
         root._driftSpeedBuf = spd;
         root._driftAmpBuf = amp;
+        root._labelWidthCache = ({});
+        root._labelWidthCacheCount = 0;
         if (root.hoveredIndex >= nLen)
             root.hoveredIndex = -1;
         if (root.draggedIndex >= nLen)
             root.draggedIndex = -1;
         if (root._focusedNodeIndex >= nLen)
             root._focusedNodeIndex = -1;
+        root._recomputeFilterMask();
         root._refreshCurrentPathIndex();
         root._rebuildNodeColors();
     }
@@ -1203,7 +1410,10 @@ Item {
 
         let bestIdx = -1;
         let bestScore = 9999999;
+        const visMask = root._nodeVisibleBuf;
         for (let i = nLen - 1; i >= 0; --i) {
+            if (visMask && i < visMask.length && visMask[i] === 0)
+                continue;
             let px, py, depthScale = 1.0, depthVal = 0.0;
             if (mode3D) {
                 if (use3DCache) {
@@ -1295,6 +1505,7 @@ Item {
     readonly property bool electricCurrentActive: root.electricCurrentEnabled
         && root.electricPerceptible
         && root.canRepaintTheme
+        && !root._zoomInteracting
         && root.resolvedEdges.length > 0
         && root.width > 10 && root.height > 10
         && !(root.is3D && root._interacting3D)
@@ -1403,17 +1614,38 @@ Item {
         const _sig = root.themeSignature;
         root._triggerThemeRepaint();
     }
+    function _haltActiveMotionTimers(): void {
+        _interact3DSettleTimer.stop();
+        _zoomSettleTimer.stop();
+        _coalescePaintFrame.running = false;
+        deferredThemeRepaintTimer.stop();
+        staggerPaintTimer.stop();
+        electricAnimTimer.stop();
+        root._interacting3D = false;
+        root._zoomInteracting = false;
+        root._velYaw = 0.0;
+        root._velPitch = 0.0;
+    }
+
+    onFilterQueryChanged: { root._recomputeFilterMask(); root.requestPaint(); }
+    onFilterFolderChanged: { root._recomputeFilterMask(); root.requestPaint(); }
+    onFilterTagChanged: { root._recomputeFilterMask(); root.requestPaint(); }
+    onHideOrphansChanged: { root._recomputeFilterMask(); root.requestPaint(); }
+    onHideTagNodesChanged: { root._recomputeFilterMask(); root.requestPaint(); }
+    onLocalMaxHopChanged: { root._recomputeFilterMask(); root.requestPaint(); }
+    onColorByModeChanged: { root._rebuildNodeColors(); root.requestPaint(); }
+
     onHostOpenChanged: {
         if (!root.hostOpen) {
             root._needsStaggeredReveal = true;
-            staggerPaintTimer.stop();
+            root._haltActiveMotionTimers();
         }
     }
     onCanRepaintThemeChanged: root._flushPendingPaintOnResume()
     onHostSettledChanged: {
         if (!hostSettled) {
             root._needsStaggeredReveal = true;
-            staggerPaintTimer.stop();
+            root._haltActiveMotionTimers();
         } else {
             root._flushPendingPaintOnResume();
         }
@@ -1432,6 +1664,8 @@ Item {
         id: graphCanvas
         anchors.fill: parent
         antialiasing: true
+        renderTarget: Canvas.Image
+        renderStrategy: Quickshell.env("QT_QUICK_BACKEND") === "software" ? Canvas.Immediate : Canvas.Threaded
         onWidthChanged: root.requestPaint()
         onHeightChanged: root.requestPaint()
         onVisibleChanged: if (visible) root.requestPaint()
@@ -1552,23 +1786,9 @@ Item {
                 root._cachedProjMotionMode = motionMode;
                 root._cachedProjMotionCid = activeCid;
 
-                // Subtle 3D spatial depth backdrop + cached equatorial horizon guide
-                // Skipped during active 3D motion / Power-Saver interaction so frame times stay silky smooth.
-                const gcx = m.cx * root.zoom + root.panX;
-                const gcy = m.cy * root.zoom + root.panY;
+                // Equatorial horizon guide only (no circular radial gradient background — keeps flat single-color card background)
                 const gr = m.radius3D * 0.96 * root.zoom;
                 if (gr > 18 && gr < Math.max(width, height) * 4) {
-                    if (!root._fast3DPass) {
-                        const bgGlow = ctx.createRadialGradient(gcx, gcy, gr * 0.06, gcx, gcy, gr * 1.18);
-                        bgGlow.addColorStop(0.0, Qt.rgba(acc.r, acc.g, acc.b, 0.055));
-                        bgGlow.addColorStop(0.72, Qt.rgba(acc.r, acc.g, acc.b, 0.018));
-                        bgGlow.addColorStop(1.0, Qt.rgba(acc.r, acc.g, acc.b, 0.0));
-                        ctx.fillStyle = bgGlow;
-                        ctx.beginPath();
-                        ctx.arc(gcx, gcy, gr * 1.18, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
-
                     if (root.zoom < 2.2 && !(root._interacting3D && root.isPowerSaving)) {
                         if (!root._trigCos64 || !root._trigSin64) {
                             const c64 = new Float32Array(65);
@@ -1652,6 +1872,8 @@ Item {
 
             const eSrc = root._edgeSrcBuf;
             const eDst = root._edgeDstBuf;
+            const visMask = root._nodeVisibleBuf;
+            const hasVisMask = Boolean(visMask && visMask.length >= nLen);
 
             // 1. Draw base edges (adaptive 2-stratum fast LOD during 3D motion/Power-Saver; crisp 3x13 settled)
             if (mode3D) {
@@ -1672,6 +1894,8 @@ Item {
                     for (let e = 0; e < eLen; ++e) {
                         const sIdx = eSrc[e];
                         const tIdx = eDst[e];
+                        if (hasVisMask && (visMask[sIdx] === 0 || visMask[tIdx] === 0))
+                            continue;
                         if (activeIdx >= 0 && (sIdx === activeIdx || tIdx === activeIdx))
                             continue;
                         const avgZ = (zdBuf[sIdx] + zdBuf[tIdx]) * 0.5;
@@ -1731,6 +1955,8 @@ Item {
                     for (let e = 0; e < eLen; ++e) {
                         const sIdx = eSrc[e];
                         const tIdx = eDst[e];
+                        if (hasVisMask && (visMask[sIdx] === 0 || visMask[tIdx] === 0))
+                            continue;
                         if (activeIdx >= 0 && (sIdx === activeIdx || tIdx === activeIdx))
                             continue;
                         const x0 = sxBuf[sIdx];
@@ -1797,6 +2023,8 @@ Item {
                 for (let e = 0; e < eLen; ++e) {
                     const sIdx = eSrc[e];
                     const tIdx = eDst[e];
+                    if (hasVisMask && (visMask[sIdx] === 0 || visMask[tIdx] === 0))
+                        continue;
                     if (activeIdx >= 0 && (sIdx === activeIdx || tIdx === activeIdx))
                         continue;
                     const x0 = sxBuf[sIdx];
@@ -1833,6 +2061,8 @@ Item {
                 for (let e = 0; e < eLen; ++e) {
                     const sIdx = eSrc[e];
                     const tIdx = eDst[e];
+                    if (hasVisMask && (visMask[sIdx] === 0 || visMask[tIdx] === 0))
+                        continue;
                     if (sIdx === activeIdx || tIdx === activeIdx) {
                         ctx.moveTo(sxBuf[sIdx], syBuf[sIdx]);
                         ctx.lineTo(sxBuf[tIdx], syBuf[tIdx]);
@@ -1890,6 +2120,8 @@ Item {
                             let queued = 0;
                             for (let j = 0; j < bLen; ++j) {
                                 const ni = idxs[j];
+                                if (hasVisMask && visMask[ni] === 0)
+                                    continue;
                                 if (ni === curNodeIdx)
                                     continue;
                                 const nz = zdBuf[ni];
@@ -1920,10 +2152,12 @@ Item {
                     const hubs = root._fgHubIndices;
                     for (let h = 0; h < hubs.length; ++h) {
                         const hi = hubs[h];
+                        if (hasVisMask && visMask[hi] === 0)
+                            continue;
                         if (hi !== curNodeIdx)
                             fgList.push(hi);
                     }
-                    if (curNodeIdx >= 0)
+                    if (curNodeIdx >= 0 && (!hasVisMask || visMask[curNodeIdx] === 1))
                         fgList.push(curNodeIdx);
                 } else if (!root.isLocal && activeIdx >= 0) {
                     const degBuf = root._nodeDegBuf;
@@ -1941,6 +2175,8 @@ Item {
                         ctx.beginPath();
                         let queued = 0;
                         for (let i = 0; i < nLen; ++i) {
+                            if (hasVisMask && visMask[i] === 0)
+                                continue;
                             const nz = zdBuf[i];
                             if (nz < zLo || nz >= zHi)
                                 continue;
@@ -1974,12 +2210,14 @@ Item {
                             ctx.fill();
                     }
                 } else {
-                    for (let i = 0; i < nLen; ++i)
-                        fgList.push(i);
+                    for (let i = 0; i < nLen; ++i) {
+                        if (!hasVisMask || visMask[i] === 1)
+                            fgList.push(i);
+                    }
                 }
 
                 fgList.sort((a, b) => zdBuf[a] - zdBuf[b]);
-                let gradBudget = root._fast3DPass ? 0 : (root.isPowerSaving ? 12 : 24);
+                let gradBudget = (root._fast3DPass || root._zoomInteracting) ? 0 : (root.isPowerSaving ? 12 : 24);
                 for (let oi = 0; oi < fgList.length; ++oi) {
                     const i = fgList[oi];
                     const n = nodes[i];
@@ -2080,6 +2318,8 @@ Item {
                             let queued = 0;
                             for (let j = 0; j < bLen; ++j) {
                                 const ni = idxs[j];
+                                if (hasVisMask && visMask[ni] === 0)
+                                    continue;
                                 if (hasCurPath && nodes[ni].relPath === curPath)
                                     continue;
                                 const px = sxBuf[ni];
@@ -2101,6 +2341,8 @@ Item {
                         continue;
                     }
                     for (let i = 0; i < nLen; ++i) {
+                        if (hasVisMask && visMask[i] === 0)
+                            continue;
                         const n = nodes[i];
                         const ptx = sxBuf[i];
                         const pty = syBuf[i];
@@ -2174,13 +2416,15 @@ Item {
                 }
             }
 
-            // 4. Draw labels (front-to-back with screen-space collision avoidance in 3D, sparse during active drag)
+            // 4. Draw labels (front-to-back with screen-space collision avoidance, font & width caching, and interaction cap)
             let labelList = null;
             if (mode3D) {
                 labelList = [];
-                const interacting3D = root._interacting3D;
+                const interacting3D = root._interacting3D || root._zoomInteracting;
                 const degBufLbl = root._nodeDegBuf;
                 for (let i = 0; i < nLen; ++i) {
+                    if (hasVisMask && visMask[i] === 0)
+                        continue;
                     const ptx = sxBuf[i];
                     const pty = syBuf[i];
                     if (ptx < -20 || ptx > width + 20 || pty < -20 || pty > height + 20)
@@ -2221,9 +2465,17 @@ Item {
                     labelList.sort((a, b) => zdBuf[b] - zdBuf[a]);
             }
             const placedLabels = mode3D ? [] : null;
+            const maxLabels = mode3D
+                ? ((root._interacting3D || root._zoomInteracting) ? 18 : 48)
+                : (root._zoomInteracting ? 24 : 56);
+            let drawnLabels = 0;
+            let lastFontStr = "";
+            const lwCache = root._labelWidthCache;
             const labelCount = labelList ? labelList.length : nLen;
             for (let step = 0; step < labelCount; ++step) {
                 const i = labelList ? labelList[step] : step;
+                if (hasVisMask && visMask[i] === 0)
+                    continue;
                 const n = nodes[i];
                 const ptx = sxBuf[i];
                 const pty = syBuf[i];
@@ -2233,6 +2485,11 @@ Item {
                 const isHovered = (i === activeIdx);
                 const isNeighbor = Boolean(activeNeighbors && activeNeighbors[i]);
                 const isCurrent = (root.currentPath.length > 0 && n.relPath === root.currentPath);
+                if (!isHovered && !isCurrent && drawnLabels >= maxLabels) {
+                    if (labelList)
+                        break;
+                    continue;
+                }
                 const isTagHub = Boolean(n.isTagNode);
                 const deg = Number(n.degree ?? 0);
                 const isHub = isTagHub || Boolean(n.isHub) || deg >= 8;
@@ -2271,10 +2528,24 @@ Item {
 
                 const zoomFontBoost = root.zoom > 1.5 ? Math.min(3.5, Math.log2(root.zoom) * 0.9) : 0.0;
                 const fontPx = Math.round(Math.max(10, Math.min(16, ((isTagHub || isHovered ? 12 : 11) + zoomFontBoost) * (mode3D ? Math.max(0.84, Math.min(1.18, depthScale)) : 1.0))));
-                ctx.font = (isHovered || isCurrent || isTagHub || (root.isLocal && n.hop === 0) || isHub)
+                const fontStr = (isHovered || isCurrent || isTagHub || (root.isLocal && n.hop === 0) || isHub)
                     ? ("bold " + fontPx + "px sans-serif")
                     : (fontPx + "px sans-serif");
-                const textW = ctx.measureText(label).width;
+                if (fontStr !== lastFontStr) {
+                    ctx.font = fontStr;
+                    lastFontStr = fontStr;
+                }
+                const cacheKey = fontStr + "|" + label;
+                let textW = lwCache[cacheKey];
+                if (textW === undefined) {
+                    textW = ctx.measureText(label).width;
+                    if (root._labelWidthCacheCount >= 2048) {
+                        root._labelWidthCache = ({});
+                        root._labelWidthCacheCount = 0;
+                    }
+                    root._labelWidthCache[cacheKey] = textW;
+                    root._labelWidthCacheCount += 1;
+                }
                 const lx = Math.max(4, Math.min(width - textW - 4, ptx - textW * 0.5));
                 const rawLy = pty + r + 13;
                 const ly = (rawLy > height - 6)
@@ -2313,6 +2584,7 @@ Item {
                         ? Qt.rgba(nodeCol.r, nodeCol.g, nodeCol.b, depthFade)
                         : (isCurrent ? acc : Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, depthFade)));
                 ctx.fillText(label, lx, ly);
+                drawnLabels += 1;
             }
             if (root.electricCurrentActive && !(mode3D && root._interacting3D) && root.lastElectricArcCount === 0)
                 root._maybeRepaintElectric(false);
@@ -2324,7 +2596,9 @@ Item {
         id: electricCanvas
         anchors.fill: parent
         antialiasing: true
-        visible: root.electricCurrentActive
+        renderTarget: Canvas.Image
+        renderStrategy: Quickshell.env("QT_QUICK_BACKEND") === "software" ? Canvas.Immediate : Canvas.Threaded
+        visible: root.electricCurrentEnabled && (root.electricCurrentActive || (!root.hostSettled && root.electricPaintCount > 0))
 
         function _drawTravelDot(ctx, cx, cy, nx, ny, rCenter, rNote, col, roundTripT, compactScale, fadeAlpha) {
             const alpha = Math.max(0.0, Math.min(1.0, fadeAlpha));
@@ -2422,9 +2696,12 @@ Item {
                 const avgZ = (zdBuf[sIdx] + zdBuf[tIdx]) * 0.5;
                 return Math.max(0.24, Math.min(1.0, 0.68 + avgZ * 0.42));
             };
+            const visMask = root._nodeVisibleBuf;
+            const hasVisMask = Boolean(visMask && nodes && visMask.length >= nodes.length);
             const edgeVisible = function(e) {
                 const sIdx = eSrc[e];
                 const tIdx = eDst[e];
+                if (hasVisMask && (visMask[sIdx] === 0 || visMask[tIdx] === 0)) return false;
                 if (isOrph && (isOrph[sIdx] === 1 || isOrph[tIdx] === 1)) return false;
                 if (mode3D && scBuf && Math.min(scBuf[sIdx], scBuf[tIdx]) < 0.74) return false;
                 const x0 = sxBuf[sIdx], y0 = syBuf[sIdx];
@@ -2751,8 +3028,375 @@ Item {
             if (root.is3D)
                 root.mark3DInteracting();
             const factor = Math.pow(1.0018, delta);
-            root.zoomBy(factor, wheel.x, wheel.y);
+            root.zoomBy(factor, wheel.x, wheel.y, true);
             wheel.accepted = true;
+        }
+    }
+
+    // Top-right collapsible Graph Filter / Search / Folder Color / Saved Presets HUD (expanded Vault Graph only)
+    ColumnLayout {
+        id: graphFilterHud
+        visible: !root.compact && !root.isLocal && root.width >= 360
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: 10
+        spacing: 6
+        z: 20
+
+        RowLayout {
+            Layout.alignment: Qt.AlignRight
+            spacing: 4
+
+            Rectangle {
+                implicitWidth: filterToggleRow.implicitWidth + 14
+                implicitHeight: 26
+                radius: 6
+                color: (root._filterPanelOpen || root._hasActiveFilters)
+                    ? root.accentColor
+                    : Qt.rgba(root.bgSurface.r, root.bgSurface.g, root.bgSurface.b, 0.90)
+                border.width: (root._filterPanelOpen || root._hasActiveFilters) ? 0 : 1
+                border.color: root.borderSubtle
+
+                Row {
+                    id: filterToggleRow
+                    anchors.centerIn: parent
+                    spacing: 4
+                    MaterialSymbol {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "tune"
+                        iconSize: 13
+                        color: (root._filterPanelOpen || root._hasActiveFilters)
+                            ? (Appearance.colors?.colOnPrimary ?? "#0b1114")
+                            : root.subtextColor
+                    }
+                    StyledText {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root._hasActiveFilters && root.matchedNodeCount >= 0
+                            ? `Filter (${root.matchedNodeCount})`
+                            : "Filter"
+                        font.pixelSize: 10
+                        font.weight: Font.DemiBold
+                        color: (root._filterPanelOpen || root._hasActiveFilters)
+                            ? (Appearance.colors?.colOnPrimary ?? "#0b1114")
+                            : root.subtextColor
+                    }
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root._filterPanelOpen = !root._filterPanelOpen
+                }
+            }
+
+            Rectangle {
+                implicitWidth: colorModeTxt.implicitWidth + 12
+                implicitHeight: 26
+                radius: 6
+                color: root.colorByMode === "folder"
+                    ? root.accentColor
+                    : Qt.rgba(root.bgSurface.r, root.bgSurface.g, root.bgSurface.b, 0.90)
+                border.width: root.colorByMode === "folder" ? 0 : 1
+                border.color: root.borderSubtle
+
+                StyledText {
+                    id: colorModeTxt
+                    anchors.centerIn: parent
+                    text: root.colorByMode === "folder" ? "By Folder" : "By Cluster"
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                    color: root.colorByMode === "folder"
+                        ? (Appearance.colors?.colOnPrimary ?? "#0b1114")
+                        : root.subtextColor
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.colorByMode = (root.colorByMode === "cluster" ? "folder" : "cluster")
+                }
+            }
+        }
+
+        Rectangle {
+            id: graphFilterDrawer
+            visible: root._filterPanelOpen
+            Layout.alignment: Qt.AlignRight
+            Layout.preferredWidth: Math.min(268, Math.max(210, root.width - 24))
+            Layout.preferredHeight: filterDrawerCol.implicitHeight + 16
+            radius: 8
+            color: Qt.rgba(root.bgSurface.r, root.bgSurface.g, root.bgSurface.b, 0.95)
+            border.width: 1
+            border.color: root.borderSubtle
+
+            ColumnLayout {
+                id: filterDrawerCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 8
+                spacing: 6
+
+                // Quick search / jump-to-node input
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 26
+                    radius: 5
+                    color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.06)
+                    border.width: 1
+                    border.color: graphSearchInput.activeFocus ? root.accentColor : root.borderSubtle
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 6
+                        anchors.rightMargin: 6
+                        spacing: 4
+                        MaterialSymbol {
+                            text: "search"
+                            iconSize: 13
+                            color: root.subtextColor
+                        }
+                        TextInput {
+                            id: graphSearchInput
+                            Layout.fillWidth: true
+                            color: root.textColor
+                            font.pixelSize: 11
+                            clip: true
+                            selectByMouse: true
+                            text: root.filterQuery
+                            onTextChanged: root.filterQuery = text
+                            onAccepted: root.focusNodeByQuery(text)
+                            StyledText {
+                                anchors.fill: parent
+                                verticalAlignment: Text.AlignVCenter
+                                text: "Find or filter node..."
+                                font.pixelSize: 10
+                                color: root.subtextColor
+                                visible: graphSearchInput.text.length === 0 && !graphSearchInput.activeFocus
+                            }
+                        }
+                    }
+                }
+
+                // Folder & Tag filter inputs
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 24
+                        radius: 5
+                        color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.06)
+                        border.width: 1
+                        border.color: root.borderSubtle
+                        TextInput {
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            verticalAlignment: Text.AlignVCenter
+                            color: root.textColor
+                            font.pixelSize: 10
+                            clip: true
+                            text: root.filterFolder
+                            onTextChanged: root.filterFolder = text
+                            StyledText {
+                                anchors.fill: parent
+                                verticalAlignment: Text.AlignVCenter
+                                text: "Folder..."
+                                font.pixelSize: 10
+                                color: root.subtextColor
+                                visible: parent.text.length === 0 && !parent.activeFocus
+                            }
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 24
+                        radius: 5
+                        color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.06)
+                        border.width: 1
+                        border.color: root.borderSubtle
+                        TextInput {
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            verticalAlignment: Text.AlignVCenter
+                            color: root.textColor
+                            font.pixelSize: 10
+                            clip: true
+                            text: root.filterTag
+                            onTextChanged: root.filterTag = text
+                            StyledText {
+                                anchors.fill: parent
+                                verticalAlignment: Text.AlignVCenter
+                                text: "#Tag..."
+                                font.pixelSize: 10
+                                color: root.subtextColor
+                                visible: parent.text.length === 0 && !parent.activeFocus
+                            }
+                        }
+                    }
+                }
+
+                // Visibility chips & Preset save/clear
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Rectangle {
+                        Layout.preferredHeight: 22
+                        Layout.preferredWidth: orphTxt.implicitWidth + 10
+                        radius: 4
+                        color: root.hideOrphans ? root.accentColor : "transparent"
+                        border.width: 1
+                        border.color: root.hideOrphans ? root.accentColor : root.borderSubtle
+                        StyledText {
+                            id: orphTxt
+                            anchors.centerIn: parent
+                            text: "No Orphans"
+                            font.pixelSize: 9
+                            font.weight: Font.DemiBold
+                            color: root.hideOrphans ? (Appearance.colors?.colOnPrimary ?? "#0b1114") : root.subtextColor
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.hideOrphans = !root.hideOrphans
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredHeight: 22
+                        Layout.preferredWidth: tagChipTxt.implicitWidth + 10
+                        radius: 4
+                        color: root.hideTagNodes ? root.accentColor : "transparent"
+                        border.width: 1
+                        border.color: root.hideTagNodes ? root.accentColor : root.borderSubtle
+                        StyledText {
+                            id: tagChipTxt
+                            anchors.centerIn: parent
+                            text: "Notes Only"
+                            font.pixelSize: 9
+                            font.weight: Font.DemiBold
+                            color: root.hideTagNodes ? (Appearance.colors?.colOnPrimary ?? "#0b1114") : root.subtextColor
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.hideTagNodes = !root.hideTagNodes
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Rectangle {
+                        visible: root._hasActiveFilters
+                        Layout.preferredHeight: 22
+                        Layout.preferredWidth: clrTxt.implicitWidth + 10
+                        radius: 4
+                        color: "transparent"
+                        border.width: 1
+                        border.color: root.borderSubtle
+                        StyledText {
+                            id: clrTxt
+                            anchors.centerIn: parent
+                            text: "Clear"
+                            font.pixelSize: 9
+                            color: root.subtextColor
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.filterQuery = "";
+                                root.filterFolder = "";
+                                root.filterTag = "";
+                                root.hideOrphans = false;
+                                root.hideTagNodes = false;
+                                root.colorByMode = "cluster";
+                            }
+                        }
+                    }
+                }
+
+                // Saved View Presets
+                RowLayout {
+                    visible: Boolean(root.workspace?.nexus)
+                    Layout.fillWidth: true
+                    spacing: 4
+                    StyledText {
+                        text: "Presets:"
+                        font.pixelSize: 9
+                        color: root.subtextColor
+                    }
+                    Repeater {
+                        model: root.workspace?.nexus?.savedGraphPresets ?? []
+                        delegate: Rectangle {
+                            required property var modelData
+                            required property int index
+                            Layout.preferredHeight: 20
+                            Layout.preferredWidth: presetTxt.implicitWidth + 10
+                            radius: 4
+                            color: Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.08)
+                            StyledText {
+                                id: presetTxt
+                                anchors.centerIn: parent
+                                text: String(modelData.name ?? ("V" + (index + 1)))
+                                font.pixelSize: 9
+                                color: root.textColor
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: mouse => {
+                                    if (mouse.button === Qt.RightButton && root.workspace?.nexus) {
+                                        root.workspace.nexus.deleteGraphPreset(index);
+                                    } else {
+                                        root.applyFilterPreset(modelData);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Item { Layout.fillWidth: true }
+                    Rectangle {
+                        Layout.preferredHeight: 20
+                        Layout.preferredWidth: savePresetTxt.implicitWidth + 10
+                        radius: 4
+                        color: Qt.rgba(root.accentColor.r, root.accentColor.g, root.accentColor.b, 0.16)
+                        StyledText {
+                            id: savePresetTxt
+                            anchors.centerIn: parent
+                            text: "+ Save"
+                            font.pixelSize: 9
+                            font.weight: Font.DemiBold
+                            color: root.accentColor
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                const nx = root.workspace?.nexus;
+                                if (nx && typeof nx.saveGraphPreset === "function") {
+                                    const name = root.filterTag ? ("#" + root.filterTag) : (root.filterFolder || ("View " + ((nx.savedGraphPresets?.length ?? 0) + 1)));
+                                    nx.saveGraphPreset({
+                                        "name": name,
+                                        "renderMode": root.renderMode,
+                                        "zoom": root.zoom,
+                                        "panX": root.panX,
+                                        "panY": root.panY,
+                                        "rotYaw": root.rotYaw,
+                                        "rotPitch": root.rotPitch,
+                                        "filterQuery": root.filterQuery,
+                                        "filterFolder": root.filterFolder,
+                                        "filterTag": root.filterTag,
+                                        "hideOrphans": root.hideOrphans,
+                                        "hideTagNodes": root.hideTagNodes,
+                                        "colorByMode": root.colorByMode
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -2766,6 +3410,7 @@ Item {
         visible: root.width > 120 && root.height > 90
         opacity: (!root.compact || root.canvasHovered || zoomOutMouse.containsMouse || zoomResetMouse.containsMouse || zoomInMouse.containsMouse) ? 1.0 : 0.0
         Behavior on opacity {
+            enabled: root.hostOpen && root.hostSettled && Appearance.animationsEnabled
             NumberAnimation { duration: 150 }
         }
 
