@@ -895,6 +895,7 @@ Item {
         deferredBootLoadTimer.stop()
         clockRefreshTimer.stop()
         lookupProc.running = false
+        root.stopPronouncing()
     }
 
     FileView {
@@ -1088,6 +1089,4 @@ Item {
                 root.pronouncing = false
         }
     }
-
-    Component.onDestruction: root.stopPronouncing()
 }

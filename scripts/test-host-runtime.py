@@ -40,6 +40,39 @@ with tempfile.TemporaryDirectory(prefix="alis-intergration-native-") as name:
     managed = vault / "Managed.md"
     managed.write_text("# Todo\n<!-- alis:todo:start -->\n- [ ] first\n<!-- alis:todo:end -->\n")
     (vault / "Daily.md").write_text("## Tasks\n- [ ] first daily\n## Notes\n")
+    sr_dir = private / "state/quickshell/user"
+    sr_dir.mkdir(parents=True, exist_ok=True)
+    (sr_dir / "spaced-repetition.json").write_text(json.dumps({
+        "schemaVersion": 5,
+        "lexiconRevision": 2,
+        "nextId": 12,
+        "retainedStorageFields": {"lexiconRevision": 2},
+        "historyByDay": {},
+        "cards": [
+            {
+                "id": "1",
+                "category": "vocabulary",
+                "language": "en",
+                "term": "ubiquitous",
+                "meaning": "present everywhere",
+                "deck": "General",
+                "level": "C1",
+                "createdAt": 1700000000000,
+                "dueAt": 1700000000000,
+            },
+            {
+                "id": "2",
+                "category": "vocabulary",
+                "language": "en",
+                "term": "ephemeral",
+                "meaning": "lasting for a very short time",
+                "deck": "General",
+                "level": "C2",
+                "createdAt": 1700000000000,
+                "dueAt": 1700000000000,
+            },
+        ],
+    }))
     config = private / "config/alis"
     config.mkdir(parents=True)
     options = json.loads((HOST / "defaults/config.json").read_text())
@@ -63,6 +96,7 @@ ShellRoot {
  DailyNoteTodoBackend {id:daily;active:true;vaultPath:Quickshell.env("FIXTURE_VAULT");folder:"";noteFormat:"Daily.md"}
  TlpPowerSettings {id:tlpUi;width:700;visible:false}
  NexusThemeSettings {id:nexusUi;width:700;visible:false}
+ Loader {id:srUi;width:900;height:700;visible:false}
  TestCase {
   id:test;when:false;optional:true
   function check(value,message){if(!value)throw new Error(message)}
@@ -99,12 +133,24 @@ ShellRoot {
    check(Zettelkasten.capture("Fixture note","Only synthetic content"),"capture was not queued")
    tryVerify(()=>Zettelkasten.lastCreatedFullPath.length>0 && !Zettelkasten.busy,4000)
    check(Zettelkasten.lastCreatedFullPath.startsWith(Quickshell.env("FIXTURE_VAULT")+"/"),"capture escaped its synthetic vault")
+   Config.setNestedValue("integrations.alisIntergration.spaced_repetition",true)
+   AlisIntergration.demandSpacedRepetition()
+   tryVerify(()=>AlisIntergration.spacedRepetition!==null,4000)
+   AlisIntergration.spacedRepetition.ensureLoaded()
+   tryVerify(()=>AlisIntergration.spacedRepetition.ready===true,4000)
+   check(AlisIntergration.spacedRepetition.cards.length===2,"pre-existing spaced repetition fixture lost cards: "+AlisIntergration.spacedRepetition.cards.length)
+   check(AlisIntergration.spacedRepetition.cards[0].term==="ubiquitous" && AlisIntergration.spacedRepetition.cards[1].term==="ephemeral","pre-existing spaced repetition fixture did not preserve card terms")
+   srUi.source=AlisIntergration.spacedRepetitionDashboardSource()
+   tryVerify(()=>srUi.status===Loader.Ready && srUi.item!==null,4000)
+   check(srUi.item.backend===AlisIntergration.spacedRepetition,"DashboardSpacedRepetition did not bind live SpacedRepetition service")
+   check(srUi.item.backend.cards.length===2,"DashboardSpacedRepetition UI lost cards")
+   srUi.source=""
    check(AlisIntergration.session===session,"actions rebuilt the shared session")
-   Config.setNestedValues({"integrations.alisIntergration.tlp":false,"integrations.alisIntergration.thinkfan":false,"integrations.alisIntergration.nexus":false})
-   tryVerify(()=>AlisIntergration.session===null && managed.implementation===null && daily.implementation===null,2000)
+   Config.setNestedValues({"integrations.alisIntergration.tlp":false,"integrations.alisIntergration.thinkfan":false,"integrations.alisIntergration.nexus":false,"integrations.alisIntergration.spaced_repetition":false})
+   tryVerify(()=>AlisIntergration.session===null && managed.implementation===null && daily.implementation===null && AlisIntergration.spacedRepetition===null,2000)
    check(!managed.ready && !daily.ready && !TlpService.available && !ThinkFanService.available,"unload retained a worker")
    console.info("ALIS_INTERGRATION_REAL_HOST_PASS")
-  }catch(error){console.error("ALIS_INTERGRATION_REAL_HOST_FAIL",error.message,error.stack,JSON.stringify({nexus:AlisIntergration.nexusEnabled,managed:{active:managed.active,configured:managed.configured,ready:managed.ready,error:managed.errorMessage,implementation:String(managed.implementation),source:AlisIntergration.backendSource("managed"),vault:managed.implementation?.vaultPath,note:managed.implementation?.notePath,helper:managed.implementation?.helperPath,busy:managed.implementation?.busy,list:managed.implementation?.list,capabilityBusy:managed.implementation?.capabilityBusy,queued:managed.implementation?._refreshQueued},daily:{ready:daily.ready,error:daily.errorMessage,implementation:String(daily.implementation)}}))}Qt.quit()}
+  }catch(error){console.error("ALIS_INTERGRATION_REAL_HOST_FAIL",error.message,error.stack,JSON.stringify({nexus:AlisIntergration.nexusEnabled,managed:{active:managed.active,configured:managed.configured,ready:managed.ready,error:managed.errorMessage,implementation:String(managed.implementation),source:AlisIntergration.backendSource("managed"),vault:managed.implementation?.vaultPath,note:managed.implementation?.notePath,helper:managed.implementation?.helperPath,busy:managed.implementation?.busy,list:managed.implementation?.list,capabilityBusy:managed.implementation?.capabilityBusy,queued:managed.implementation?._refreshQueued},daily:{ready:daily.ready,error:daily.errorMessage,implementation:String(daily.implementation)},sr:{enabled:AlisIntergration.spacedRepetitionEnabled,demanded:AlisIntergration.spacedRepetitionDemanded,service:Boolean(AlisIntergration.spacedRepetition),ready:AlisIntergration.spacedRepetition?.ready,cards:AlisIntergration.spacedRepetition?.cards?.length}}))}Qt.quit()}
  }
  Timer {interval:100;running:true;onTriggered:test.runChecks()}
 }
@@ -121,7 +167,7 @@ ShellRoot {
         env.update({key:value for key,value in wayland_env.items() if key in ("WAYLAND_DISPLAY","NIRI_SOCKET","DISPLAY","XDG_RUNTIME_DIR")})
         env["QT_QPA_PLATFORM"]="wayland"
         result = run_qs(shell,env,timeout=35)
-    if result.returncode or "ALIS_INTERGRATION_REAL_HOST_PASS" not in result.stdout or any(token in result.stdout for token in ("ALIS_INTERGRATION_REAL_HOST_FAIL","TypeError:","ReferenceError:","Binding loop","Unable to assign","Failed to load configuration")):
+    if result.returncode or "ALIS_INTERGRATION_REAL_HOST_PASS" not in result.stdout or any(token in result.stdout for token in ("ALIS_INTERGRATION_REAL_HOST_FAIL","Property value set multiple times","TypeError:","ReferenceError:","Binding loop","Unable to assign","Failed to load configuration")):
         print(result.stdout)
         raise SystemExit(1)
     assert "added through optional host" in managed.read_text()

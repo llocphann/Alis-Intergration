@@ -1397,7 +1397,7 @@ Item {
     }
 
     Connections {
-        target: root.backend
+        target: root.backend !== root._emptyBackend ? root.backend : null
         function onCurrentCardChanged(): void {
             if (root._suppressMatchingQueueSync)
                 return
@@ -4740,6 +4740,24 @@ Item {
                                                 boundsBehavior: Flickable.StopAtBounds
                                                 property bool _userScrolledYear: false
 
+                                                Timer {
+                                                    id: srHeatmapScrollTimer
+                                                    interval: 0
+                                                    repeat: false
+                                                    property bool pendingForce: false
+                                                    onTriggered: {
+                                                        const force = pendingForce
+                                                        pendingForce = false
+                                                        srHeatmapFlick.scrollToFocusWeek(force)
+                                                    }
+                                                }
+
+                                                function scheduleScrollToFocusWeek(force = false): void {
+                                                    if (force)
+                                                        srHeatmapScrollTimer.pendingForce = true
+                                                    srHeatmapScrollTimer.restart()
+                                                }
+
                                                 function scrollToFocusWeek(force = false): void {
                                                     if (!force && srHeatmapFlick._userScrolledYear)
                                                         return
@@ -4802,35 +4820,35 @@ Item {
                                                 }
 
                                                 onMovementStarted: srHeatmapFlick._userScrolledYear = true
-                                                onWidthChanged: Qt.callLater(() => srHeatmapFlick.scrollToFocusWeek(false))
-                                                onContentWidthChanged: Qt.callLater(() => srHeatmapFlick.scrollToFocusWeek(false))
+                                                onWidthChanged: srHeatmapFlick.scheduleScrollToFocusWeek(false)
+                                                onContentWidthChanged: srHeatmapFlick.scheduleScrollToFocusWeek(false)
                                                 onVisibleChanged: {
                                                     if (visible)
-                                                        Qt.callLater(() => srHeatmapFlick.scrollToFocusWeek(false))
+                                                        srHeatmapFlick.scheduleScrollToFocusWeek(false)
                                                     else
                                                         root.hoveredHeatmapCell = null
                                                 }
-                                                Component.onCompleted: Qt.callLater(() => srHeatmapFlick.scrollToFocusWeek(false))
+                                                Component.onCompleted: srHeatmapFlick.scheduleScrollToFocusWeek(false)
 
                                                 Connections {
                                                     target: root
                                                     function onPresentationActiveChanged(): void {
                                                         if (root.presentationActive)
-                                                            Qt.callLater(() => srHeatmapFlick.scrollToFocusWeek(false))
+                                                            srHeatmapFlick.scheduleScrollToFocusWeek(false)
                                                         else
                                                             root.hoveredHeatmapCell = null
                                                     }
                                                     function onHeatmapYearChanged(): void {
                                                         root.hoveredHeatmapCell = null
                                                         srHeatmapFlick._userScrolledYear = false
-                                                        Qt.callLater(() => srHeatmapFlick.scrollToFocusWeek(true))
+                                                        srHeatmapFlick.scheduleScrollToFocusWeek(true)
                                                     }
                                                     function onCurrentHeatmapDataChanged(): void {
                                                         if (!srHeatmapHover.hovered)
                                                             root.hoveredHeatmapCell = null
                                                         else
                                                             srHeatmapFlick.updateHoverAt(srHeatmapHover.point.position.x, srHeatmapHover.point.position.y)
-                                                        Qt.callLater(() => srHeatmapFlick.scrollToFocusWeek(false))
+                                                        srHeatmapFlick.scheduleScrollToFocusWeek(false)
                                                     }
                                                 }
 
