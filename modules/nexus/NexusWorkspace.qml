@@ -6707,6 +6707,7 @@ FocusScope {
                                     isLocal: false
                                     compact: false
                                     allow3D: true
+                                    default3DOnOpen: true
                                     graphData: ((root.nexus?.activeView ?? "homepage") === "graph")
                                         ? (root.nexus?.vaultGraph ?? {
                                             "nodes": [],

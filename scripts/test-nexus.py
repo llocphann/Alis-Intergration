@@ -744,13 +744,21 @@ ShellRoot {{
                 nexus.openGraphView()
                 const fGraphCanvas = findChild(ws, "nexusFullGraphCanvas")
                 check(fGraphCanvas !== null && fGraphCanvas.visible === true, "nexusFullGraphCanvas should be visible in graph view")
+                check(fGraphCanvas.renderMode === "3d" && fGraphCanvas.autoRotate3D === true, "main nexusFullGraphCanvas should open in 3D auto-orbit")
                 mouseWheel(fGraphCanvas, fGraphCanvas.width / 2, fGraphCanvas.height / 2, 0, 120, Qt.NoButton, Qt.NoModifier)
-                check(fGraphCanvas.zoom > 1.0, "mouseWheel should zoom in NexusGraphCanvas")
+                check(fGraphCanvas.zoom > 1.0 && fGraphCanvas.autoRotate3D === false, "mouseWheel should zoom and disable auto-orbit on NexusGraphCanvas")
+                const yawBefore = fGraphCanvas.rotYaw
+                const pitchBefore = fGraphCanvas.rotPitch
+                mousePress(fGraphCanvas, 20, 20, Qt.LeftButton)
+                mouseMove(fGraphCanvas, 70, 55)
+                mouseRelease(fGraphCanvas, 70, 55, Qt.LeftButton)
+                check(fGraphCanvas.rotYaw !== yawBefore || fGraphCanvas.rotPitch !== pitchBefore, "mouseDrag on empty 3D canvas should orbit NexusGraphCanvas")
+                fGraphCanvas.renderMode = "2d"
                 const panBeforeX = fGraphCanvas.panX
                 mousePress(fGraphCanvas, 20, 20, Qt.LeftButton)
                 mouseMove(fGraphCanvas, 70, 55)
                 mouseRelease(fGraphCanvas, 70, 55, Qt.LeftButton)
-                check(fGraphCanvas.panX !== panBeforeX, "mouseDrag on empty canvas should pan NexusGraphCanvas")
+                check(fGraphCanvas.panX !== panBeforeX, "mouseDrag on empty 2D canvas should pan NexusGraphCanvas")
                 fGraphCanvas.resetView()
 
                 // Collection Browser: verify tvSeries camelCase normalization, Places metadata, and historyBack restoration

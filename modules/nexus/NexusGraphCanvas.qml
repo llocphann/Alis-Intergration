@@ -19,6 +19,7 @@ Item {
     property bool isLocal: false
     property bool compact: false
     property bool allow3D: false
+    property bool default3DOnOpen: false
     property string renderMode: "2d" // "2d" | "3d"
     property bool electricCurrentEnabled: true
     property string currentPath: ""
@@ -93,6 +94,20 @@ Item {
     property var _cachedProjDataRef: null
     property bool _interacting3D: false
     property bool _forcePowerSaverForTest: false
+    property string _forcePowerProfileForTest: "" // "" | "power-saver" | "balanced" | "performance"
+    property int _focusedNodeIndex: -1
+    property int _currentPathNodeIndex: -1
+    property real _driftTime: 0.0
+    property real _driftFrameAcc: 0.0
+    property real _cachedProjDriftTime: -999
+    property int _cachedProjMotionMode: -1
+    property int _cachedProjMotionCid: -999
+    property var _driftSinLut: null
+    property var _driftPhaseXBuf: null
+    property var _driftPhaseYBuf: null
+    property var _driftPhaseZBuf: null
+    property var _driftSpeedBuf: null
+    property var _driftAmpBuf: null
     property bool _electricHasVisibleEdges: true
     property double _lastElectricEmptyProbeMs: 0
     property string _electricEmptyViewSig: ""
@@ -116,11 +131,53 @@ Item {
     property string lastPaintedThemeSignature: ""
 
     readonly property bool is3D: root.allow3D && root.renderMode === "3d"
-    readonly property bool isPowerSaving: root._forcePowerSaverForTest
-        || (PowerProfiles.profile === PowerProfile.PowerSaver)
-        || (Config.options?.performance?.lowPower ?? false)
+    readonly property string effectivePowerProfile: {
+        if (root._forcePowerProfileForTest.length > 0)
+            return root._forcePowerProfileForTest;
+        if (root._forcePowerSaverForTest
+                || (PowerProfiles.profile === PowerProfile.PowerSaver)
+                || (Config.options?.performance?.lowPower ?? false))
+            return "power-saver";
+        if (PowerProfiles.profile === PowerProfile.Performance)
+            return "performance";
+        return "balanced";
+    }
+    readonly property bool isPowerSaving: root.effectivePowerProfile === "power-saver"
+    readonly property bool _reduceAnimations: Boolean(Config.options?.performance?.reduceAnimations ?? false)
+        || Boolean(Config.options?.appearance?.reduceAnimations ?? false)
+    // 0 = fixed (Power Saver / Local / reduceAnimations), 1 = Normal (focused/hovered cluster), 2 = Performance (all notes)
+    readonly property int noteMotionMode: {
+        if (root.isLocal || root._reduceAnimations || root.effectivePowerProfile === "power-saver")
+            return 0;
+        if (root.effectivePowerProfile === "performance")
+            return 2;
+        return 1;
+    }
+    readonly property int _activeMotionSourceIdx: root.draggedIndex >= 0
+        ? root.draggedIndex
+        : (root.hoveredIndex >= 0
+            ? root.hoveredIndex
+            : (root._focusedNodeIndex >= 0 ? root._focusedNodeIndex : root._currentPathNodeIndex))
+    readonly property int _activeMotionClusterId: (root._activeMotionSourceIdx >= 0
+            && root._clusterIdBuf
+            && root._activeMotionSourceIdx < root._clusterIdBuf.length)
+        ? root._clusterIdBuf[root._activeMotionSourceIdx]
+        : -1
+    readonly property int _activeMotionSingleNodeIdx: (root._activeMotionSourceIdx >= 0 && root._activeMotionClusterId < 0)
+        ? root._activeMotionSourceIdx
+        : -1
+    readonly property bool _ambientDriftActive: !root.isLocal
+        && root.visible
+        && root.canRepaintTheme
+        && root.nodePositions.length > 0
+        && (root.noteMotionMode === 2
+            || (root.noteMotionMode === 1 && (root._activeMotionClusterId >= 0 || root._activeMotionSingleNodeIdx >= 0)))
+    readonly property bool _denseDrift3D: root.is3D
+        && root._ambientDriftActive
+        && root.noteMotionMode === 2
+        && root.nodePositions.length > 350
     readonly property bool _fast3DPass: root.is3D
-        && (root._interacting3D || root.autoRotate3D || root.isPowerSaving)
+        && (root._interacting3D || root.autoRotate3D || root.isPowerSaving || root._denseDrift3D)
     readonly property bool _ultraFast3DPass: root.is3D
         && ((root._interacting3D && root.isPowerSaving)
             || (root._fast3DPass && root.nodePositions.length > 350))
@@ -423,17 +480,32 @@ Item {
             _coalescePaintFrame.running = true;
     }
 
-    // Vsync-aligned, delta-time-normalized 3D orbit & inertia driver (zero timer-vs-vsync stutter)
+    // Vsync-aligned, delta-time-normalized 3D orbit, inertia & power-profile note drift driver
     FrameAnimation {
         id: orbitMotionAnim
-        running: root.is3D && root.visible && root.canRepaintTheme && (
-            (root.autoRotate3D && !graphMouse.pressed)
-            || Math.abs(root._velYaw) > 0.00035
-            || Math.abs(root._velPitch) > 0.00035
+        running: root.visible && root.canRepaintTheme && (
+            (root.is3D && (
+                (root.autoRotate3D && !graphMouse.pressed)
+                || Math.abs(root._velYaw) > 0.00035
+                || Math.abs(root._velPitch) > 0.00035
+            ))
+            || root._ambientDriftActive
         )
         onTriggered: {
             const dt = Math.max(0.004, Math.min(0.050, frameTime));
-            const hasInertia = Math.abs(root._velYaw) > 0.00035 || Math.abs(root._velPitch) > 0.00035;
+            const hasInertia = root.is3D && (Math.abs(root._velYaw) > 0.00035 || Math.abs(root._velPitch) > 0.00035);
+            const hasOrbit = root.is3D && ((root.autoRotate3D && !graphMouse.pressed) || hasInertia);
+            const hasDrift = root._ambientDriftActive;
+            if (!hasOrbit && hasDrift) {
+                root._driftFrameAcc += dt;
+                const minInterval = root.nodePositions.length > 350 ? 0.030 : 0.020;
+                if (root._driftFrameAcc < minInterval)
+                    return;
+                root._driftTime = (root._driftTime + root._driftFrameAcc) % 6283.185;
+                root._driftFrameAcc = 0.0;
+                root.requestPaint();
+                return;
+            }
             // In Power Saver during calm passive auto-orbit on dense vaults, pace smoothly at ~30fps
             // while keeping active drag/inertia at full vsync frame rate.
             if (!hasInertia && root.isPowerSaving && root.nodePositions.length > 350) {
@@ -448,8 +520,11 @@ Item {
                 return;
             }
             root._orbitFrameAcc = 0.0;
+            root._driftFrameAcc = 0.0;
             const dtScale = Math.max(0.25, Math.min(3.0, dt / 0.016667));
-            if (root.autoRotate3D && !graphMouse.pressed) {
+            if (hasDrift)
+                root._driftTime = (root._driftTime + dt) % 6283.185;
+            if (root.is3D && root.autoRotate3D && !graphMouse.pressed) {
                 root.rotYaw += 0.0032 * dtScale;
             }
             if (hasInertia) {
@@ -580,6 +655,23 @@ Item {
         return 0.68;
     }
 
+    function _refreshCurrentPathIndex(): void {
+        const g = root.graphData;
+        const cp = root.currentPath;
+        if (!cp || cp.length === 0 || !g || !Array.isArray(g.nodes)) {
+            root._currentPathNodeIndex = -1;
+            return;
+        }
+        const nodes = g.nodes;
+        for (let i = 0; i < nodes.length; ++i) {
+            if (nodes[i]?.relPath === cp) {
+                root._currentPathNodeIndex = i;
+                return;
+            }
+        }
+        root._currentPathNodeIndex = -1;
+    }
+
     function _syncPositionsFromData(): void {
         const g = root.graphData;
         if (!g || !Array.isArray(g.nodes) || g.nodes.length === 0) {
@@ -606,6 +698,13 @@ Item {
             root._edgeSrcBuf = null;
             root._edgeDstBuf = null;
             root._edgeClusterBuf = null;
+            root._driftPhaseXBuf = null;
+            root._driftPhaseYBuf = null;
+            root._driftPhaseZBuf = null;
+            root._driftSpeedBuf = null;
+            root._driftAmpBuf = null;
+            root._focusedNodeIndex = -1;
+            root._currentPathNodeIndex = -1;
             root.adjacencyMap = ({});
             root.hoveredIndex = -1;
             root.draggedIndex = -1;
@@ -883,10 +982,40 @@ Item {
         root.nodePositions = pos;
         root.resolvedEdges = resEdges;
         root.adjacencyMap = ({});
+        if (!root._driftSinLut || root._driftSinLut.length !== 256) {
+            const lut = new Float32Array(256);
+            for (let k = 0; k < 256; ++k)
+                lut[k] = Math.sin((k / 256.0) * Math.PI * 2.0);
+            root._driftSinLut = lut;
+        }
+        const phX = new Float32Array(nLen);
+        const phY = new Float32Array(nLen);
+        const phZ = new Float32Array(nLen);
+        const spd = new Float32Array(nLen);
+        const amp = new Float32Array(nLen);
+        for (let i = 0; i < nLen; ++i) {
+            const cid = clusterIdBuf[i];
+            const cidOff = cid >= 0 ? (cid * 1.13) : (i * 0.41);
+            phX[i] = (cidOff + (i * 0.6180339887) * 6.283185) % 6.283185;
+            phY[i] = (cidOff * 0.83 + (i * 0.3819660113 + 0.25) * 6.283185) % 6.283185;
+            phZ[i] = (cidOff * 1.29 + (i * 0.7548776662 + 0.5) * 6.283185) % 6.283185;
+            spd[i] = 0.55 + ((i * 37) % 100) * 0.0055;
+            const isTag = Boolean(nodes[i]?.isTagNode);
+            const deg = degBuf[i];
+            amp[i] = (isTag || deg >= 10) ? 0.008 : (deg >= 3 ? 0.011 : 0.015);
+        }
+        root._driftPhaseXBuf = phX;
+        root._driftPhaseYBuf = phY;
+        root._driftPhaseZBuf = phZ;
+        root._driftSpeedBuf = spd;
+        root._driftAmpBuf = amp;
         if (root.hoveredIndex >= nLen)
             root.hoveredIndex = -1;
         if (root.draggedIndex >= nLen)
             root.draggedIndex = -1;
+        if (root._focusedNodeIndex >= nLen)
+            root._focusedNodeIndex = -1;
+        root._refreshCurrentPathIndex();
         root._rebuildNodeColors();
     }
 
@@ -1055,7 +1184,22 @@ Item {
             && root._cachedProjPitch === root.rotPitch
             && root._cachedProjZoom === root.zoom
             && root._cachedProjPanX === root.panX
-            && root._cachedProjPanY === root.panY;
+            && root._cachedProjPanY === root.panY
+            && root._cachedProjDriftTime === root._driftTime
+            && root._cachedProjMotionMode === root.noteMotionMode
+            && root._cachedProjMotionCid === root._activeMotionClusterId;
+        const use2DCache = !mode3D && root._projCacheValid
+            && sxBuf && syBuf && sxBuf.length >= nLen
+            && root._cachedProjDataRef === root.graphData
+            && root._cachedProjNLen === nLen
+            && root._cachedProjW === graphCanvas.width
+            && root._cachedProjH === graphCanvas.height
+            && root._cachedProjZoom === root.zoom
+            && root._cachedProjPanX === root.panX
+            && root._cachedProjPanY === root.panY
+            && root._cachedProjDriftTime === root._driftTime
+            && root._cachedProjMotionMode === root.noteMotionMode
+            && root._cachedProjMotionCid === root._activeMotionClusterId;
 
         let bestIdx = -1;
         let bestScore = 9999999;
@@ -1076,6 +1220,9 @@ Item {
                     );
                     px = pr.x; py = pr.y; depthScale = pr.scale; depthVal = pr.depth;
                 }
+            } else if (use2DCache) {
+                px = sxBuf[i];
+                py = syBuf[i];
             } else {
                 px = hasTyped ? (nxBuf[i] * mulX + addX) : ((m.originX + root.nodePositions[i].x * m.spanX) * root.zoom + root.panX);
                 py = hasTyped ? (nyBuf[i] * mulY + addY) : ((m.originY + root.nodePositions[i].y * m.spanY) * root.zoom + root.panY);
@@ -1225,7 +1372,32 @@ Item {
         root._syncPositionsFromData();
         root.requestPaint();
     }
-    onCurrentPathChanged: root.requestPaint()
+    onCurrentPathChanged: {
+        root._refreshCurrentPathIndex();
+        root.requestPaint();
+    }
+    onNoteMotionModeChanged: {
+        root._projCacheValid = false;
+        root.requestPaint();
+    }
+    on_ActiveMotionClusterIdChanged: if (root.noteMotionMode === 1) {
+        root._projCacheValid = false;
+        root.requestPaint();
+    }
+    on_FocusedNodeIndexChanged: if (root.noteMotionMode === 1) {
+        root._projCacheValid = false;
+        root.requestPaint();
+    }
+    onVisibleChanged: {
+        if (visible && root.default3DOnOpen && root.allow3D) {
+            root.renderMode = "3d";
+            root.autoRotate3D = !root._reduceAnimations;
+            root._velYaw = 0.0;
+            root._velPitch = 0.0;
+            root._projCacheValid = false;
+            root.requestPaint();
+        }
+    }
     onRenderModeChanged: root.requestPaint()
     onThemeSignatureChanged: {
         const _sig = root.themeSignature;
@@ -1248,6 +1420,10 @@ Item {
     }
 
     Component.onCompleted: {
+        if (root.default3DOnOpen && root.allow3D) {
+            root.renderMode = "3d";
+            root.autoRotate3D = !root._reduceAnimations;
+        }
         root._syncPositionsFromData();
         root.requestPaint();
     }
@@ -1320,15 +1496,37 @@ Item {
             const ny3Buf = root._norm3DYBuf || nyBuf;
             const nz3Buf = root._norm3DZBuf || root._normZBuf;
             const focal3D = 3.15;
+            const LUT_SCALE = 40.7436654315; // 256 / (2 * Math.PI)
+            const motionMode = root.noteMotionMode;
+            const activeCid = root._activeMotionClusterId;
+            const activeSingle = root._activeMotionSingleNodeIdx;
+            const cidBuf = root._clusterIdBuf;
+            const lut = root._driftSinLut;
+            const phX = root._driftPhaseXBuf;
+            const phY = root._driftPhaseYBuf;
+            const phZ = root._driftPhaseZBuf;
+            const spdBuf = root._driftSpeedBuf;
+            const ampBuf = root._driftAmpBuf;
+            const hasDrift = !root.isLocal && Boolean(lut && phX && phY && phZ && spdBuf && ampBuf
+                && phX.length >= nLen && (motionMode === 2 || (motionMode === 1 && (activeCid >= 0 || activeSingle >= 0))));
+            const driftTime = root._driftTime;
+
             if (mode3D) {
                 const cyaw = Math.cos(root.rotYaw);
                 const syaw = Math.sin(root.rotYaw);
                 const cpitch = Math.cos(root.rotPitch);
                 const spitch = Math.sin(root.rotPitch);
                 for (let i = 0; i < nLen; ++i) {
-                    const x0 = (nx3Buf[i] - 0.5) * 2.0;
-                    const y0 = (ny3Buf[i] - 0.5) * 2.0;
-                    const z0 = (nz3Buf[i] - 0.5) * 2.0;
+                    let x0 = (nx3Buf[i] - 0.5) * 2.0;
+                    let y0 = (ny3Buf[i] - 0.5) * 2.0;
+                    let z0 = (nz3Buf[i] - 0.5) * 2.0;
+                    if (hasDrift && (motionMode === 2 || (activeCid >= 0 && cidBuf && cidBuf[i] === activeCid) || i === activeSingle)) {
+                        const t = driftTime * spdBuf[i];
+                        const a = ampBuf[i] * 2.1;
+                        x0 += lut[(Math.floor((t + phX[i]) * LUT_SCALE) & 255)] * a;
+                        y0 += lut[(Math.floor((t * 0.87 + phY[i]) * LUT_SCALE) & 255)] * a;
+                        z0 += lut[(Math.floor((t * 0.73 + phZ[i]) * LUT_SCALE) & 255)] * a;
+                    }
                     const rx = x0 * cyaw - z0 * syaw;
                     const rz1 = x0 * syaw + z0 * cyaw;
                     const ry = y0 * cpitch - rz1 * spitch;
@@ -1350,6 +1548,9 @@ Item {
                 root._cachedProjH = height;
                 root._cachedProjNLen = nLen;
                 root._cachedProjDataRef = root.graphData;
+                root._cachedProjDriftTime = driftTime;
+                root._cachedProjMotionMode = motionMode;
+                root._cachedProjMotionCid = activeCid;
 
                 // Subtle 3D spatial depth backdrop + cached equatorial horizon guide
                 // Skipped during active 3D motion / Power-Saver interaction so frame times stay silky smooth.
@@ -1417,18 +1618,36 @@ Item {
                     }
                 }
             } else {
-                root._projCacheValid = false;
                 const mulX = m.spanX * root.zoom;
                 const addX = m.originX * root.zoom + root.panX;
                 const mulY = m.spanY * root.zoom;
                 const addY = m.originY * root.zoom + root.panY;
                 for (let i = 0; i < nLen; ++i) {
-                    sxBuf[i] = nxBuf[i] * mulX + addX;
-                    syBuf[i] = nyBuf[i] * mulY + addY;
+                    let px0 = nxBuf[i];
+                    let py0 = nyBuf[i];
+                    if (hasDrift && i !== root.draggedIndex && (motionMode === 2 || (activeCid >= 0 && cidBuf && cidBuf[i] === activeCid) || i === activeSingle)) {
+                        const t = driftTime * spdBuf[i];
+                        const a = ampBuf[i] * 0.65;
+                        px0 += lut[(Math.floor((t + phX[i]) * LUT_SCALE) & 255)] * a;
+                        py0 += lut[(Math.floor((t * 0.87 + phY[i]) * LUT_SCALE) & 255)] * a;
+                    }
+                    sxBuf[i] = px0 * mulX + addX;
+                    syBuf[i] = py0 * mulY + addY;
                     scBuf[i] = 1.0;
                     zdBuf[i] = 0.0;
                     zOrder[i] = i;
                 }
+                root._projCacheValid = true;
+                root._cachedProjZoom = root.zoom;
+                root._cachedProjPanX = root.panX;
+                root._cachedProjPanY = root.panY;
+                root._cachedProjW = width;
+                root._cachedProjH = height;
+                root._cachedProjNLen = nLen;
+                root._cachedProjDataRef = root.graphData;
+                root._cachedProjDriftTime = driftTime;
+                root._cachedProjMotionMode = motionMode;
+                root._cachedProjMotionCid = activeCid;
             }
 
             const eSrc = root._edgeSrcBuf;
@@ -2408,6 +2627,8 @@ Item {
             lastY = mouse.y;
             movedSignificantly = false;
             panOverride = (mouse.button === Qt.MiddleButton || mouse.button === Qt.RightButton) || Boolean(mouse.modifiers & Qt.ShiftModifier);
+            if (root.autoRotate3D)
+                root.autoRotate3D = false;
             root._velYaw = 0.0;
             root._velPitch = 0.0;
             const hit = root.findNodeAtScreen(mouse.x, mouse.y);
@@ -2503,7 +2724,10 @@ Item {
                 const hit = wasDraggingNode >= 0 ? wasDraggingNode : root.findNodeAtScreen(mouse.x, mouse.y);
                 const g = root.graphData;
                 if (hit >= 0 && g && Array.isArray(g.nodes) && hit < g.nodes.length) {
+                    root._focusedNodeIndex = hit;
                     root.nodeActivated(g.nodes[hit]);
+                } else {
+                    root._focusedNodeIndex = -1;
                 }
             } else if (root.is3D && Math.abs(root._velYaw) <= 0.00035 && Math.abs(root._velPitch) <= 0.00035) {
                 root._interacting3D = false;
@@ -2522,6 +2746,8 @@ Item {
             const delta = Math.max(-180, Math.min(180, wheel.angleDelta.y));
             if (delta === 0)
                 return;
+            if (root.autoRotate3D)
+                root.autoRotate3D = false;
             if (root.is3D)
                 root.mark3DInteracting();
             const factor = Math.pow(1.0018, delta);
