@@ -6,7 +6,7 @@ Optional workspace, study, fitness, and hardware integration plugins for the [**
 
 ### Nexus Knowledge Workspace (`nexus`)
 
-Browse your Markdown vault inside Alis with an Obsidian-style Soft Folder Tree, Tag Wrangler+ sidebar, 2D/3D Vault & Local Graph with virtual `#tag` hubs, Homepage overview, Daily Schedule, Obsidian Calendar with dual word-count & task indicators, interactive 3D Globe with smooth zoomed-in street/building Map mode & Alis auto-theming, redesigned Bases decks, Quicknotes, Todo sync, and adaptive Alis Vault theming.
+Browse and edit your Markdown vault inside Alis with an Obsidian-style Soft Folder Tree, Tag Wrangler+ sidebar, 2D/3D Vault & Local Graph with virtual `#tag` hubs, Homepage overview, Daily Schedule, Obsidian Calendar with dual word-count & task indicators, interactive 3D Globe with smooth zoomed-in street/building Map mode & Alis auto-theming, Canvas board with inline Note Picker, Markdown editing shortcuts (`Ctrl+B`, `Ctrl+I`, `Ctrl+K`, smart list Enter) with external-edit conflict protection, persistent `alis-nexus --serve` vault backend, redesigned Bases decks, Quicknotes, Todo sync, native Wayland clipboard image paste, and adaptive Alis Vault theming.
 
 <p align="center">
   <img src="docs/screenshots/nexus-workspace.png" alt="Nexus Workspace showing file tree, Vault Mini-Graph, Homepage overview, 3D Globe, and Today timeline" width="100%" />
@@ -14,7 +14,7 @@ Browse your Markdown vault inside Alis with an Obsidian-style Soft Folder Tree, 
 
 ### Spaced Repetition (`spaced_repetition`)
 
-Review vocabulary directly on the Alis Dashboard with CEFR badges, morphology hints, Multiple Choice prompts, mastery bars, an Analytics donut, and a 7-day review forecast.
+Review vocabulary directly on the Alis Dashboard with CEFR badges, morphology hints, word pronunciation audio (`en-US-AvaMultilingualNeural`), Multiple Choice prompts, mastery bars, an Analytics donut, and a 7-day review forecast.
 
 <p align="center">
   <img src="docs/screenshots/spaced-repetition.png" alt="Dashboard Spaced Repetition card with CEFR mastery, morphology hints, and 7-day forecast" width="100%" />
