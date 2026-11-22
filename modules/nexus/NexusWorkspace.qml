@@ -3245,14 +3245,44 @@ FocusScope {
                     border.color: settledColors.colLayer0Border
                     clip: true
 
+                    function _liveFilterText(): string {
+                        if (!fileFilterField)
+                            return "";
+                        if (fileFilterField.inputMethodComposing)
+                            return String((fileFilterField.displayText && fileFilterField.displayText.length > 0)
+                                ? fileFilterField.displayText
+                                : ((fileFilterField.text || "") + (fileFilterField.preeditText || "")));
+                        return String((fileFilterField.text && fileFilterField.text.length > 0)
+                            ? fileFilterField.text
+                            : (fileFilterField.displayText || ""));
+                    }
+
+                    function _syncLiveFilterQuery(): void {
+                        if (!root.nexus)
+                            return;
+                        const liveText = _liveFilterText();
+                        if (root.nexus.leftSidebarTab === "search") {
+                            fileSearchDebounceTimer.restart();
+                        } else if (root.nexus.fileFilterQuery !== liveText) {
+                            root.nexus.fileFilterQuery = liveText;
+                        }
+                    }
+
                     Timer {
                         id: fileSearchDebounceTimer
                         interval: 120
                         repeat: false
                         onTriggered: {
-                            if (root.nexus && root.nexus.leftSidebarTab === "search" && !fileFilterField.inputMethodComposing)
-                                root.nexus.searchVault(fileFilterField.text);
+                            if (root.nexus && root.nexus.leftSidebarTab === "search")
+                                root.nexus.searchVault(_liveFilterText());
                         }
+                    }
+
+                    Timer {
+                        id: fileFilterPreeditTimer
+                        interval: 45
+                        repeat: false
+                        onTriggered: _syncLiveFilterQuery()
                     }
 
                 ColumnLayout {
@@ -3299,19 +3329,39 @@ FocusScope {
                                 color: settledColors.colOnLayer0
                                 background: null
                                 onTextChanged: {
-                                    if (!root.nexus || inputMethodComposing)
+                                    if (!root.nexus)
                                         return;
-                                    if (root.nexus.leftSidebarTab === "search")
-                                        fileSearchDebounceTimer.restart();
-                                    else
-                                        root.nexus.fileFilterQuery = text;
+                                    if (inputMethodComposing) {
+                                        fileFilterPreeditTimer.restart();
+                                        return;
+                                    }
+                                    fileFilterPreeditTimer.stop();
+                                    _syncLiveFilterQuery();
+                                }
+                                onDisplayTextChanged: {
+                                    if (!root.nexus)
+                                        return;
+                                    if (inputMethodComposing) {
+                                        fileFilterPreeditTimer.restart();
+                                        return;
+                                    }
+                                    fileFilterPreeditTimer.stop();
+                                    _syncLiveFilterQuery();
+                                }
+                                onPreeditTextChanged: fileFilterPreeditTimer.restart()
+                                onInputMethodComposingChanged: {
+                                    if (!inputMethodComposing) {
+                                        fileFilterPreeditTimer.stop();
+                                        _syncLiveFilterQuery();
+                                    }
                                 }
                                 onAccepted: {
                                     if (inputMethodComposing)
                                         return;
-                                    if (root.nexus && text.trim().length > 0) {
+                                    const qTxt = _liveFilterText();
+                                    if (root.nexus && qTxt.trim().length > 0) {
                                         root.nexus.leftSidebarTab = "search";
-                                        root.nexus.searchVault(text);
+                                        root.nexus.searchVault(qTxt);
                                     }
                                 }
                                 Keys.onEscapePressed: event => {
@@ -3319,6 +3369,7 @@ FocusScope {
                                         event.accepted = false;
                                         return;
                                     }
+                                    fileFilterPreeditTimer.stop();
                                     fileFilterField.focus = false;
                                     root.restoreWorkspaceFocus();
                                     Qt.callLater(root.restoreWorkspaceFocus);
@@ -3337,7 +3388,7 @@ FocusScope {
                             }
 
                             Rectangle {
-                                visible: fileFilterField.text.length > 0
+                                visible: fileFilterField.text.length > 0 || fileFilterField.displayText.length > 0 || fileFilterField.preeditText.length > 0
                                 Layout.preferredWidth: 18
                                 Layout.preferredHeight: 18
                                 radius: 9
@@ -3354,6 +3405,9 @@ FocusScope {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
+                                        fileFilterPreeditTimer.stop();
+                                        fileSearchDebounceTimer.stop();
+                                        Qt.inputMethod.reset();
                                         fileFilterField.text = "";
                                         if (root.nexus) {
                                             root.nexus.fileFilterQuery = "";

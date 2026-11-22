@@ -26,6 +26,28 @@ Rectangle {
     readonly property var switcherModel: computeSwitcherResults()
     readonly property var commandsModel: computeCommandResults()
 
+    function _liveInputText(): string {
+        const inp = commandPaletteSearchInput;
+        if (!inp)
+            return "";
+        if (inp.inputMethodComposing)
+            return String((inp.displayText && inp.displayText.length > 0) ? inp.displayText : ((inp.text || "") + (inp.preeditText || "")));
+        return String((inp.text && inp.text.length > 0) ? inp.text : (inp.displayText || ""));
+    }
+
+    function syncLiveQuery(): void {
+        const nextQ = commandPaletteOverlay._liveInputText().trim().toLowerCase();
+        if (commandPaletteOverlay.query !== nextQ)
+            commandPaletteOverlay.query = nextQ;
+    }
+
+    Timer {
+        id: preeditQueryTimer
+        interval: 35
+        repeat: false
+        onTriggered: commandPaletteOverlay.syncLiveQuery()
+    }
+
     function _extOf(name: string): string {
         const s = String(name ?? "");
         const dot = s.lastIndexOf(".");
@@ -94,6 +116,8 @@ Rectangle {
                     recentSet[tp] = 120 - Math.min(80, t * 5);
             }
         }
+        const tokens = (q.indexOf(" ") >= 0) ? q.split(/\s+/).filter(Boolean) : null;
+        const multiToken = Boolean(tokens && tokens.length > 1);
         const scored = [];
         for (let i = 0; i < rows.length; ++i) {
             const r = rows[i];
@@ -101,9 +125,12 @@ Rectangle {
                 continue;
             const rawName = String(r.name ?? "");
             const relPath = String(r.relPath ?? "");
-            const ext = _extOf(rawName);
+            const ext = (r.ext !== undefined) ? String(r.ext).toLowerCase() : _extOf(rawName);
             const isMd = (ext === "md");
-            const stem = isMd ? rawName.substring(0, rawName.length - 3) : rawName;
+            const stem = (r.stem !== undefined && String(r.stem).length > 0)
+                ? String(r.stem)
+                : (isMd ? rawName.substring(0, rawName.length - 3) : rawName);
+            const folder = (r.folder !== undefined) ? String(r.folder) : _folderOf(relPath);
             const stemLower = stem.toLowerCase();
             const nameLower = rawName.toLowerCase();
             const pathLower = relPath.toLowerCase();
@@ -111,6 +138,41 @@ Rectangle {
             let matchScore = 0;
             if (q.length === 0) {
                 matchScore = 100 + (recentSet[relPath] ?? 0);
+            } else if (multiToken) {
+                let matchedAll = true;
+                let stemHits = 0;
+                for (let ti = 0; ti < tokens.length; ++ti) {
+                    const tk = tokens[ti];
+                    const sIdx = stemLower.indexOf(tk);
+                    if (sIdx >= 0) {
+                        stemHits += 1;
+                        const prevCh = sIdx > 0 ? stemLower.charAt(sIdx - 1) : " ";
+                        const boundary = (sIdx === 0 || prevCh === " " || prevCh === "-" || prevCh === "_" || prevCh === ".");
+                        matchScore += (boundary ? 900 : 650) - Math.min(120, sIdx * 2);
+                    } else {
+                        const pIdx = pathLower.indexOf(tk);
+                        if (pIdx >= 0) {
+                            matchScore += 280 - Math.min(100, pIdx);
+                        } else {
+                            const fStem = _fuzzyScore(tk, stemLower);
+                            if (fStem >= 0) {
+                                stemHits += 1;
+                                matchScore += 260 + Math.min(160, fStem);
+                            } else {
+                                const fPath = _fuzzyScore(tk, pathLower);
+                                if (fPath >= 0)
+                                    matchScore += 80 + Math.min(100, fPath);
+                                else {
+                                    matchedAll = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!matchedAll)
+                    continue;
+                matchScore += stemHits * 220 - Math.min(80, stemLower.length) + Math.round((recentSet[relPath] ?? 0) * 0.35);
             } else if (stemLower === q || nameLower === q) {
                 matchScore = 2400;
             } else if (stemLower.startsWith(q)) {
@@ -149,7 +211,7 @@ Rectangle {
                 "isMd": isMd,
                 "ext": ext,
                 "stem": stem,
-                "folder": _folderOf(relPath),
+                "folder": folder,
                 "sortKey": stemLower
             });
         }
@@ -176,7 +238,8 @@ Rectangle {
                 "icon": _fileIcon(it.ext)
             };
         }
-        const rawTrim = String(commandPaletteSearchInput.text || commandPaletteOverlay.query || "").trim();
+        const liveRaw = commandPaletteOverlay._liveInputText();
+        const rawTrim = String(liveRaw || commandPaletteOverlay.query || "").trim();
         if (rawTrim.length > 0 && !hasExactMd) {
             const cleanName = rawTrim.endsWith(".md") ? rawTrim : (rawTrim + ".md");
             out.push({
@@ -224,9 +287,10 @@ Rectangle {
             return;
         const m = root.nexus.commandPaletteMode ?? "commands";
         if (m === "task") {
-            const txt = commandPaletteSearchInput.text.trim();
+            const txt = commandPaletteOverlay._liveInputText().trim();
             if (txt.length > 0) {
                 root.nexus.addQuickTodoTask(txt);
+                preeditQueryTimer.stop();
                 commandPaletteSearchInput.text = "";
                 commandPaletteSearchInput.focus = false;
                 root.nexus.commandPaletteOpen = false;
@@ -246,6 +310,7 @@ Rectangle {
                     root.nexus.createNote(picked.relPath);
                 else
                     root.nexus.openFile(picked.relPath, true);
+                preeditQueryTimer.stop();
                 commandPaletteSearchInput.focus = false;
                 root.nexus.commandPaletteOpen = false;
                 root.restoreWorkspaceFocus();
@@ -260,6 +325,7 @@ Rectangle {
             const idx = Math.max(0, Math.min(list.length - 1, selectedIndex));
             const cmd = list[idx];
             if (cmd && cmd.id) {
+                preeditQueryTimer.stop();
                 commandPaletteSearchInput.focus = false;
                 root.nexus.commandPaletteOpen = false;
                 if (cmd.id === "__new_note_api_modal__") {
@@ -280,6 +346,7 @@ Rectangle {
     function _syncOnShow(): void {
         if (!visible)
             return;
+        preeditQueryTimer.stop();
         const initSearch = String(root?.nexus?.commandPaletteSearch ?? "");
         commandPaletteSearchInput.text = initSearch;
         query = initSearch.trim().toLowerCase();
@@ -296,6 +363,7 @@ Rectangle {
         if (visible) {
             _syncOnShow();
         } else {
+            preeditQueryTimer.stop();
             commandPaletteSearchInput.focus = false;
             if (root) {
                 root.restoreWorkspaceFocus();
@@ -442,15 +510,34 @@ Rectangle {
                         color: settledColors.colOnLayer1
                         background: null
                         onTextChanged: {
-                            if (inputMethodComposing)
+                            if (inputMethodComposing) {
+                                preeditQueryTimer.restart();
                                 return;
-                            commandPaletteOverlay.query = text.trim().toLowerCase();
+                            }
+                            preeditQueryTimer.stop();
+                            commandPaletteOverlay.syncLiveQuery();
+                        }
+                        onDisplayTextChanged: {
+                            if (inputMethodComposing) {
+                                preeditQueryTimer.restart();
+                                return;
+                            }
+                            preeditQueryTimer.stop();
+                            commandPaletteOverlay.syncLiveQuery();
+                        }
+                        onPreeditTextChanged: preeditQueryTimer.restart()
+                        onInputMethodComposingChanged: {
+                            if (!inputMethodComposing) {
+                                preeditQueryTimer.stop();
+                                commandPaletteOverlay.syncLiveQuery();
+                            }
                         }
                         Keys.onEscapePressed: event => {
                             if (inputMethodComposing) {
                                 event.accepted = false;
                                 return;
                             }
+                            preeditQueryTimer.stop();
                             commandPaletteSearchInput.focus = false;
                             if (root.nexus)
                                 root.nexus.commandPaletteOpen = false;

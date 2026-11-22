@@ -368,32 +368,62 @@ ColumnLayout {
                     color: settledColors.colOnLayer1
                     font.pixelSize: Appearance.font.pixelSize.smaller
                     selectByMouse: true
+                    function _liveColFilterText(): string {
+                        if (inputMethodComposing)
+                            return String((displayText && displayText.length > 0) ? displayText : ((text || "") + (preeditText || "")));
+                        return String((text && text.length > 0) ? text : (displayText || ""));
+                    }
+                    function _syncColFilterQuery(): void {
+                        const liveQ = _liveColFilterText();
+                        if (root.nexus && root.nexus.collectionFilterQuery !== liveQ)
+                            root.nexus.collectionFilterQuery = liveQ;
+                    }
+                    Timer {
+                        id: colFilterPreeditTimer
+                        interval: 45
+                        repeat: false
+                        onTriggered: nexusCollectionFilterField._syncColFilterQuery()
+                    }
                     Component.onCompleted: text = String(root.nexus?.collectionFilterQuery ?? "")
                     Connections {
                         target: root.nexus
                         function onCollectionFilterQueryChanged(): void {
-                            if (nexusCollectionFilterField.inputMethodComposing)
+                            if (nexusCollectionFilterField.inputMethodComposing || nexusCollectionFilterField.activeFocus)
                                 return;
                             const nextQ = String(root.nexus?.collectionFilterQuery ?? "");
-                            if (!nexusCollectionFilterField.activeFocus && nexusCollectionFilterField.text !== nextQ)
+                            if (nexusCollectionFilterField.text !== nextQ)
                                 nexusCollectionFilterField.text = nextQ;
                         }
                     }
                     onTextChanged: {
-                        if (inputMethodComposing)
+                        if (inputMethodComposing) {
+                            colFilterPreeditTimer.restart();
                             return;
-                        if (root.nexus && root.nexus.collectionFilterQuery !== text)
-                            root.nexus.collectionFilterQuery = text;
+                        }
+                        colFilterPreeditTimer.stop();
+                        _syncColFilterQuery();
                     }
+                    onDisplayTextChanged: {
+                        if (inputMethodComposing) {
+                            colFilterPreeditTimer.restart();
+                            return;
+                        }
+                        colFilterPreeditTimer.stop();
+                        _syncColFilterQuery();
+                    }
+                    onPreeditTextChanged: colFilterPreeditTimer.restart()
                     onInputMethodComposingChanged: {
-                        if (!inputMethodComposing && root.nexus && root.nexus.collectionFilterQuery !== text)
-                            root.nexus.collectionFilterQuery = text;
+                        if (!inputMethodComposing) {
+                            colFilterPreeditTimer.stop();
+                            _syncColFilterQuery();
+                        }
                     }
                     Keys.onEscapePressed: event => {
                         if (inputMethodComposing) {
                             event.accepted = false;
                             return;
                         }
+                        colFilterPreeditTimer.stop();
                         nexusCollectionFilterField.focus = false;
                         root.restoreWorkspaceFocus();
                         Qt.callLater(root.restoreWorkspaceFocus);
@@ -412,7 +442,7 @@ ColumnLayout {
 
                     StyledText {
                         anchors.verticalCenter: parent.verticalCenter
-                        visible: !parent.text
+                        visible: !parent.text && !parent.displayText && !parent.preeditText
                         text: "Filter by title, muscle, equipment, genre, director, cast, or category..."
                         font.pixelSize: Appearance.font.pixelSize.smaller
                         color: settledColors.colSubtext
