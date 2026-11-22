@@ -167,7 +167,7 @@ Item {
         const zz = Math.max(0.35, Number(z) || 1.0);
         if (zz <= 1.0)
             return Math.max(0.65, Math.pow(zz, 0.55));
-        return Math.min(12.0, Math.pow(zz, 0.80));
+        return Math.min(10.0, Math.pow(zz, 0.78));
     }
 
     // Unified single color for all orphan notes (calm, theme-matched, clearly distinct from clusters)
@@ -393,28 +393,28 @@ Item {
         const deg = Number(n.degree ?? 0);
         if (root.compact) {
             if (isTag)
-                return Math.min(3.2, 2.0 + Math.log(deg + 1) * 0.24);
+                return Math.min(1.85, 1.15 + Math.log(deg + 1) * 0.14);
             if (deg >= 14)
-                return Math.min(2.7, 1.75 + Math.log(deg + 1) * 0.18);
+                return Math.min(1.65, 1.05 + Math.log(deg + 1) * 0.12);
             if (deg >= 5)
-                return 1.50;
+                return 0.95;
             if (deg >= 2)
-                return 1.24;
+                return 0.78;
             if (deg === 1)
-                return 1.08;
-            return 0.88;
+                return 0.66;
+            return 0.56;
         }
         if (isTag)
-            return Math.min(4.6, 2.75 + Math.log(deg + 1) * 0.30);
+            return Math.min(2.55, 1.55 + Math.log(deg + 1) * 0.18);
         if (deg >= 14)
-            return Math.min(4.0, 2.25 + Math.log(deg + 1) * 0.26);
+            return Math.min(2.25, 1.35 + Math.log(deg + 1) * 0.16);
         if (deg >= 5)
-            return 2.00;
+            return 1.22;
         if (deg >= 2)
-            return 1.62;
+            return 0.98;
         if (deg === 1)
-            return 1.38;
-        return 1.12;
+            return 0.82;
+        return 0.68;
     }
 
     function _syncPositionsFromData(): void {
@@ -828,21 +828,21 @@ Item {
         const deg = Number(n.degree ?? 0);
         const isCur = root.currentPath.length > 0 && n.relPath === root.currentPath;
         if (root.compact) {
-            if (isCur) return 2.8 * s;
-            if (isTag) return Math.min(3.2, 2.0 + Math.log(deg + 1) * 0.24) * s;
-            if (deg >= 14) return Math.min(2.7, 1.75 + Math.log(deg + 1) * 0.18) * s;
-            if (deg >= 5) return 1.50 * s;
-            if (deg >= 2) return 1.24 * s;
-            if (deg === 1) return 1.08 * s;
-            return 0.88 * s;
+            if (isCur) return 1.65 * s;
+            if (isTag) return Math.min(1.85, 1.15 + Math.log(deg + 1) * 0.14) * s;
+            if (deg >= 14) return Math.min(1.65, 1.05 + Math.log(deg + 1) * 0.12) * s;
+            if (deg >= 5) return 0.95 * s;
+            if (deg >= 2) return 0.78 * s;
+            if (deg === 1) return 0.66 * s;
+            return 0.56 * s;
         }
-        if (isCur) return 4.0 * s;
-        if (isTag) return Math.min(4.6, 2.75 + Math.log(deg + 1) * 0.30) * s;
-        if (deg >= 14) return Math.min(4.0, 2.25 + Math.log(deg + 1) * 0.26) * s;
-        if (deg >= 5) return 2.00 * s;
-        if (deg >= 2) return 1.62 * s;
-        if (deg === 1) return 1.38 * s;
-        return 1.12 * s;
+        if (isCur) return 2.30 * s;
+        if (isTag) return Math.min(2.55, 1.55 + Math.log(deg + 1) * 0.18) * s;
+        if (deg >= 14) return Math.min(2.25, 1.35 + Math.log(deg + 1) * 0.16) * s;
+        if (deg >= 5) return 1.22 * s;
+        if (deg >= 2) return 0.98 * s;
+        if (deg === 1) return 0.82 * s;
+        return 0.68 * s;
     }
 
     function findNodeAtScreen(sx: real, sy: real): int {
@@ -870,7 +870,7 @@ Item {
         const has3DBuf = Boolean(nx3Buf && ny3Buf && nz3Buf && nx3Buf.length >= nLen);
         const curPath = root.currentPath;
         const hasCurPath = !root.isLocal && curPath.length > 0;
-        const curBaseR = root.compact ? 2.25 : 3.3;
+        const curBaseR = root.compact ? 1.65 : 2.30;
         const mode3D = root.is3D;
 
         let bestIdx = -1;
@@ -1331,7 +1331,7 @@ Item {
                             if (px < -cullPad || px > width + cullPad || py < -cullPad || py > height + cullPad)
                                 continue;
                             const r = baseRadBuf[ni] * scaleMul;
-                            if (r <= 1.15) {
+                            if (r <= 0.85) {
                                 ctx.rect(px - r, py - r, r * 2.0, r * 2.0);
                             } else {
                                 ctx.moveTo(px + r, py);
@@ -1382,28 +1382,18 @@ Item {
                         ? root._mixColor(rawNodeColor, root.bgSurface, 0.36 + depthNorm * 0.64)
                         : rawNodeColor;
 
-                    // Soft glow halo for tag hubs, hovered, current, local center, or major hubs
-                    const showHalo = !dimmed && (isHovered || isCurrent || isCenter || isTagHub || (!root.compact && deg >= 14));
+                    // Soft glow halo for hovered, current, local center, or zoomed-in non-compact tag hubs
+                    const showHalo = !dimmed && (isHovered || isCurrent || isCenter || (!root.compact && isTagHub && root.zoom >= 1.2));
                     if (showHalo) {
                         ctx.beginPath();
-                        ctx.arc(ptx, pty, r + (isHovered ? 3.0 : (isTagHub ? 2.4 : 1.8)) * Math.min(2.2, Math.sqrt(scaleR)) * depthScale, 0, Math.PI * 2);
+                        ctx.arc(ptx, pty, r + (isHovered ? 2.0 : (isTagHub ? 1.3 : 1.2)) * Math.min(1.8, Math.sqrt(scaleR)) * depthScale, 0, Math.PI * 2);
                         ctx.fillStyle = Qt.rgba(nodeColor.r, nodeColor.g, nodeColor.b,
-                            (isHovered ? 0.34 : (isTagHub ? 0.24 : 0.18)) * depthFade);
+                            (isHovered ? 0.28 : (isTagHub ? 0.16 : 0.14)) * depthFade);
                         ctx.fill();
                     }
 
                     ctx.beginPath();
-                    if (isTagHub) {
-                        // Crisp faceted diamond badge for virtual #Tag hub nodes
-                        const dr = r * 1.18;
-                        ctx.moveTo(ptx, pty - dr);
-                        ctx.lineTo(ptx + dr, pty);
-                        ctx.lineTo(ptx, pty + dr);
-                        ctx.lineTo(ptx - dr, pty);
-                        ctx.closePath();
-                    } else {
-                        ctx.arc(ptx, pty, r, 0, Math.PI * 2);
-                    }
+                    ctx.arc(ptx, pty, r, 0, Math.PI * 2);
 
                     let useSphereGrad = mode3D && !isTagHub && !dimmed && r >= 3.4;
                     if (useSphereGrad) {
@@ -1451,11 +1441,11 @@ Item {
                         ctx.fill();
                     }
 
-                    if (isHovered || isCurrent || isTagHub) {
-                        ctx.lineWidth = (isTagHub ? 1.25 : 1.0) * Math.min(2.0, Math.sqrt(scaleR));
+                    if (isHovered || isCurrent || (!root.compact && isTagHub && root.zoom >= 1.25)) {
+                        ctx.lineWidth = (isHovered ? 0.95 : 0.75) * Math.min(1.6, Math.sqrt(scaleR));
                         ctx.strokeStyle = isHovered
                             ? nodeColor
-                            : (isTagHub ? Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.85 * depthFade) : root.textColor);
+                            : (isTagHub ? Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.72 * depthFade) : root.textColor);
                         ctx.stroke();
                     }
                 }
@@ -1585,7 +1575,7 @@ Item {
             const nx = -uy;
             const ny = ux;
 
-            const minNoteR = Math.max(0.55, Math.min(rA, rB));
+            const minNoteR = Math.max(0.40, Math.min(rA, rB));
             const outerW = Math.min(minNoteR * 0.42, 1.45 * compactScale);
             const midW = Math.min(minNoteR * 0.24, 0.80 * compactScale);
             const coreW = Math.min(minNoteR * 0.12, 0.42 * compactScale);
@@ -1697,7 +1687,7 @@ Item {
             const nodeScreenRadius = function(idx) {
                 const b = (baseRadBuf && idx < baseRadBuf.length) ? baseRadBuf[idx] : 1.4;
                 const d = (mode3D && scBuf && idx < scBuf.length) ? scBuf[idx] : 1.0;
-                return Math.max(0.55, b * scaleMul * d);
+                return Math.max(0.40, b * scaleMul * d);
             };
             const depthAttenuation = function(sIdx, tIdx) {
                 if (!mode3D || !zdBuf) return 1.0;
