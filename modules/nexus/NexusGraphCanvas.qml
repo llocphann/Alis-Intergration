@@ -70,6 +70,25 @@ Item {
     property var _edgeDstBuf: null
     property var _edgeClusterBuf: null
     property var _staticColorBuckets: []
+    property var _edgeStratumColors3D: []
+    property var _fgHubIndices: []
+    property var _clusterHubEdges: [] // per cluster bucket index -> Int32Array of hub-incident edge indices
+    property var _trigCos64: null
+    property var _trigSin64: null
+    property var _edgeScratchPts: [] // 3 strata * 13 color slots = 39 reusable coordinate arrays
+    property var _fgOrderScratch: []
+    property bool _projCacheValid: false
+    property real _cachedProjYaw: -999
+    property real _cachedProjPitch: -999
+    property real _cachedProjZoom: -999
+    property real _cachedProjPanX: -999
+    property real _cachedProjPanY: -999
+    property real _cachedProjW: -1
+    property real _cachedProjH: -1
+    property int _cachedProjNLen: -1
+    property var _cachedProjDataRef: null
+    property bool _interacting3D: false
+    property double _lastHoverProbeMs: 0
     property string _colorsThemeSig: ""
     property bool _needsStaggeredReveal: true
     property real boundsMinX: 0.05
@@ -223,13 +242,18 @@ Item {
         if (!g || !Array.isArray(g.nodes) || g.nodes.length === 0) {
             root.resolvedNodeColors = [];
             root._staticColorBuckets = [];
+            root._edgeStratumColors3D = [];
+            root._fgHubIndices = [];
             root._colorsThemeSig = "";
             return;
         }
         const nodes = g.nodes;
         const muted = root.mutedTextColor;
+        const bg = root.bgSurface;
+        const acc = root.accentColor;
         const out = new Array(nodes.length);
         const bucketMap = !root.isLocal ? Object.create(null) : null;
+        const fgHubs = [];
         for (let i = 0; i < nodes.length; ++i) {
             const n = nodes[i];
             const isOrph = root._isOrphanBuf && i < root._isOrphanBuf.length ? (root._isOrphanBuf[i] === 1) : (Number(n?.degree ?? 0) === 0);
@@ -253,27 +277,35 @@ Item {
                 "clusterId": cid,
                 "isOrphan": isOrph
             };
-            if (bucketMap) {
-                const deg = Number(n.degree ?? 0);
-                const isTag = Boolean(n?.isTagNode);
-                if (!isTag && deg < 10) {
-                    const useDeg2 = !isOrph && deg >= 2;
-                    const bKey = (useDeg2 ? "d:" : (isOrph ? "o:" : "l:")) + hex;
-                    if (!bucketMap[bKey])
-                        bucketMap[bKey] = { "color": useDeg2 ? deg2 : leaf, "arr": [] };
-                    bucketMap[bKey].arr.push(i);
-                }
+            const deg = root._nodeDegBuf && i < root._nodeDegBuf.length ? root._nodeDegBuf[i] : Number(n.degree ?? 0);
+            const isTag = Boolean(n?.isTagNode);
+            if (!root.isLocal && (isTag || deg >= 10))
+                fgHubs.push(i);
+            if (bucketMap && !isTag && deg < 10) {
+                const useDeg2 = !isOrph && deg >= 2;
+                const bKey = (useDeg2 ? "d:" : (isOrph ? "o:" : "l:")) + hex;
+                if (!bucketMap[bKey])
+                    bucketMap[bKey] = { "color": useDeg2 ? deg2 : leaf, "base": tc, "arr": [] };
+                bucketMap[bKey].arr.push(i);
             }
         }
         root.resolvedNodeColors = out;
+        root._fgHubIndices = fgHubs;
         root._colorsThemeSig = root.themeSignature;
         if (bucketMap) {
             const keys = Object.keys(bucketMap);
             const packed = new Array(keys.length);
             for (let k = 0; k < keys.length; ++k) {
                 const entry = bucketMap[keys[k]];
+                const baseCol = entry.base;
+                const m0 = root._mixColor(baseCol, bg, 0.44);
+                const m1 = root._mixColor(baseCol, bg, 0.72);
+                const m2 = root._mixColor(baseCol, bg, 0.96);
                 packed[k] = {
                     "color": entry.color,
+                    "s0Col": Qt.rgba(m0.r, m0.g, m0.b, 0.48),
+                    "s1Col": Qt.rgba(m1.r, m1.g, m1.b, 0.76),
+                    "s2Col": Qt.rgba(m2.r, m2.g, m2.b, 0.96),
                     "indices": new Int32Array(entry.arr)
                 };
             }
@@ -281,6 +313,23 @@ Item {
         } else {
             root._staticColorBuckets = [];
         }
+        // Pre-bake 13 cluster edge color ramps across 3 depth strata for zero-alloc 3D edge batching
+        const edgeColors = new Array(13);
+        const fogs = [0.42, 0.72, 0.96];
+        const alphas = [0.14, 0.24, 0.38];
+        const dimAlphas = [0.04, 0.06, 0.09];
+        for (let c = 0; c < 13; ++c) {
+            const raw = c < 12 ? root._autoThemedClusterColor(c) : acc;
+            const normArr = new Array(3);
+            const dimArr = new Array(3);
+            for (let st = 0; st < 3; ++st) {
+                const mixed = root._mixColor(raw, bg, fogs[st]);
+                normArr[st] = Qt.rgba(mixed.r, mixed.g, mixed.b, alphas[st]);
+                dimArr[st] = Qt.rgba(mixed.r, mixed.g, mixed.b, dimAlphas[st]);
+            }
+            edgeColors[c] = { "normal": normArr, "dim": dimArr };
+        }
+        root._edgeStratumColors3D = edgeColors;
     }
 
     function clusterColor(groupIdx: int): color {
@@ -300,25 +349,65 @@ Item {
     }
 
     Timer {
+        id: _interact3DSettleTimer
+        interval: 130
+        repeat: false
+        onTriggered: {
+            if (root._interacting3D) {
+                root._interacting3D = false;
+                if (root.canRepaintTheme)
+                    root.requestPaint();
+            }
+        }
+    }
+
+    function mark3DInteracting(): void {
+        if (!root.is3D)
+            return;
+        root._interacting3D = true;
+        _interact3DSettleTimer.restart();
+    }
+
+    Timer {
+        id: _coalescePaintTimer
+        interval: 16
+        repeat: false
+        onTriggered: {
+            if (root.canRepaintTheme)
+                root.requestPaint();
+        }
+    }
+
+    function scheduleMotionPaint(): void {
+        root._paintPending = true;
+        if (!root.canRepaintTheme)
+            return;
+        if (!_coalescePaintTimer.running)
+            _coalescePaintTimer.start();
+    }
+
+    Timer {
         id: orbitMotionTimer
-        interval: 24
+        interval: 18
         repeat: true
-        running: root.is3D && root.visible && (
+        running: root.is3D && root.visible && root.canRepaintTheme && (
             (root.autoRotate3D && !graphMouse.pressed)
             || Math.abs(root._velYaw) > 0.00035
             || Math.abs(root._velPitch) > 0.00035
         )
         onTriggered: {
+            const hasInertia = Math.abs(root._velYaw) > 0.00035 || Math.abs(root._velPitch) > 0.00035;
             if (root.autoRotate3D && !graphMouse.pressed) {
-                root.rotYaw += 0.0038;
+                root.rotYaw += 0.0032;
             }
-            if (Math.abs(root._velYaw) > 0.00035 || Math.abs(root._velPitch) > 0.00035) {
+            if (hasInertia) {
                 root.rotYaw += root._velYaw;
                 root.rotPitch = Math.max(-1.42, Math.min(1.42, root.rotPitch + root._velPitch));
                 root._velYaw *= 0.84;
                 root._velPitch *= 0.84;
                 if (Math.abs(root._velYaw) <= 0.00035) root._velYaw = 0.0;
                 if (Math.abs(root._velPitch) <= 0.00035) root._velPitch = 0.0;
+                root.mark3DInteracting();
             }
             root.requestPaint();
         }
@@ -327,6 +416,7 @@ Item {
     function setRenderMode(mode: string): void {
         const clean = (mode === "3d" && root.allow3D) ? "3d" : "2d";
         if (root.renderMode !== clean) {
+            root._projCacheValid = false;
             root.renderMode = clean;
             root.requestPaint();
         }
@@ -377,7 +467,7 @@ Item {
         }
         staggerPaintTimer.stop();
         graphCanvas.requestPaint();
-        if (root.electricCurrentActive)
+        if (root.electricCurrentActive && !(root.is3D && root._interacting3D))
             electricCanvas.requestPaint();
     }
 
@@ -424,6 +514,10 @@ Item {
             root.resolvedEdges = [];
             root.resolvedNodeColors = [];
             root._staticColorBuckets = [];
+            root._edgeStratumColors3D = [];
+            root._fgHubIndices = [];
+            root._clusterHubEdges = [];
+            root._projCacheValid = false;
             root._colorsThemeSig = "";
             root._normXBuf = null;
             root._normYBuf = null;
@@ -704,6 +798,8 @@ Item {
         root._norm3DYBuf = ny3;
         root._norm3DZBuf = nz3;
         root._clusterEdgeBuckets = clusterBuckets;
+        root._clusterHubEdges = [];
+        root._projCacheValid = false;
         root._baseRadBuf = baseRadBuf;
         root._nodeDegBuf = degBuf;
         root._clusterIdBuf = clusterIdBuf;
@@ -872,19 +968,41 @@ Item {
         const hasCurPath = !root.isLocal && curPath.length > 0;
         const curBaseR = root.compact ? 1.65 : 2.30;
         const mode3D = root.is3D;
+        const sxBuf = root._screenXBuf;
+        const syBuf = root._screenYBuf;
+        const scBuf = root._screenScaleBuf;
+        const zdBuf = root._screenDepthBuf;
+        const use3DCache = mode3D && root._projCacheValid
+            && sxBuf && syBuf && scBuf && zdBuf && sxBuf.length >= nLen
+            && root._cachedProjDataRef === root.graphData
+            && root._cachedProjNLen === nLen
+            && root._cachedProjW === graphCanvas.width
+            && root._cachedProjH === graphCanvas.height
+            && root._cachedProjYaw === root.rotYaw
+            && root._cachedProjPitch === root.rotPitch
+            && root._cachedProjZoom === root.zoom
+            && root._cachedProjPanX === root.panX
+            && root._cachedProjPanY === root.panY;
 
         let bestIdx = -1;
         let bestScore = 9999999;
         for (let i = nLen - 1; i >= 0; --i) {
             let px, py, depthScale = 1.0, depthVal = 0.0;
             if (mode3D) {
-                const pr = root._project3D(
-                    has3DBuf ? nx3Buf[i] : root.nodePositions[i].x,
-                    has3DBuf ? ny3Buf[i] : root.nodePositions[i].y,
-                    has3DBuf ? nz3Buf[i] : (root.nodePositions[i].z ?? 0.5),
-                    m
-                );
-                px = pr.x; py = pr.y; depthScale = pr.scale; depthVal = pr.depth;
+                if (use3DCache) {
+                    px = sxBuf[i];
+                    py = syBuf[i];
+                    depthScale = scBuf[i];
+                    depthVal = zdBuf[i];
+                } else {
+                    const pr = root._project3D(
+                        has3DBuf ? nx3Buf[i] : root.nodePositions[i].x,
+                        has3DBuf ? ny3Buf[i] : root.nodePositions[i].y,
+                        has3DBuf ? nz3Buf[i] : (root.nodePositions[i].z ?? 0.5),
+                        m
+                    );
+                    px = pr.x; py = pr.y; depthScale = pr.scale; depthVal = pr.depth;
+                }
             } else {
                 px = hasTyped ? (nxBuf[i] * mulX + addX) : ((m.originX + root.nodePositions[i].x * m.spanX) * root.zoom + root.panX);
                 py = hasTyped ? (nyBuf[i] * mulY + addY) : ((m.originY + root.nodePositions[i].y * m.spanY) * root.zoom + root.panY);
@@ -1099,24 +1217,48 @@ Item {
                     zdBuf[i] = rz;
                     zOrder[i] = i;
                 }
-                // Subtle 3D spatial depth backdrop + ultra-clean equatorial horizon guide (hidden when zoomed deep)
-                ctx.save();
+                root._projCacheValid = true;
+                root._cachedProjYaw = root.rotYaw;
+                root._cachedProjPitch = root.rotPitch;
+                root._cachedProjZoom = root.zoom;
+                root._cachedProjPanX = root.panX;
+                root._cachedProjPanY = root.panY;
+                root._cachedProjW = width;
+                root._cachedProjH = height;
+                root._cachedProjNLen = nLen;
+                root._cachedProjDataRef = root.graphData;
+
+                // Subtle 3D spatial depth backdrop + cached equatorial horizon guide
                 const gcx = m.cx * root.zoom + root.panX;
                 const gcy = m.cy * root.zoom + root.panY;
                 const gr = m.radius3D * 0.96 * root.zoom;
                 if (gr > 18 && gr < Math.max(width, height) * 4) {
-                    const bgGlow = ctx.createRadialGradient(gcx, gcy, gr * 0.06, gcx, gcy, gr * 1.18);
-                    bgGlow.addColorStop(0.0, Qt.rgba(acc.r, acc.g, acc.b, 0.055));
-                    bgGlow.addColorStop(0.72, Qt.rgba(acc.r, acc.g, acc.b, 0.018));
-                    bgGlow.addColorStop(1.0, Qt.rgba(acc.r, acc.g, acc.b, 0.0));
-                    ctx.fillStyle = bgGlow;
-                    ctx.beginPath();
-                    ctx.arc(gcx, gcy, gr * 1.18, 0, Math.PI * 2);
-                    ctx.fill();
+                    if (!root._interacting3D) {
+                        const bgGlow = ctx.createRadialGradient(gcx, gcy, gr * 0.06, gcx, gcy, gr * 1.18);
+                        bgGlow.addColorStop(0.0, Qt.rgba(acc.r, acc.g, acc.b, 0.055));
+                        bgGlow.addColorStop(0.72, Qt.rgba(acc.r, acc.g, acc.b, 0.018));
+                        bgGlow.addColorStop(1.0, Qt.rgba(acc.r, acc.g, acc.b, 0.0));
+                        ctx.fillStyle = bgGlow;
+                        ctx.beginPath();
+                        ctx.arc(gcx, gcy, gr * 1.18, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
 
                     if (root.zoom < 2.2) {
+                        if (!root._trigCos64 || !root._trigSin64) {
+                            const c64 = new Float32Array(65);
+                            const s64 = new Float32Array(65);
+                            for (let s = 0; s <= 64; ++s) {
+                                const a = (s / 64) * Math.PI * 2;
+                                c64[s] = Math.cos(a) * 0.94;
+                                s64[s] = Math.sin(a) * 0.94;
+                            }
+                            root._trigCos64 = c64;
+                            root._trigSin64 = s64;
+                        }
+                        const tCos = root._trigCos64;
+                        const tSin = root._trigSin64;
                         const ringFade = Math.max(0.0, Math.min(1.0, (2.2 - root.zoom) / 1.2));
-                        const steps = 64;
                         for (let half = 0; half < 2; ++half) {
                             ctx.strokeStyle = half === 0
                                 ? Qt.rgba(acc.r, acc.g, acc.b, 0.045 * ringFade)
@@ -1124,10 +1266,9 @@ Item {
                             ctx.lineWidth = half === 0 ? 0.65 : 0.9;
                             ctx.beginPath();
                             let penDown = false;
-                            for (let s = 0; s <= steps; ++s) {
-                                const a = (s / steps) * Math.PI * 2;
-                                const px0 = Math.cos(a) * 0.94;
-                                const pz0 = Math.sin(a) * 0.94;
+                            for (let s = 0; s <= 64; ++s) {
+                                const px0 = tCos[s];
+                                const pz0 = tSin[s];
                                 const rrx = px0 * cyaw - pz0 * syaw;
                                 const rrz1 = px0 * syaw + pz0 * cyaw;
                                 const rry = -rrz1 * spitch;
@@ -1151,8 +1292,8 @@ Item {
                         }
                     }
                 }
-                ctx.restore();
             } else {
+                root._projCacheValid = false;
                 const mulX = m.spanX * root.zoom;
                 const addX = m.originX * root.zoom + root.panX;
                 const mulY = m.spanY * root.zoom;
@@ -1169,59 +1310,57 @@ Item {
             const eSrc = root._edgeSrcBuf;
             const eDst = root._edgeDstBuf;
 
-            // 1. Draw base edges (3 depth strata with cluster-tinted depth fog in 3D; fast batched in 2D)
+            // 1. Draw base edges (1-pass zero-alloc 3 depth strata in 3D; fast batched in 2D)
             if (mode3D) {
-                const bg = root.bgSurface;
                 const eClust = root._edgeClusterBuf;
-                const strata = [
-                    { "minZ": -9.0, "maxZ": -0.22, "lw": 0.45, "alpha": activeIdx >= 0 ? 0.04 : 0.14, "fog": 0.42 },
-                    { "minZ": -0.22, "maxZ": 0.28, "lw": 0.68, "alpha": activeIdx >= 0 ? 0.06 : 0.24, "fog": 0.72 },
-                    { "minZ": 0.28, "maxZ": 9.0, "lw": 0.98, "alpha": activeIdx >= 0 ? 0.09 : 0.38, "fog": 0.96 }
-                ];
-                for (let st = 0; st < strata.length; ++st) {
-                    const layer = strata[st];
-                    ctx.lineWidth = layer.lw;
-                    // Group edges in this depth stratum by cluster color so 3D links inherit cluster gradient identity
-                    const colorBatches = Object.create(null);
-                    for (let e = 0; e < eLen; ++e) {
-                        const sIdx = eSrc[e];
-                        const tIdx = eDst[e];
-                        if (activeIdx >= 0 && (sIdx === activeIdx || tIdx === activeIdx))
+                const edgeCols = root._edgeStratumColors3D;
+                let scratch = root._edgeScratchPts;
+                if (!scratch || scratch.length !== 39) {
+                    scratch = new Array(39);
+                    for (let s = 0; s < 39; ++s) scratch[s] = [];
+                    root._edgeScratchPts = scratch;
+                } else {
+                    for (let s = 0; s < 39; ++s) scratch[s].length = 0;
+                }
+                const minLen2 = root._interacting3D ? 1.8 : 0.6;
+                for (let e = 0; e < eLen; ++e) {
+                    const sIdx = eSrc[e];
+                    const tIdx = eDst[e];
+                    if (activeIdx >= 0 && (sIdx === activeIdx || tIdx === activeIdx))
+                        continue;
+                    const x0 = sxBuf[sIdx];
+                    const y0 = syBuf[sIdx];
+                    const x1 = sxBuf[tIdx];
+                    const y1 = syBuf[tIdx];
+                    if ((x0 < -24 && x1 < -24) || (x0 > width + 24 && x1 > width + 24)
+                            || (y0 < -24 && y1 < -24) || (y0 > height + 24 && y1 > height + 24))
+                        continue;
+                    const edx = x1 - x0;
+                    const edy = y1 - y0;
+                    if (edx * edx + edy * edy < minLen2)
+                        continue;
+                    const avgZ = (zdBuf[sIdx] + zdBuf[tIdx]) * 0.5;
+                    const st = avgZ < -0.22 ? 0 : (avgZ < 0.28 ? 1 : 2);
+                    const cid = (eClust && e < eClust.length) ? eClust[e] : -1;
+                    const cSlot = cid >= 0 ? (cid % 12) : 12;
+                    scratch[st * 13 + cSlot].push(x0, y0, x1, y1);
+                }
+                const lineWidths = [0.45, 0.68, 0.98];
+                for (let st = 0; st < 3; ++st) {
+                    ctx.lineWidth = lineWidths[st];
+                    const baseOff = st * 13;
+                    for (let cSlot = 0; cSlot < 13; ++cSlot) {
+                        const pts = scratch[baseOff + cSlot];
+                        const pLen = pts.length;
+                        if (pLen === 0)
                             continue;
-                        const avgZ = (zdBuf[sIdx] + zdBuf[tIdx]) * 0.5;
-                        if (avgZ < layer.minZ || avgZ >= layer.maxZ)
-                            continue;
-                        const x0 = sxBuf[sIdx];
-                        const y0 = syBuf[sIdx];
-                        const x1 = sxBuf[tIdx];
-                        const y1 = syBuf[tIdx];
-                        if ((x0 < -24 && x1 < -24) || (x0 > width + 24 && x1 > width + 24)
-                                || (y0 < -24 && y1 < -24) || (y0 > height + 24 && y1 > height + 24))
-                            continue;
-                        const edx = x1 - x0;
-                        const edy = y1 - y0;
-                        if (edx * edx + edy * edy < 0.6)
-                            continue;
-                        const cid = (eClust && e < eClust.length) ? eClust[e] : -1;
-                        const bKey = cid >= 0 ? String(cid % 12) : "m";
-                        if (!colorBatches[bKey]) {
-                            const rawCol = (cid >= 0 && root.resolvedNodeColors[sIdx]) ? root.resolvedNodeColors[sIdx].base : acc;
-                            const fogged = root._mixColor(rawCol, bg, layer.fog);
-                            colorBatches[bKey] = {
-                                "stroke": Qt.rgba(fogged.r, fogged.g, fogged.b, layer.alpha),
-                                "pts": []
-                            };
-                        }
-                        colorBatches[bKey].pts.push(x0, y0, x1, y1);
-                    }
-                    const batchKeys = Object.keys(colorBatches);
-                    for (let bk = 0; bk < batchKeys.length; ++bk) {
-                        const b = colorBatches[batchKeys[bk]];
-                        const pts = b.pts;
-                        ctx.strokeStyle = b.stroke;
+                        if (edgeCols && cSlot < edgeCols.length)
+                            ctx.strokeStyle = activeIdx >= 0 ? edgeCols[cSlot].dim[st] : edgeCols[cSlot].normal[st];
+                        else
+                            ctx.strokeStyle = acc;
                         ctx.beginPath();
                         let segs = 0;
-                        for (let p = 0; p < pts.length; p += 4) {
+                        for (let p = 0; p < pLen; p += 4) {
                             ctx.moveTo(pts[p], pts[p + 1]);
                             ctx.lineTo(pts[p + 2], pts[p + 3]);
                             segs += 1;
@@ -1306,46 +1445,134 @@ Item {
             const hasCurPath = curPath.length > 0;
             const cullPad = Math.max(32, Math.min(120, 20 * scaleR));
 
-            let renderOrder = null;
             if (mode3D) {
-                renderOrder = Array.from(zOrder.subarray(0, nLen));
-                renderOrder.sort((a, b) => zdBuf[a] - zdBuf[b]);
-            }
-
-            for (let pass = 0; pass < 2; ++pass) {
-                if (pass === 0 && !mode3D && !root.isLocal && activeIdx < 0) {
+                let fgList = root._fgOrderScratch;
+                if (!fgList) {
+                    fgList = [];
+                    root._fgOrderScratch = fgList;
+                } else {
+                    fgList.length = 0;
+                }
+                let curNodeIdx = -1;
+                if (hasCurPath) {
+                    for (let k = 0; k < nLen; ++k) {
+                        if (nodes[k].relPath === curPath) {
+                            curNodeIdx = k;
+                            break;
+                        }
+                    }
+                }
+                const zMins = [-99.0, -0.22, 0.28];
+                const zMaxs = [-0.22, 0.28, 99.0];
+                if (!root.isLocal && activeIdx < 0) {
+                    // Pass 0 (3D Fast): 3-stratum batched color-bucket fills with pre-baked depth fog (zero Array.from / sort!)
                     const buckets = root._staticColorBuckets;
-                    for (let bk = 0; bk < buckets.length; ++bk) {
-                        const bucket = buckets[bk];
-                        const idxs = bucket.indices;
-                        const bLen = idxs.length;
-                        ctx.fillStyle = bucket.color;
+                    for (let st = 0; st < 3; ++st) {
+                        const zLo = zMins[st];
+                        const zHi = zMaxs[st];
+                        for (let bk = 0; bk < buckets.length; ++bk) {
+                            const bucket = buckets[bk];
+                            const idxs = bucket.indices;
+                            const bLen = idxs.length;
+                            ctx.fillStyle = st === 0 ? bucket.s0Col : (st === 1 ? bucket.s1Col : bucket.s2Col);
+                            ctx.beginPath();
+                            let queued = 0;
+                            for (let j = 0; j < bLen; ++j) {
+                                const ni = idxs[j];
+                                if (ni === curNodeIdx)
+                                    continue;
+                                const nz = zdBuf[ni];
+                                if (nz < zLo || nz >= zHi)
+                                    continue;
+                                const px = sxBuf[ni];
+                                const py = syBuf[ni];
+                                if (px < -cullPad || px > width + cullPad || py < -cullPad || py > height + cullPad)
+                                    continue;
+                                const r = baseRadBuf[ni] * scaleMul * scBuf[ni];
+                                if (r <= 1.05) {
+                                    ctx.rect(px - r, py - r, r * 2.0, r * 2.0);
+                                } else {
+                                    ctx.moveTo(px + r, py);
+                                    ctx.arc(px, py, r, 0, Math.PI * 2);
+                                }
+                                queued += 1;
+                                if (queued === 512) {
+                                    ctx.fill();
+                                    ctx.beginPath();
+                                    queued = 0;
+                                }
+                            }
+                            if (queued > 0)
+                                ctx.fill();
+                        }
+                    }
+                    const hubs = root._fgHubIndices;
+                    for (let h = 0; h < hubs.length; ++h) {
+                        const hi = hubs[h];
+                        if (hi !== curNodeIdx)
+                            fgList.push(hi);
+                    }
+                    if (curNodeIdx >= 0)
+                        fgList.push(curNodeIdx);
+                } else if (!root.isLocal && activeIdx >= 0) {
+                    const degBuf = root._nodeDegBuf;
+                    const dimCols = [
+                        Qt.rgba(muted.r, muted.g, muted.b, 0.12),
+                        Qt.rgba(muted.r, muted.g, muted.b, 0.16),
+                        Qt.rgba(muted.r, muted.g, muted.b, 0.22)
+                    ];
+                    for (let st = 0; st < 3; ++st) {
+                        const zLo = zMins[st];
+                        const zHi = zMaxs[st];
+                        ctx.fillStyle = dimCols[st];
                         ctx.beginPath();
                         let queued = 0;
-                        for (let j = 0; j < bLen; ++j) {
-                            const ni = idxs[j];
-                            if (hasCurPath && nodes[ni].relPath === curPath)
+                        for (let i = 0; i < nLen; ++i) {
+                            const nz = zdBuf[i];
+                            if (nz < zLo || nz >= zHi)
                                 continue;
-                            const px = sxBuf[ni];
-                            const py = syBuf[ni];
+                            const isFg = (i === activeIdx || i === curNodeIdx
+                                || Boolean(activeNeighbors && activeNeighbors[i])
+                                || Boolean(nodes[i]?.isTagNode)
+                                || ((degBuf && i < degBuf.length ? degBuf[i] : Number(nodes[i]?.degree ?? 0)) >= 10));
+                            if (isFg) {
+                                if (st === 0 || (nz >= zLo && nz < zHi))
+                                    fgList.push(i);
+                                continue;
+                            }
+                            const px = sxBuf[i];
+                            const py = syBuf[i];
                             if (px < -cullPad || px > width + cullPad || py < -cullPad || py > height + cullPad)
                                 continue;
-                            const r = baseRadBuf[ni] * scaleMul;
-                            if (r <= 0.85) {
+                            const r = baseRadBuf[i] * scaleMul * scBuf[i];
+                            if (r <= 1.05) {
                                 ctx.rect(px - r, py - r, r * 2.0, r * 2.0);
                             } else {
                                 ctx.moveTo(px + r, py);
                                 ctx.arc(px, py, r, 0, Math.PI * 2);
                             }
                             queued += 1;
+                            if (queued === 512) {
+                                ctx.fill();
+                                ctx.beginPath();
+                                queued = 0;
+                            }
                         }
                         if (queued > 0)
                             ctx.fill();
                     }
-                    continue;
+                    // Deduplicate fgList if node wasn't added cleanly above: only add once in stride st loop
+                } else {
+                    for (let i = 0; i < nLen; ++i)
+                        fgList.push(i);
                 }
-                for (let oi = 0; oi < nLen; ++oi) {
-                    const i = renderOrder ? renderOrder[oi] : oi;
+
+                // Deduplicate in activeIdx branch if needed? No, nz in [zLo, zHi) partitions 3 strata disjointly,
+                // EXCEPT st===0 test pushed only when in that stratum! So fgList already contains each index at most ONCE!
+                fgList.sort((a, b) => zdBuf[a] - zdBuf[b]);
+                let gradBudget = root._interacting3D ? 0 : 24;
+                for (let oi = 0; oi < fgList.length; ++oi) {
+                    const i = fgList[oi];
                     const n = nodes[i];
                     const ptx = sxBuf[i];
                     const pty = syBuf[i];
@@ -1354,35 +1581,22 @@ Item {
 
                     const isHovered = (i === activeIdx);
                     const isNeighbor = Boolean(activeNeighbors && activeNeighbors[i]);
-                    const isCurrent = (root.currentPath.length > 0 && n.relPath === root.currentPath);
+                    const isCurrent = (i === curNodeIdx) || (hasCurPath && n.relPath === curPath);
                     const isCenter = Boolean(root.isLocal && n.hop === 0);
                     const isTagHub = Boolean(n.isTagNode);
-                    const deg = Number(n.degree ?? 0);
+                    const deg = root._nodeDegBuf && i < root._nodeDegBuf.length ? root._nodeDegBuf[i] : Number(n.degree ?? 0);
                     const isHub = (!root.isLocal && (isTagHub || deg >= 10));
-                    const isForeground = (isHovered || isCurrent || isCenter || isHub);
-                    if (!mode3D && ((pass === 0 && isForeground) || (pass === 1 && !isForeground)))
-                        continue;
-                    if (mode3D && pass === 1)
-                        continue;
-
                     const dimmed = (activeIdx >= 0 && !isHovered && !isNeighbor && !isCurrent);
-                    const depthScale = mode3D ? scBuf[i] : 1.0;
-                    const depthNorm = mode3D ? Math.max(0.0, Math.min(1.0, (zdBuf[i] + 1.0) * 0.5)) : 1.0;
-                    const depthFade = mode3D ? (0.30 + depthNorm * 0.70) : 1.0;
+                    const depthScale = scBuf[i];
+                    const depthNorm = Math.max(0.0, Math.min(1.0, (zdBuf[i] + 1.0) * 0.5));
+                    const depthFade = 0.34 + depthNorm * 0.66;
                     const r = root._nodeRadius(n, m.sizeScale) * scaleR * depthScale * (isHovered ? 1.22 : 1.0);
-                    const cached = root.resolvedNodeColors[i] || {
-                        "base": acc,
-                        "deg2": Qt.rgba(acc.r, acc.g, acc.b, 0.90),
-                        "leaf": Qt.rgba(acc.r, acc.g, acc.b, 0.72),
-                        "isOrphan": false
-                    };
-                    const rawNodeColor = cached.base;
-                    // True 3D atmospheric depth fog (far nodes smoothly blend toward bgSurface)
-                    const nodeColor = (mode3D && !isHovered && !isCurrent)
-                        ? root._mixColor(rawNodeColor, root.bgSurface, 0.36 + depthNorm * 0.64)
-                        : rawNodeColor;
+                    const cached = root.resolvedNodeColors[i];
+                    const rawNodeColor = cached ? cached.base : acc;
+                    const nodeColor = (isHovered || isCurrent)
+                        ? rawNodeColor
+                        : root._mixColor(rawNodeColor, root.bgSurface, 0.36 + depthNorm * 0.64);
 
-                    // Soft glow halo for hovered, current, local center, or zoomed-in non-compact tag hubs
                     const showHalo = !dimmed && (isHovered || isCurrent || isCenter || (!root.compact && isTagHub && root.zoom >= 1.2));
                     if (showHalo) {
                         ctx.beginPath();
@@ -1394,9 +1608,9 @@ Item {
 
                     ctx.beginPath();
                     ctx.arc(ptx, pty, r, 0, Math.PI * 2);
-
-                    let useSphereGrad = mode3D && !isTagHub && !dimmed && r >= 3.4;
+                    const useSphereGrad = !isTagHub && !dimmed && r >= 3.4 && gradBudget > 0;
                     if (useSphereGrad) {
+                        gradBudget -= 1;
                         const baseFill = isHovered ? root.textColor : (isCurrent ? acc : nodeColor);
                         const hiCol = Qt.lighter(baseFill, 1.48);
                         const loCol = Qt.darker(baseFill, 1.55);
@@ -1417,15 +1631,11 @@ Item {
                             ? (dimmed ? Qt.rgba(acc.r, acc.g, acc.b, 0.35) : acc)
                             : (dimmed
                                 ? Qt.rgba(muted.r, muted.g, muted.b, 0.18)
-                                : (isNeighbor ? root.textColor : (n.hop === 1 ? cached.deg2 : cached.leaf)));
+                                : (isNeighbor ? root.textColor : (n.hop === 1 ? (cached?.deg2 ?? nodeColor) : (cached?.leaf ?? nodeColor))));
                     } else if (isHub) {
                         ctx.fillStyle = dimmed
                             ? Qt.rgba(nodeColor.r, nodeColor.g, nodeColor.b, 0.24 * depthFade)
                             : Qt.rgba(nodeColor.r, nodeColor.g, nodeColor.b, depthFade);
-                    } else if (cached.isOrphan) {
-                        ctx.fillStyle = dimmed
-                            ? Qt.rgba(muted.r, muted.g, muted.b, 0.14 * depthFade)
-                            : Qt.rgba(nodeColor.r, nodeColor.g, nodeColor.b, 0.62 * depthFade);
                     } else {
                         ctx.fillStyle = dimmed
                             ? Qt.rgba(muted.r, muted.g, muted.b, 0.15 * depthFade)
@@ -1433,8 +1643,7 @@ Item {
                     }
                     ctx.fill();
 
-                    // Soft specular glint on smaller 3D spheres where radial gradient isn't needed
-                    if (mode3D && !useSphereGrad && !isTagHub && !dimmed && r >= 1.8) {
+                    if (!useSphereGrad && !isTagHub && !dimmed && r >= 1.8) {
                         ctx.beginPath();
                         ctx.arc(ptx - r * 0.26, pty - r * 0.26, r * 0.28, 0, Math.PI * 2);
                         ctx.fillStyle = Qt.rgba(1.0, 1.0, 1.0, 0.22 * depthFade);
@@ -1449,12 +1658,163 @@ Item {
                         ctx.stroke();
                     }
                 }
+            } else {
+                for (let pass = 0; pass < 2; ++pass) {
+                    if (pass === 0 && !root.isLocal && activeIdx < 0) {
+                        const buckets = root._staticColorBuckets;
+                        for (let bk = 0; bk < buckets.length; ++bk) {
+                            const bucket = buckets[bk];
+                            const idxs = bucket.indices;
+                            const bLen = idxs.length;
+                            ctx.fillStyle = bucket.color;
+                            ctx.beginPath();
+                            let queued = 0;
+                            for (let j = 0; j < bLen; ++j) {
+                                const ni = idxs[j];
+                                if (hasCurPath && nodes[ni].relPath === curPath)
+                                    continue;
+                                const px = sxBuf[ni];
+                                const py = syBuf[ni];
+                                if (px < -cullPad || px > width + cullPad || py < -cullPad || py > height + cullPad)
+                                    continue;
+                                const r = baseRadBuf[ni] * scaleMul;
+                                if (r <= 0.85) {
+                                    ctx.rect(px - r, py - r, r * 2.0, r * 2.0);
+                                } else {
+                                    ctx.moveTo(px + r, py);
+                                    ctx.arc(px, py, r, 0, Math.PI * 2);
+                                }
+                                queued += 1;
+                            }
+                            if (queued > 0)
+                                ctx.fill();
+                        }
+                        continue;
+                    }
+                    for (let i = 0; i < nLen; ++i) {
+                        const n = nodes[i];
+                        const ptx = sxBuf[i];
+                        const pty = syBuf[i];
+                        if (ptx < -cullPad || ptx > width + cullPad || pty < -cullPad || pty > height + cullPad)
+                            continue;
+
+                        const isHovered = (i === activeIdx);
+                        const isNeighbor = Boolean(activeNeighbors && activeNeighbors[i]);
+                        const isCurrent = (root.currentPath.length > 0 && n.relPath === root.currentPath);
+                        const isCenter = Boolean(root.isLocal && n.hop === 0);
+                        const isTagHub = Boolean(n.isTagNode);
+                        const deg = Number(n.degree ?? 0);
+                        const isHub = (!root.isLocal && (isTagHub || deg >= 10));
+                        const isForeground = (isHovered || isCurrent || isCenter || isHub);
+                        if ((pass === 0 && isForeground) || (pass === 1 && !isForeground))
+                            continue;
+
+                        const dimmed = (activeIdx >= 0 && !isHovered && !isNeighbor && !isCurrent);
+                        const r = root._nodeRadius(n, m.sizeScale) * scaleR * (isHovered ? 1.22 : 1.0);
+                        const cached = root.resolvedNodeColors[i] || {
+                            "base": acc,
+                            "deg2": Qt.rgba(acc.r, acc.g, acc.b, 0.90),
+                            "leaf": Qt.rgba(acc.r, acc.g, acc.b, 0.72),
+                            "isOrphan": false
+                        };
+                        const nodeColor = cached.base;
+
+                        const showHalo = !dimmed && (isHovered || isCurrent || isCenter || (!root.compact && isTagHub && root.zoom >= 1.2));
+                        if (showHalo) {
+                            ctx.beginPath();
+                            ctx.arc(ptx, pty, r + (isHovered ? 2.0 : (isTagHub ? 1.3 : 1.2)) * Math.min(1.8, Math.sqrt(scaleR)), 0, Math.PI * 2);
+                            ctx.fillStyle = Qt.rgba(nodeColor.r, nodeColor.g, nodeColor.b, isHovered ? 0.28 : (isTagHub ? 0.16 : 0.14));
+                            ctx.fill();
+                        }
+
+                        ctx.beginPath();
+                        ctx.arc(ptx, pty, r, 0, Math.PI * 2);
+                        if (isHovered) {
+                            ctx.fillStyle = root.textColor;
+                        } else if (isCurrent) {
+                            ctx.fillStyle = acc;
+                        } else if (root.isLocal) {
+                            ctx.fillStyle = n.hop === 0
+                                ? (dimmed ? Qt.rgba(acc.r, acc.g, acc.b, 0.35) : acc)
+                                : (dimmed
+                                    ? Qt.rgba(muted.r, muted.g, muted.b, 0.18)
+                                    : (isNeighbor ? root.textColor : (n.hop === 1 ? cached.deg2 : cached.leaf)));
+                        } else if (isHub) {
+                            ctx.fillStyle = dimmed
+                                ? Qt.rgba(nodeColor.r, nodeColor.g, nodeColor.b, 0.24)
+                                : nodeColor;
+                        } else if (cached.isOrphan) {
+                            ctx.fillStyle = dimmed
+                                ? Qt.rgba(muted.r, muted.g, muted.b, 0.14)
+                                : Qt.rgba(nodeColor.r, nodeColor.g, nodeColor.b, 0.62);
+                        } else {
+                            ctx.fillStyle = dimmed
+                                ? Qt.rgba(muted.r, muted.g, muted.b, 0.15)
+                                : (isNeighbor ? root.textColor : Qt.rgba(nodeColor.r, nodeColor.g, nodeColor.b, deg >= 2 ? 0.94 : 0.80));
+                        }
+                        ctx.fill();
+
+                        if (isHovered || isCurrent || (!root.compact && isTagHub && root.zoom >= 1.25)) {
+                            ctx.lineWidth = (isHovered ? 0.95 : 0.75) * Math.min(1.6, Math.sqrt(scaleR));
+                            ctx.strokeStyle = isHovered
+                                ? nodeColor
+                                : (isTagHub ? Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, 0.72) : root.textColor);
+                            ctx.stroke();
+                        }
+                    }
+                }
             }
 
-            // 4. Draw labels (front-to-back with screen-space collision avoidance in 3D)
+            // 4. Draw labels (front-to-back with screen-space collision avoidance in 3D, sparse during active drag)
+            let labelList = null;
+            if (mode3D) {
+                labelList = [];
+                const interacting3D = root._interacting3D;
+                const degBufLbl = root._nodeDegBuf;
+                for (let i = 0; i < nLen; ++i) {
+                    const ptx = sxBuf[i];
+                    const pty = syBuf[i];
+                    if (ptx < -20 || ptx > width + 20 || pty < -20 || pty > height + 20)
+                        continue;
+                    const n = nodes[i];
+                    const isHovered = (i === activeIdx);
+                    const isCurrent = (hasCurPath && n.relPath === curPath);
+                    if (!isHovered && !isCurrent && zdBuf[i] < -0.55)
+                        continue;
+                    const isTagHub = Boolean(n.isTagNode);
+                    if (interacting3D) {
+                        if (isHovered || isCurrent || isTagHub)
+                            labelList.push(i);
+                        continue;
+                    }
+                    const isNeighbor = Boolean(activeNeighbors && activeNeighbors[i]);
+                    const deg = degBufLbl && i < degBufLbl.length ? degBufLbl[i] : Number(n.degree ?? 0);
+                    const isHub = isTagHub || Boolean(n.isHub) || deg >= 8;
+                    let show = false;
+                    if (root.isLocal) {
+                        show = root.compact
+                            ? (isHovered || isCurrent || n.hop === 0 || nodes.length <= 5 || root.zoom >= 1.65)
+                            : (isHovered || isCurrent || n.hop === 0 || n.hop === 1 || root.zoom >= 1.35);
+                    } else if (root.compact) {
+                        show = isHovered || (isTagHub && root.zoom >= 1.35) || (root.zoom >= 2.2 && (isCurrent || isNeighbor || isHub)) || root.zoom >= 4.0;
+                    } else if (activeIdx >= 0) {
+                        show = isHovered || isNeighbor || isTagHub || deg >= 15;
+                    } else {
+                        show = (isCurrent || isTagHub || deg >= 15 || nodes.length <= 36
+                            || (root.zoom >= 1.65 && isHub)
+                            || (root.zoom >= 2.15 && deg >= 2)
+                            || root.zoom >= 2.8);
+                    }
+                    if (show)
+                        labelList.push(i);
+                }
+                if (labelList.length > 1)
+                    labelList.sort((a, b) => zdBuf[b] - zdBuf[a]);
+            }
             const placedLabels = mode3D ? [] : null;
-            for (let step = 0; step < nLen; ++step) {
-                const i = renderOrder ? renderOrder[nLen - 1 - step] : step;
+            const labelCount = labelList ? labelList.length : nLen;
+            for (let step = 0; step < labelCount; ++step) {
+                const i = labelList ? labelList[step] : step;
                 const n = nodes[i];
                 const ptx = sxBuf[i];
                 const pty = syBuf[i];
@@ -1468,21 +1828,23 @@ Item {
                 const deg = Number(n.degree ?? 0);
                 const isHub = isTagHub || Boolean(n.isHub) || deg >= 8;
 
-                let showLabel = false;
-                if (root.isLocal) {
-                    showLabel = root.compact
-                        ? (isHovered || isCurrent || n.hop === 0 || nodes.length <= 5 || root.zoom >= 1.65)
-                        : (isHovered || isCurrent || n.hop === 0 || n.hop === 1 || root.zoom >= 1.35);
-                } else if (root.compact) {
-                    showLabel = isHovered || (isTagHub && root.zoom >= 1.35) || (root.zoom >= 2.2 && (isCurrent || isNeighbor || isHub)) || root.zoom >= 4.0;
-                } else {
-                    if (activeIdx >= 0) {
-                        showLabel = isHovered || isNeighbor || isTagHub || deg >= 15;
+                let showLabel = Boolean(labelList);
+                if (!labelList) {
+                    if (root.isLocal) {
+                        showLabel = root.compact
+                            ? (isHovered || isCurrent || n.hop === 0 || nodes.length <= 5 || root.zoom >= 1.65)
+                            : (isHovered || isCurrent || n.hop === 0 || n.hop === 1 || root.zoom >= 1.35);
+                    } else if (root.compact) {
+                        showLabel = isHovered || (isTagHub && root.zoom >= 1.35) || (root.zoom >= 2.2 && (isCurrent || isNeighbor || isHub)) || root.zoom >= 4.0;
                     } else {
-                        showLabel = (isCurrent || isTagHub || deg >= 15 || nodes.length <= 36
-                            || (root.zoom >= 1.65 && isHub)
-                            || (root.zoom >= 2.15 && deg >= 2)
-                            || root.zoom >= 2.8);
+                        if (activeIdx >= 0) {
+                            showLabel = isHovered || isNeighbor || isTagHub || deg >= 15;
+                        } else {
+                            showLabel = (isCurrent || isTagHub || deg >= 15 || nodes.length <= 36
+                                || (root.zoom >= 1.65 && isHub)
+                                || (root.zoom >= 2.15 && deg >= 2)
+                                || root.zoom >= 2.8);
+                        }
                     }
                 }
 
@@ -1543,113 +1905,59 @@ Item {
                         : (isCurrent ? acc : Qt.rgba(root.textColor.r, root.textColor.g, root.textColor.b, depthFade)));
                 ctx.fillText(label, lx, ly);
             }
+            if (root.electricCurrentActive && !(mode3D && root._interacting3D) && root.lastElectricArcCount === 0)
+                electricCanvas.requestPaint();
         }
     }
 
-    // ─── Delicate Electric Current Overlay Canvas (Strictly 1 arc in Local Graph, 1 arc per cluster in Vault Graph, sized smaller than notes) ───
+    // ─── Traveling Dot Pulse Overlay Canvas (Strictly 1 dot in Local Graph, 1 dot per cluster in Vault Graph, center -> note -> center, sized smaller than notes) ───
     Canvas {
         id: electricCanvas
         anchors.fill: parent
         antialiasing: true
         visible: root.electricCurrentActive
 
-        function _drawElectricArc(ctx, rawX0, rawY0, rawX1, rawY1, rA, rB, col, now, seed, phaseT, compactScale, fadeAlpha) {
+        function _drawTravelDot(ctx, cx, cy, nx, ny, rCenter, rNote, col, roundTripT, compactScale, fadeAlpha) {
             const alpha = Math.max(0.0, Math.min(1.0, fadeAlpha));
             if (alpha < 0.04) return false;
-            const fullDx = rawX1 - rawX0;
-            const fullDy = rawY1 - rawY0;
+            const fullDx = nx - cx;
+            const fullDy = ny - cy;
             const fullDist = Math.sqrt(fullDx * fullDx + fullDy * fullDy);
-            const padA = Math.max(1.2, rA + 1.4);
-            const padB = Math.max(1.2, rB + 1.4);
+            const padA = Math.max(0.8, rCenter * 0.75);
+            const padB = Math.max(0.8, rNote * 0.75);
             const span = fullDist - padA - padB;
-            if (span < 6.0) return false;
+            if (span < 4.0) return false;
 
             const ux = fullDx / fullDist;
             const uy = fullDy / fullDist;
-            const x0 = rawX0 + ux * padA;
-            const y0 = rawY0 + uy * padA;
-            const x1 = rawX1 - ux * padB;
-            const y1 = rawY1 - uy * padB;
-            const dx = x1 - x0;
-            const dy = y1 - y0;
-            const nx = -uy;
-            const ny = ux;
+            const startX = cx + ux * padA;
+            const startY = cy + uy * padA;
+            const endX = nx - ux * padB;
+            const endY = ny - uy * padB;
 
-            const minNoteR = Math.max(0.40, Math.min(rA, rB));
-            const outerW = Math.min(minNoteR * 0.42, 1.45 * compactScale);
-            const midW = Math.min(minNoteR * 0.24, 0.80 * compactScale);
-            const coreW = Math.min(minNoteR * 0.12, 0.42 * compactScale);
-            const baseAmp = Math.min(minNoteR * 0.34, Math.max(0.40, span * 0.015)) * compactScale;
-            const segs = Math.max(5, Math.min(10, Math.floor(span / 18)));
+            // Round-trip progress: 0 -> 1 (center -> note) -> 0 (note -> center) before switching to next note
+            const rawTri = roundTripT < 0.5 ? (roundTripT * 2.0) : ((1.0 - roundTripT) * 2.0);
+            const u = rawTri * rawTri * (3.0 - 2.0 * rawTri);
+            const px = startX + (endX - startX) * u;
+            const py = startY + (endY - startY) * u;
 
-            function plasmaOffset(t, strokeIdx, ampScale) {
-                if (t <= 0.001 || t >= 0.999) return 0;
-                const env = Math.sin(t * Math.PI);
-                const sPos = t * segs;
-                return Math.sin(now * (6.2 + strokeIdx * 1.1) + seed * 1.9 + sPos * 2.1)
-                    * Math.cos(now * 4.8 - seed + sPos * 1.5)
-                    * baseAmp * env * ampScale;
-            }
-
-            // Delicate 3-layer filament strictly thinner than the connected note circles
-            for (let stroke = 0; stroke < 3; ++stroke) {
-                const ampScale = stroke === 0 ? 1.0 : (stroke === 1 ? 0.68 : 0.32);
-                ctx.beginPath();
-                for (let s = 0; s <= segs; ++s) {
-                    const t = s / segs;
-                    const jitter = (s === 0 || s === segs) ? 0 : plasmaOffset(t, stroke, ampScale);
-                    const px = x0 + dx * t + nx * jitter;
-                    const py = y0 + dy * t + ny * jitter;
-                    if (s === 0) ctx.moveTo(px, py);
-                    else ctx.lineTo(px, py);
-                }
-                if (stroke === 0) {
-                    ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, 0.16 * alpha);
-                    ctx.lineWidth = Math.max(0.32, outerW);
-                } else if (stroke === 1) {
-                    const mid = Qt.lighter(col, 1.15);
-                    ctx.strokeStyle = Qt.rgba(mid.r, mid.g, mid.b, 0.44 * alpha);
-                    ctx.lineWidth = Math.max(0.22, midW);
-                } else {
-                    ctx.strokeStyle = Qt.rgba(1.0, 1.0, 1.0, 0.64 * alpha);
-                    ctx.lineWidth = Math.max(0.16, coreW);
-                }
-                ctx.lineCap = "round";
-                ctx.lineJoin = "round";
-                ctx.stroke();
-            }
-
-            // Single refined traveling charge spark strictly smaller than the note radius
-            const pos = phaseT % 1.0;
-            const tailT = Math.max(0.0, pos - 0.12);
-            const midT = (pos + tailT) * 0.5;
-            const pJ = plasmaOffset(pos, 2, 0.32);
-            const mJ = plasmaOffset(midT, 2, 0.32);
-            const tJ = plasmaOffset(tailT, 2, 0.32);
-            const px = x0 + dx * pos + nx * pJ;
-            const py = y0 + dy * pos + ny * pJ;
-            const mx = x0 + dx * midT + nx * mJ;
-            const my = y0 + dy * midT + ny * mJ;
-            const tx = x0 + dx * tailT + nx * tJ;
-            const ty = y0 + dy * tailT + ny * tJ;
+            const minNoteR = Math.max(0.45, Math.min(rCenter, rNote));
+            const dotR = Math.max(0.32, Math.min(minNoteR * 0.44, 1.32 * compactScale));
+            const haloR = Math.min(minNoteR * 0.80, dotR * 1.95);
 
             ctx.beginPath();
-            ctx.moveTo(tx, ty);
-            ctx.lineTo(mx, my);
-            ctx.lineTo(px, py);
-            ctx.strokeStyle = Qt.rgba(1.0, 1.0, 1.0, 0.58 * alpha);
-            ctx.lineWidth = Math.max(0.22, midW);
-            ctx.stroke();
-
-            const sparkOuterR = Math.max(0.28, Math.min(minNoteR * 0.28, 1.05 * compactScale));
-            const sparkInnerR = Math.max(0.18, Math.min(minNoteR * 0.15, 0.56 * compactScale));
-            ctx.beginPath();
-            ctx.arc(px, py, sparkOuterR, 0, Math.PI * 2);
-            ctx.fillStyle = Qt.rgba(col.r, col.g, col.b, 0.34 * alpha);
+            ctx.arc(px, py, haloR, 0, Math.PI * 2);
+            ctx.fillStyle = Qt.rgba(col.r, col.g, col.b, 0.30 * alpha);
             ctx.fill();
+
             ctx.beginPath();
-            ctx.arc(px, py, sparkInnerR, 0, Math.PI * 2);
-            ctx.fillStyle = Qt.rgba(1.0, 1.0, 1.0, 0.84 * alpha);
+            ctx.arc(px, py, dotR, 0, Math.PI * 2);
+            ctx.fillStyle = Qt.rgba(
+                Math.min(1.0, col.r * 0.35 + 0.65),
+                Math.min(1.0, col.g * 0.35 + 0.65),
+                Math.min(1.0, col.b * 0.35 + 0.65),
+                0.94 * alpha
+            );
             ctx.fill();
             return true;
         }
@@ -1660,23 +1968,28 @@ Item {
             const ctx = getContext("2d");
             if (!ctx) return;
             ctx.clearRect(0, 0, width, height);
+            if (root.is3D && root._interacting3D) {
+                root.lastElectricArcCount = 0;
+                return;
+            }
             root.electricPaintCount += 1;
 
+            const nodes = root.graphData?.nodes;
             const sxBuf = root._screenXBuf;
             const syBuf = root._screenYBuf;
             const scBuf = root._screenScaleBuf;
             const baseRadBuf = root._baseRadBuf;
+            const degBuf = root._nodeDegBuf;
             const eSrc = root._edgeSrcBuf;
             const eDst = root._edgeDstBuf;
             const isOrph = root._isOrphanBuf;
             const eLen = root.resolvedEdges.length;
-            if (!sxBuf || !syBuf || !eSrc || !eDst || eLen <= 0) {
+            if (!nodes || !sxBuf || !syBuf || !eSrc || !eDst || eLen <= 0) {
                 root.lastElectricArcCount = 0;
                 return;
             }
 
-            const now = root._electricPhase * 2.7;
-            const compactScale = root.compact ? 0.72 : 0.95;
+            const compactScale = root.compact ? 0.74 : 0.95;
             const activeIdx = root.draggedIndex >= 0 ? root.draggedIndex : root.hoveredIndex;
             const acc = root.accentColor;
             const m = root._viewportMetrics();
@@ -1687,12 +2000,12 @@ Item {
             const nodeScreenRadius = function(idx) {
                 const b = (baseRadBuf && idx < baseRadBuf.length) ? baseRadBuf[idx] : 1.4;
                 const d = (mode3D && scBuf && idx < scBuf.length) ? scBuf[idx] : 1.0;
-                return Math.max(0.40, b * scaleMul * d);
+                return Math.max(0.45, b * scaleMul * d);
             };
             const depthAttenuation = function(sIdx, tIdx) {
                 if (!mode3D || !zdBuf) return 1.0;
                 const avgZ = (zdBuf[sIdx] + zdBuf[tIdx]) * 0.5;
-                return Math.max(0.22, Math.min(1.0, 0.65 + avgZ * 0.45));
+                return Math.max(0.24, Math.min(1.0, 0.68 + avgZ * 0.42));
             };
             const edgeVisible = function(e) {
                 const sIdx = eSrc[e];
@@ -1707,15 +2020,24 @@ Item {
                 const rB = nodeScreenRadius(tIdx);
                 const dx = x1 - x0;
                 const dy = y1 - y0;
-                return Math.sqrt(dx * dx + dy * dy) > (rA + rB + 8.0);
+                return (dx * dx + dy * dy) > ((rA + rB + 6.0) * (rA + rB + 6.0));
+            };
+            const hubScore = function(idx) {
+                const n = nodes[idx];
+                const d = (degBuf && idx < degBuf.length) ? degBuf[idx] : Number(n?.degree ?? 0);
+                return (Boolean(n?.isTagNode) ? 100000 : 0) + d;
             };
 
             let drawn = 0;
             if (root.isLocal) {
-                // Local Graph: strictly 1 electric current arc total
+                // Local Graph: strictly 1 circular dot gliding center -> note -> center, then switching notes
+                const cycle = root._electricPhase * 0.26;
+                const gen = Math.floor(cycle);
+                const localT = cycle - gen;
+                const fadeAlpha = 0.45 + 0.55 * Math.sin(localT * Math.PI);
                 let chosenEdge = -1;
-                let phaseT = (root._electricPhase * 0.42) % 1.0;
-                let fadeAlpha = 0.94;
+                let centerIdx = -1;
+                let noteIdx = -1;
 
                 if (activeIdx >= 0) {
                     const inc = [];
@@ -1724,84 +2046,124 @@ Item {
                             inc.push(e);
                     }
                     if (inc.length > 0) {
-                        const cycle = root._electricPhase * 0.36;
-                        const gen = Math.floor(cycle);
-                        const localT = cycle - gen;
                         chosenEdge = inc[gen % inc.length];
-                        phaseT = localT;
-                        fadeAlpha = Math.max(0.25, Math.sin(localT * Math.PI));
+                        centerIdx = activeIdx;
+                        noteIdx = eSrc[chosenEdge] === activeIdx ? eDst[chosenEdge] : eSrc[chosenEdge];
                     }
                 }
                 if (chosenEdge < 0) {
-                    const cycle = root._electricPhase * 0.32;
-                    const gen = Math.floor(cycle);
-                    const localT = cycle - gen;
-                    fadeAlpha = Math.sin(localT * Math.PI);
-                    phaseT = localT;
-                    for (let off = 0; off < eLen; ++off) {
-                        const cand = (gen + off) % eLen;
-                        if (edgeVisible(cand)) {
-                            chosenEdge = cand;
-                            break;
+                    const hubCands = [];
+                    const fallbackCands = [];
+                    for (let e = 0; e < eLen; ++e) {
+                        if (!edgeVisible(e)) continue;
+                        const s = eSrc[e], t = eDst[e];
+                        if ((nodes[s]?.hop ?? 99) === 0 || (nodes[t]?.hop ?? 99) === 0)
+                            hubCands.push(e);
+                        else
+                            fallbackCands.push(e);
+                    }
+                    const pool = hubCands.length > 0 ? hubCands : fallbackCands;
+                    if (pool.length > 0) {
+                        chosenEdge = pool[gen % pool.length];
+                        const s = eSrc[chosenEdge], t = eDst[chosenEdge];
+                        const sHop = Number(nodes[s]?.hop ?? 99);
+                        const tHop = Number(nodes[t]?.hop ?? 99);
+                        if (tHop < sHop || (tHop === sHop && hubScore(t) > hubScore(s))) {
+                            centerIdx = t; noteIdx = s;
+                        } else {
+                            centerIdx = s; noteIdx = t;
                         }
                     }
                 }
-                if (chosenEdge >= 0) {
-                    const sIdx = eSrc[chosenEdge];
-                    const tIdx = eDst[chosenEdge];
-                    const col = root.resolvedNodeColors[sIdx]?.base ?? acc;
-                    if (_drawElectricArc(ctx, sxBuf[sIdx], syBuf[sIdx], sxBuf[tIdx], syBuf[tIdx],
-                            nodeScreenRadius(sIdx), nodeScreenRadius(tIdx),
-                            col, now, chosenEdge + 1, phaseT, compactScale, fadeAlpha)) {
+                if (chosenEdge >= 0 && centerIdx >= 0 && noteIdx >= 0) {
+                    const col = root.resolvedNodeColors[noteIdx]?.base ?? root.resolvedNodeColors[centerIdx]?.base ?? acc;
+                    if (_drawTravelDot(ctx, sxBuf[centerIdx], syBuf[centerIdx], sxBuf[noteIdx], syBuf[noteIdx],
+                            nodeScreenRadius(centerIdx), nodeScreenRadius(noteIdx),
+                            col, localT, compactScale, fadeAlpha)) {
                         drawn = 1;
                     }
                 }
             } else {
-                // Vault Graph: strictly 1 electric current arc per note cluster
+                // Vault Graph: strictly 1 circular dot per cluster gliding hub center -> note -> hub center
                 const buckets = root._clusterEdgeBuckets;
-                for (let b = 0; b < buckets.length; ++b) {
-                    const bEdges = buckets[b].edges;
+                if (!root._clusterHubEdges || root._clusterHubEdges.length !== buckets.length) {
+                    const built = new Array(buckets.length);
+                    for (let b = 0; b < buckets.length; ++b) {
+                        const be = buckets[b].edges;
+                        let bestHub = -1;
+                        let bestSc = -1;
+                        for (let k = 0; k < be.length; ++k) {
+                            const e = be[k];
+                            const s = eSrc[e], t = eDst[e];
+                            const scS = hubScore(s);
+                            if (scS > bestSc) { bestSc = scS; bestHub = s; }
+                            const scT = hubScore(t);
+                            if (scT > bestSc) { bestSc = scT; bestHub = t; }
+                        }
+                        const hEdges = [];
+                        if (bestHub >= 0) {
+                            for (let k = 0; k < be.length; ++k) {
+                                const e = be[k];
+                                if (eSrc[e] === bestHub || eDst[e] === bestHub)
+                                    hEdges.push(e);
+                            }
+                        }
+                        built[b] = {
+                            "hubIdx": bestHub,
+                            "edges": hEdges.length > 0 ? new Int32Array(hEdges) : be
+                        };
+                    }
+                    root._clusterHubEdges = built;
+                }
+                const hubBuckets = root._clusterHubEdges;
+                for (let b = 0; b < hubBuckets.length; ++b) {
+                    const hb = hubBuckets[b];
+                    const bEdges = hb.edges;
                     if (!bEdges || bEdges.length === 0)
                         continue;
+                    const cycle = root._electricPhase * 0.26 + b * 0.31;
+                    const gen = Math.floor(cycle);
+                    const localT = cycle - gen;
+                    const fadeAlpha = 0.42 + 0.58 * Math.sin(localT * Math.PI);
                     let chosenEdge = -1;
-                    let phaseT = 0.0;
-                    let fadeAlpha = 0.9;
+                    let centerIdx = -1;
+                    let noteIdx = -1;
 
                     if (activeIdx >= 0) {
-                        for (let k = 0; k < bEdges.length; ++k) {
-                            const e = bEdges[k];
-                            if ((eSrc[e] === activeIdx || eDst[e] === activeIdx) && edgeVisible(e)) {
-                                chosenEdge = e;
-                                phaseT = (root._electricPhase * 0.45 + b * 0.19) % 1.0;
-                                fadeAlpha = 0.96;
-                                break;
-                            }
+                        const rawAll = buckets[b].edges;
+                        const activeInc = [];
+                        for (let k = 0; k < rawAll.length; ++k) {
+                            const e = rawAll[k];
+                            if ((eSrc[e] === activeIdx || eDst[e] === activeIdx) && edgeVisible(e))
+                                activeInc.push(e);
+                        }
+                        if (activeInc.length > 0) {
+                            chosenEdge = activeInc[gen % activeInc.length];
+                            centerIdx = activeIdx;
+                            noteIdx = eSrc[chosenEdge] === activeIdx ? eDst[chosenEdge] : eSrc[chosenEdge];
                         }
                     }
                     if (chosenEdge < 0) {
-                        const cycle = root._electricPhase * 0.28 + b * 0.31;
-                        const gen = Math.floor(cycle);
-                        const localT = cycle - gen;
-                        fadeAlpha = Math.sin(localT * Math.PI);
-                        if (fadeAlpha < 0.05)
-                            continue;
-                        phaseT = localT;
                         const bLen = bEdges.length;
                         for (let off = 0; off < bLen; ++off) {
-                            const cand = bEdges[(gen + off * 3) % bLen];
+                            const cand = bEdges[(gen + off) % bLen];
                             if (edgeVisible(cand)) {
                                 chosenEdge = cand;
+                                const s = eSrc[cand], t = eDst[cand];
+                                if (t === hb.hubIdx || (s !== hb.hubIdx && hubScore(t) > hubScore(s))) {
+                                    centerIdx = t; noteIdx = s;
+                                } else {
+                                    centerIdx = s; noteIdx = t;
+                                }
                                 break;
                             }
                         }
                     }
-                    if (chosenEdge >= 0) {
-                        const sIdx = eSrc[chosenEdge];
-                        const tIdx = eDst[chosenEdge];
-                        const col = root.resolvedNodeColors[sIdx]?.base ?? acc;
-                        if (_drawElectricArc(ctx, sxBuf[sIdx], syBuf[sIdx], sxBuf[tIdx], syBuf[tIdx],
-                                nodeScreenRadius(sIdx), nodeScreenRadius(tIdx),
-                                col, now, chosenEdge + 1 + b * 11, phaseT, compactScale, fadeAlpha * depthAttenuation(sIdx, tIdx))) {
+                    if (chosenEdge >= 0 && centerIdx >= 0 && noteIdx >= 0) {
+                        const col = root.resolvedNodeColors[noteIdx]?.base ?? root.resolvedNodeColors[centerIdx]?.base ?? acc;
+                        if (_drawTravelDot(ctx, sxBuf[centerIdx], syBuf[centerIdx], sxBuf[noteIdx], syBuf[noteIdx],
+                                nodeScreenRadius(centerIdx), nodeScreenRadius(noteIdx),
+                                col, localT, compactScale, fadeAlpha * depthAttenuation(centerIdx, noteIdx))) {
                             drawn += 1;
                         }
                     }
@@ -1848,6 +2210,10 @@ Item {
 
         onPositionChanged: mouse => {
             if (!pressed) {
+                const nowMs = Date.now();
+                if (nowMs - root._lastHoverProbeMs < 28)
+                    return;
+                root._lastHoverProbeMs = nowMs;
                 const hit = root.findNodeAtScreen(mouse.x, mouse.y);
                 if (hit !== root.hoveredIndex) {
                     root.hoveredIndex = hit;
@@ -1870,6 +2236,7 @@ Item {
                 // Viewport-calibrated zoom-compensated 3D orbit (calm, controllable pixel speed at every zoom level)
                 if (root.autoRotate3D && movedSignificantly)
                     root.autoRotate3D = false;
+                root.mark3DInteracting();
                 const m3 = root._viewportMetrics();
                 const orbitSpeed = 1.0 / Math.max(150.0, m3.radius3D * 1.45 * Math.max(1.0, root.zoom));
                 const dYaw = stepDx * orbitSpeed;
@@ -1878,7 +2245,7 @@ Item {
                 root.rotPitch = Math.max(-1.42, Math.min(1.42, root.rotPitch + dPitch));
                 root._velYaw = dYaw * 0.48;
                 root._velPitch = dPitch * 0.48;
-                root.requestPaint();
+                root.scheduleMotionPaint();
             } else if (root.draggedIndex >= 0 && root.draggedIndex < root.nodePositions.length) {
                 const norm = root._normalizedFromScreen(mouse.x, mouse.y);
                 const prev = root.nodePositions[root.draggedIndex];
@@ -1907,12 +2274,14 @@ Item {
                         }
                     }
                 }
-                root.requestPaint();
+                root.scheduleMotionPaint();
             } else {
                 // Exact 1:1 screen-pixel pan (stays locked to pointer at any zoom level, zero speed explosion)
+                if (root.is3D)
+                    root.mark3DInteracting();
                 root.panX += stepDx;
                 root.panY += stepDy;
-                root.requestPaint();
+                root.scheduleMotionPaint();
             }
         }
 
@@ -1922,11 +2291,14 @@ Item {
             if (!movedSignificantly) {
                 root._velYaw = 0.0;
                 root._velPitch = 0.0;
+                root._interacting3D = false;
                 const hit = wasDraggingNode >= 0 ? wasDraggingNode : root.findNodeAtScreen(mouse.x, mouse.y);
                 const g = root.graphData;
                 if (hit >= 0 && g && Array.isArray(g.nodes) && hit < g.nodes.length) {
                     root.nodeActivated(g.nodes[hit]);
                 }
+            } else if (root.is3D && Math.abs(root._velYaw) <= 0.00035 && Math.abs(root._velPitch) <= 0.00035) {
+                root._interacting3D = false;
             }
             root.requestPaint();
         }
@@ -1942,6 +2314,8 @@ Item {
             const delta = Math.max(-180, Math.min(180, wheel.angleDelta.y));
             if (delta === 0)
                 return;
+            if (root.is3D)
+                root.mark3DInteracting();
             const factor = Math.pow(1.0018, delta);
             root.zoomBy(factor, wheel.x, wheel.y);
             wheel.accepted = true;
