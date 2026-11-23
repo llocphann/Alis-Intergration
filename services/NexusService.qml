@@ -140,8 +140,11 @@ Item {
     readonly property var defaultCardOrder: ["explorer", "localGraph", "calendar", "vaultGraph", "context"]
     property var cardOrder: ["explorer", "localGraph", "calendar", "vaultGraph", "context"]
     property var userShortcuts: ({})
+    property bool _workspacePrefsLoaded: false
 
     function _saveWorkspacePrefs(): void {
+        if (!root._workspacePrefsLoaded)
+            return;
         try {
             const payload = JSON.stringify({
                 "version": 3,
@@ -1573,7 +1576,15 @@ Item {
             return;
         Quickshell.clipboardText = s;
         if (Quickshell.env("ALIS_NEXUS_DISABLE_WL_COPY") !== "1") {
-            Quickshell.execDetached(["wl-copy", s]);
+            const nd = String(Quickshell.shellPath("scripts/native-dispatch") ?? "").replace(/^(?:file:\/\/|qs:)/, "");
+            Quickshell.execDetached([
+                "/usr/bin/bash",
+                "-c",
+                "if [ -x \"$1\" ]; then exec \"$1\" clipboard copy -- \"$2\"; elif command -v wl-copy >/dev/null 2>&1; then exec wl-copy -- \"$2\"; fi",
+                "alis-nexus-copy",
+                nd,
+                s
+            ]);
         }
         root.vimStatusMessage = label + ": " + s;
     }
@@ -4806,11 +4817,87 @@ Item {
         }
     }
 
+    Timer {
+        id: preWriteProbeTimeout
+        interval: 4000
+        repeat: false
+        onTriggered: {
+            if (preWriteProbeProc.running) {
+                try { preWriteProbeProc.signal(15); } catch (_e) {}
+                preWriteProbeProc.running = false;
+            }
+            if (!preWriteProbeProc._finalized && preWriteProbeProc.pendingReq) {
+                preWriteProbeProc._exited = true;
+                preWriteProbeProc._exitCode = 1;
+                preWriteProbeProc._stdoutDone = true;
+                preWriteProbeProc._maybeFinalize();
+            }
+        }
+    }
+
+    Timer {
+        id: preWriteProbeFlushTimer
+        interval: 60
+        repeat: false
+        onTriggered: {
+            if (preWriteProbeProc._exited && !preWriteProbeProc._finalized) {
+                preWriteProbeProc._stdoutDone = true;
+                preWriteProbeProc._maybeFinalize();
+            }
+        }
+    }
+
     Process {
         id: preWriteProbeProc
         property var pendingReq: null
-        stdout: StdioCollector { id: preWriteProbeStdout }
+        property bool _startObserved: false
+        property bool _exited: false
+        property int _exitCode: 0
+        property bool _stdoutDone: false
+        property bool _finalized: false
+        stdout: StdioCollector {
+            id: preWriteProbeStdout
+            onStreamFinished: {
+                preWriteProbeProc._stdoutDone = true;
+                preWriteProbeProc._maybeFinalize();
+            }
+        }
+        onStarted: {
+            preWriteProbeProc._startObserved = true;
+            preWriteProbeProc._exited = false;
+            preWriteProbeProc._exitCode = 0;
+            preWriteProbeProc._stdoutDone = false;
+            preWriteProbeProc._finalized = false;
+            preWriteProbeFlushTimer.stop();
+            preWriteProbeTimeout.restart();
+        }
+        onRunningChanged: {
+            if (running) {
+                preWriteProbeProc._startObserved = false;
+                return;
+            }
+            if (!preWriteProbeProc._startObserved && preWriteProbeProc.pendingReq && !preWriteProbeProc._finalized) {
+                preWriteProbeProc._exited = true;
+                preWriteProbeProc._exitCode = 1;
+                preWriteProbeProc._stdoutDone = true;
+                preWriteProbeProc._maybeFinalize();
+            }
+        }
         onExited: (code, status) => {
+            preWriteProbeProc._exited = true;
+            preWriteProbeProc._exitCode = code;
+            if (preWriteProbeProc._stdoutDone)
+                preWriteProbeProc._maybeFinalize();
+            else
+                preWriteProbeFlushTimer.restart();
+        }
+        function _maybeFinalize(): void {
+            if (!preWriteProbeProc._exited || preWriteProbeProc._finalized || !preWriteProbeProc._stdoutDone)
+                return;
+            preWriteProbeProc._finalized = true;
+            preWriteProbeFlushTimer.stop();
+            preWriteProbeTimeout.stop();
+            const code = preWriteProbeProc._exitCode;
             const req = preWriteProbeProc.pendingReq;
             preWriteProbeProc.pendingReq = null;
             if (!root._live || !req)
@@ -4831,13 +4918,55 @@ Item {
         }
     }
 
+    Timer {
+        id: conflictCheckFlushTimer
+        interval: 60
+        repeat: false
+        onTriggered: {
+            if (conflictCheckProc._exited && !conflictCheckProc._finalized) {
+                conflictCheckProc._stdoutDone = true;
+                conflictCheckProc._maybeFinalize();
+            }
+        }
+    }
+
     Process {
         id: conflictCheckProc
         property string targetPath: ""
         property string expectedSha: ""
         property double expectedMtime: 0
-        stdout: StdioCollector { id: conflictCheckStdout }
+        property bool _exited: false
+        property int _exitCode: 0
+        property bool _stdoutDone: false
+        property bool _finalized: false
+        stdout: StdioCollector {
+            id: conflictCheckStdout
+            onStreamFinished: {
+                conflictCheckProc._stdoutDone = true;
+                conflictCheckProc._maybeFinalize();
+            }
+        }
+        onStarted: {
+            conflictCheckProc._exited = false;
+            conflictCheckProc._exitCode = 0;
+            conflictCheckProc._stdoutDone = false;
+            conflictCheckProc._finalized = false;
+            conflictCheckFlushTimer.stop();
+        }
         onExited: (code, status) => {
+            conflictCheckProc._exited = true;
+            conflictCheckProc._exitCode = code;
+            if (conflictCheckProc._stdoutDone)
+                conflictCheckProc._maybeFinalize();
+            else
+                conflictCheckFlushTimer.restart();
+        }
+        function _maybeFinalize(): void {
+            if (!conflictCheckProc._exited || conflictCheckProc._finalized || !conflictCheckProc._stdoutDone)
+                return;
+            conflictCheckProc._finalized = true;
+            conflictCheckFlushTimer.stop();
+            const code = conflictCheckProc._exitCode;
             if (!root._live || code !== 0 || root.currentPath !== conflictCheckProc.targetPath)
                 return;
             try {
@@ -5339,14 +5468,57 @@ Item {
         onTriggered: {
             if (secondaryDocProc.running)
                 secondaryDocProc.running = false;
+            secondaryDocFlushTimer.stop();
+        }
+    }
+
+    Timer {
+        id: secondaryDocFlushTimer
+        interval: 60
+        repeat: false
+        onTriggered: {
+            if (secondaryDocProc._exited && !secondaryDocProc._finalized) {
+                secondaryDocProc._stdoutDone = true;
+                secondaryDocProc._maybeFinalize();
+            }
         }
     }
 
     Process {
         id: secondaryDocProc
-        stdout: StdioCollector { id: secondaryDocStdout }
+        property bool _exited: false
+        property int _exitCode: 0
+        property bool _stdoutDone: false
+        property bool _finalized: false
+        stdout: StdioCollector {
+            id: secondaryDocStdout
+            onStreamFinished: {
+                secondaryDocProc._stdoutDone = true;
+                secondaryDocProc._maybeFinalize();
+            }
+        }
+        onStarted: {
+            secondaryDocProc._exited = false;
+            secondaryDocProc._exitCode = 0;
+            secondaryDocProc._stdoutDone = false;
+            secondaryDocProc._finalized = false;
+            secondaryDocFlushTimer.stop();
+        }
         onExited: (code, status) => {
+            secondaryDocProc._exited = true;
+            secondaryDocProc._exitCode = code;
+            if (secondaryDocProc._stdoutDone)
+                secondaryDocProc._maybeFinalize();
+            else
+                secondaryDocFlushTimer.restart();
+        }
+        function _maybeFinalize(): void {
+            if (!secondaryDocProc._exited || secondaryDocProc._finalized || !secondaryDocProc._stdoutDone)
+                return;
+            secondaryDocProc._finalized = true;
+            secondaryDocFlushTimer.stop();
             secondaryDocTimeout.stop();
+            const code = secondaryDocProc._exitCode;
             try {
                 const payload = JSON.parse(secondaryDocStdout.text);
                 if (code === 0 && payload && payload.ok) {
@@ -5365,16 +5537,59 @@ Item {
         onTriggered: {
             if (previewProc.running)
                 previewProc.running = false;
+            previewFlushTimer.stop();
             root.hoverPreviewLoading = false;
+        }
+    }
+
+    Timer {
+        id: previewFlushTimer
+        interval: 60
+        repeat: false
+        onTriggered: {
+            if (previewProc._exited && !previewProc._finalized) {
+                previewProc._stdoutDone = true;
+                previewProc._maybeFinalize();
+            }
         }
     }
 
     Process {
         id: previewProc
         property string targetKey: ""
-        stdout: StdioCollector { id: previewStdout }
+        property bool _exited: false
+        property int _exitCode: 0
+        property bool _stdoutDone: false
+        property bool _finalized: false
+        stdout: StdioCollector {
+            id: previewStdout
+            onStreamFinished: {
+                previewProc._stdoutDone = true;
+                previewProc._maybeFinalize();
+            }
+        }
+        onStarted: {
+            previewProc._exited = false;
+            previewProc._exitCode = 0;
+            previewProc._stdoutDone = false;
+            previewProc._finalized = false;
+            previewFlushTimer.stop();
+        }
         onExited: (code, status) => {
+            previewProc._exited = true;
+            previewProc._exitCode = code;
+            if (previewProc._stdoutDone)
+                previewProc._maybeFinalize();
+            else
+                previewFlushTimer.restart();
+        }
+        function _maybeFinalize(): void {
+            if (!previewProc._exited || previewProc._finalized || !previewProc._stdoutDone)
+                return;
+            previewProc._finalized = true;
+            previewFlushTimer.stop();
             previewTimeout.stop();
+            const code = previewProc._exitCode;
             const key = previewProc.targetKey;
             try {
                 const payload = JSON.parse(previewStdout.text);
@@ -5405,16 +5620,59 @@ Item {
         onTriggered: {
             if (queryProc.running)
                 queryProc.running = false;
+            queryFlushTimer.stop();
             root.queryLoading = false;
+        }
+    }
+
+    Timer {
+        id: queryFlushTimer
+        interval: 60
+        repeat: false
+        onTriggered: {
+            if (queryProc._exited && !queryProc._finalized) {
+                queryProc._stdoutDone = true;
+                queryProc._maybeFinalize();
+            }
         }
     }
 
     Process {
         id: queryProc
-        stdout: StdioCollector { id: queryStdout }
+        property bool _exited: false
+        property int _exitCode: 0
+        property bool _stdoutDone: false
+        property bool _finalized: false
+        stdout: StdioCollector {
+            id: queryStdout
+            onStreamFinished: {
+                queryProc._stdoutDone = true;
+                queryProc._maybeFinalize();
+            }
+        }
+        onStarted: {
+            queryProc._exited = false;
+            queryProc._exitCode = 0;
+            queryProc._stdoutDone = false;
+            queryProc._finalized = false;
+            queryFlushTimer.stop();
+        }
         onExited: (code, status) => {
+            queryProc._exited = true;
+            queryProc._exitCode = code;
+            if (queryProc._stdoutDone)
+                queryProc._maybeFinalize();
+            else
+                queryFlushTimer.restart();
+        }
+        function _maybeFinalize(): void {
+            if (!queryProc._exited || queryProc._finalized || !queryProc._stdoutDone)
+                return;
+            queryProc._finalized = true;
+            queryFlushTimer.stop();
             queryTimeout.stop();
             root.queryLoading = false;
+            const code = queryProc._exitCode;
             try {
                 const payload = JSON.parse(queryStdout.text);
                 if (code === 0 && payload && payload.ok) {
@@ -5433,7 +5691,20 @@ Item {
         onTriggered: {
             if (historyProc.running)
                 historyProc.running = false;
+            historyFlushTimer.stop();
             root.historyLoading = false;
+        }
+    }
+
+    Timer {
+        id: historyFlushTimer
+        interval: 60
+        repeat: false
+        onTriggered: {
+            if (historyProc._exited && !historyProc._finalized) {
+                historyProc._stdoutDone = true;
+                historyProc._maybeFinalize();
+            }
         }
     }
 
@@ -5441,8 +5712,37 @@ Item {
         id: historyProc
         property string opKind: ""
         property string targetPath: ""
-        stdout: StdioCollector { id: historyStdout }
+        property bool _exited: false
+        property int _exitCode: 0
+        property bool _stdoutDone: false
+        property bool _finalized: false
+        stdout: StdioCollector {
+            id: historyStdout
+            onStreamFinished: {
+                historyProc._stdoutDone = true;
+                historyProc._maybeFinalize();
+            }
+        }
+        onStarted: {
+            historyProc._exited = false;
+            historyProc._exitCode = 0;
+            historyProc._stdoutDone = false;
+            historyProc._finalized = false;
+            historyFlushTimer.stop();
+        }
         onExited: (code, status) => {
+            historyProc._exited = true;
+            historyProc._exitCode = code;
+            if (historyProc._stdoutDone)
+                historyProc._maybeFinalize();
+            else
+                historyFlushTimer.restart();
+        }
+        function _maybeFinalize(): void {
+            if (!historyProc._exited || historyProc._finalized || !historyProc._stdoutDone)
+                return;
+            historyProc._finalized = true;
+            historyFlushTimer.stop();
             historyTimeout.stop();
             root.historyLoading = false;
             try {
@@ -5479,13 +5779,55 @@ Item {
         onTriggered: {
             if (assetProc.running)
                 assetProc.running = false;
+            assetFlushTimer.stop();
+        }
+    }
+
+    Timer {
+        id: assetFlushTimer
+        interval: 60
+        repeat: false
+        onTriggered: {
+            if (assetProc._exited && !assetProc._finalized) {
+                assetProc._stdoutDone = true;
+                assetProc._maybeFinalize();
+            }
         }
     }
 
     Process {
         id: assetProc
-        stdout: StdioCollector { id: assetStdout }
+        property bool _exited: false
+        property int _exitCode: 0
+        property bool _stdoutDone: false
+        property bool _finalized: false
+        stdout: StdioCollector {
+            id: assetStdout
+            onStreamFinished: {
+                assetProc._stdoutDone = true;
+                assetProc._maybeFinalize();
+            }
+        }
+        onStarted: {
+            assetProc._exited = false;
+            assetProc._exitCode = 0;
+            assetProc._stdoutDone = false;
+            assetProc._finalized = false;
+            assetFlushTimer.stop();
+        }
         onExited: (code, status) => {
+            assetProc._exited = true;
+            assetProc._exitCode = code;
+            if (assetProc._stdoutDone)
+                assetProc._maybeFinalize();
+            else
+                assetFlushTimer.restart();
+        }
+        function _maybeFinalize(): void {
+            if (!assetProc._exited || assetProc._finalized || !assetProc._stdoutDone)
+                return;
+            assetProc._finalized = true;
+            assetFlushTimer.stop();
             assetTimeout.stop();
             try {
                 const payload = JSON.parse(assetStdout.text);
@@ -5510,15 +5852,57 @@ Item {
         onTriggered: {
             if (pdfProc.running)
                 pdfProc.running = false;
+            pdfFlushTimer.stop();
             root.pdfBusy = false;
+        }
+    }
+
+    Timer {
+        id: pdfFlushTimer
+        interval: 60
+        repeat: false
+        onTriggered: {
+            if (pdfProc._exited && !pdfProc._finalized) {
+                pdfProc._stdoutDone = true;
+                pdfProc._maybeFinalize();
+            }
         }
     }
 
     Process {
         id: pdfProc
         property string opKind: ""
-        stdout: StdioCollector { id: pdfStdout }
+        property bool _exited: false
+        property int _exitCode: 0
+        property bool _stdoutDone: false
+        property bool _finalized: false
+        stdout: StdioCollector {
+            id: pdfStdout
+            onStreamFinished: {
+                pdfProc._stdoutDone = true;
+                pdfProc._maybeFinalize();
+            }
+        }
+        onStarted: {
+            pdfProc._exited = false;
+            pdfProc._exitCode = 0;
+            pdfProc._stdoutDone = false;
+            pdfProc._finalized = false;
+            pdfFlushTimer.stop();
+        }
         onExited: (code, status) => {
+            pdfProc._exited = true;
+            pdfProc._exitCode = code;
+            if (pdfProc._stdoutDone)
+                pdfProc._maybeFinalize();
+            else
+                pdfFlushTimer.restart();
+        }
+        function _maybeFinalize(): void {
+            if (!pdfProc._exited || pdfProc._finalized || !pdfProc._stdoutDone)
+                return;
+            pdfProc._finalized = true;
+            pdfFlushTimer.stop();
             pdfTimeout.stop();
             root.pdfBusy = false;
             try {
@@ -5612,10 +5996,15 @@ Item {
                         if (Array.isArray(ex.savedDatabaseViews))
                             root.savedDatabaseViews = ex.savedDatabaseViews.slice(0, 24);
                     }
+                    root._workspacePrefsLoaded = true;
                     if (schemaVer < 3)
                         root._saveWorkspacePrefs();
                 }
             } catch (e) {}
+            root._workspacePrefsLoaded = true;
+        }
+        onLoadFailed: _err => {
+            root._workspacePrefsLoaded = true;
         }
     }
 

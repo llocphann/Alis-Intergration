@@ -215,14 +215,19 @@ Rectangle {
                     MouseArea {
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            const rows = Array.isArray(dbRoot.nexus?.databaseQueryResult?.rows) ? dbRoot.nexus.databaseQueryResult.rows : [];
+                            const rows = dbRoot.rows;
                             const esc = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
                             const lines = ["Title,Path,Folder,Status,Tags"];
                             for (let i = 0; i < rows.length; ++i) {
                                 const r = rows[i] || {};
-                                lines.push([r.title, r.relPath, r.folder, r.status, Array.isArray(r.tags) ? r.tags.join(" ") : (r.tags ?? "")].map(esc).join(","));
+                                const st = r.frontmatter?.status ?? r.status ?? "";
+                                lines.push([r.title, r.relPath, r.folder, st, Array.isArray(r.tags) ? r.tags.join(" ") : (r.tags ?? "")].map(esc).join(","));
                             }
-                            Quickshell.clipboardText = lines.join("\n");
+                            const text = lines.join("\n");
+                            if (typeof dbRoot.nexus?.copyToClipboard === "function")
+                                dbRoot.nexus.copyToClipboard(text, "Copied CSV");
+                            else
+                                Quickshell.clipboardText = text;
                         }
                     }
                 }
@@ -240,14 +245,19 @@ Rectangle {
                     MouseArea {
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            const rows = Array.isArray(dbRoot.nexus?.databaseQueryResult?.rows) ? dbRoot.nexus.databaseQueryResult.rows : [];
+                            const rows = dbRoot.rows;
                             const clean = v => String(v ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
                             const lines = ["| Title | Folder | Status | Tags |", "| --- | --- | --- | --- |"];
                             for (let i = 0; i < rows.length; ++i) {
                                 const r = rows[i] || {};
-                                lines.push("| " + [r.title || r.relPath, r.folder, r.status, Array.isArray(r.tags) ? r.tags.join(", ") : (r.tags ?? "")].map(clean).join(" | ") + " |");
+                                const st = r.frontmatter?.status ?? r.status ?? "";
+                                lines.push("| " + [r.title || r.relPath, r.folder, st, Array.isArray(r.tags) ? r.tags.join(", ") : (r.tags ?? "")].map(clean).join(" | ") + " |");
                             }
-                            Quickshell.clipboardText = lines.join("\n");
+                            const text = lines.join("\n");
+                            if (typeof dbRoot.nexus?.copyToClipboard === "function")
+                                dbRoot.nexus.copyToClipboard(text, "Copied Markdown");
+                            else
+                                Quickshell.clipboardText = text;
                         }
                     }
                 }

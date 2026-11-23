@@ -98,8 +98,12 @@ Rectangle {
     Component.onCompleted: reloadFromDoc()
 
     function reloadFromDoc(): void {
+        canvasAutosaveTimer.stop();
+        selectedNodeId = "";
+        editingNodeId = "";
+        linkSourceNodeId = "";
         if (!doc || String(doc.category ?? "") !== "canvas") {
-            canvasAutosaveTimer.stop();
+            loadedCanvasPath = "";
             return;
         }
         loadedCanvasPath = String(doc.relPath ?? nexus?.currentPath ?? "");
@@ -113,7 +117,25 @@ Rectangle {
         } catch (e) {
             canvasNodes = [];
             canvasEdges = [];
+            dirty = false;
         }
+    }
+
+    function updateNodeFields(nodeId: string, patch: var, repaintEdges = true): void {
+        const idStr = String(nodeId ?? "");
+        if (!idStr || !patch || typeof patch !== "object")
+            return;
+        const keys = Object.keys(patch);
+        for (let i = 0; i < canvasNodes.length; ++i) {
+            if (String(canvasNodes[i]?.id ?? "") === idStr) {
+                for (let k = 0; k < keys.length; ++k)
+                    canvasNodes[i][keys[k]] = patch[keys[k]];
+                break;
+            }
+        }
+        dirty = true;
+        if (repaintEdges)
+            edgeCanvas.requestPaint();
     }
 
     function fitView(): void {
@@ -202,6 +224,10 @@ Rectangle {
         canvasNodes = canvasNodes.filter(n => n.id !== rm);
         canvasEdges = canvasEdges.filter(e => e.fromNode !== rm && e.toNode !== rm);
         selectedNodeId = "";
+        if (linkSourceNodeId === rm)
+            linkSourceNodeId = "";
+        if (editingNodeId === rm)
+            editingNodeId = "";
         dirty = true;
         edgeCanvas.requestPaint();
     }
@@ -564,6 +590,7 @@ Rectangle {
                             property real startX: 0
                             property real startY: 0
                             onPressed: mouse => {
+                                canvasRoot.forceActiveFocus();
                                 if (canvasRoot.linkSourceNodeId && canvasRoot.linkSourceNodeId !== cardItem.modelData.id) {
                                     canvasRoot.connectNodes(canvasRoot.linkSourceNodeId, cardItem.modelData.id);
                                     canvasRoot.linkSourceNodeId = "";
@@ -573,10 +600,15 @@ Rectangle {
                                 startY = mouse.y;
                             }
                             onDoubleClicked: {
-                                if (String(cardItem.modelData.type ?? "text") === "text") {
+                                const nodeKind = String(cardItem.modelData.type ?? "text");
+                                if (nodeKind === "text") {
                                     canvasRoot.editingNodeId = String(cardItem.modelData.id);
-                                } else if (String(cardItem.modelData.type ?? "") === "file" && cardItem.modelData.file) {
-                                    canvasRoot.nexus.openFile(String(cardItem.modelData.file), true);
+                                } else if (nodeKind === "file" && cardItem.modelData.file) {
+                                    canvasRoot.nexus?.openFile(String(cardItem.modelData.file), true);
+                                } else if (nodeKind === "link") {
+                                    const linkUrl = String(cardItem.modelData.url ?? "").trim();
+                                    if (/^https?:\/\//i.test(linkUrl))
+                                        Qt.openUrlExternally(linkUrl);
                                 }
                             }
                             onPositionChanged: mouse => {
@@ -589,9 +621,12 @@ Rectangle {
                                         cardItem.modelData.x = nextX;
                                         cardItem.modelData.y = nextY;
                                     }
-                                    canvasRoot.dirty = true;
-                                    edgeCanvas.requestPaint();
+                                    canvasRoot.updateNodeFields(String(cardItem.modelData?.id ?? ""), { "x": nextX, "y": nextY });
                                 }
+                            }
+                            onReleased: {
+                                if (canvasRoot.dirty)
+                                    canvasAutosaveTimer.restart();
                             }
                         }
 
@@ -616,6 +651,16 @@ Rectangle {
                                 font.weight: Font.DemiBold
                                 color: cardItem.accentCol
                                 wrapMode: Text.WordWrap
+                            }
+
+                            StyledText {
+                                visible: String(cardItem.modelData.type ?? "") === "link"
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                text: String(cardItem.modelData.url ?? "")
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: cardItem.accentCol
+                                wrapMode: Text.WrapAnywhere
                             }
 
                             StyledText {
@@ -648,10 +693,11 @@ Rectangle {
                                     }
                                 }
                                 onTextChanged: {
-                                    if (visible && cardItem.modelData && cardItem.modelData.text !== text) {
+                                    if (visible && cardItem.modelData && cardPreviewText.text !== text) {
                                         cardItem.modelData.text = text;
                                         cardPreviewText.text = text;
-                                        canvasRoot.dirty = true;
+                                        canvasRoot.updateNodeFields(String(cardItem.modelData.id), { "text": text }, false);
+                                        canvasAutosaveTimer.restart();
                                     }
                                 }
                             }
@@ -681,9 +727,12 @@ Rectangle {
                                             cardItem.modelData.width = nw;
                                             cardItem.modelData.height = nh;
                                         }
-                                        canvasRoot.dirty = true;
-                                        edgeCanvas.requestPaint();
+                                        canvasRoot.updateNodeFields(String(cardItem.modelData?.id ?? ""), { "width": nw, "height": nh });
                                     }
+                                }
+                                onReleased: {
+                                    if (canvasRoot.dirty)
+                                        canvasAutosaveTimer.restart();
                                 }
                             }
                         }

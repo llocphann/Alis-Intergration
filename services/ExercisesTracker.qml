@@ -40,6 +40,7 @@ Item {
     property string restExerciseName: ""
 
     property bool _dirEnsured: false
+    property bool _loadError: false
     property bool _savePending: false
     property bool _writing: false
     property string _lastSavedText: ""
@@ -237,6 +238,7 @@ Item {
                 return
             const rawText = stateFileView.text()
             if (!rawText || rawText.trim().length === 0) {
+                root._loadError = false
                 root.state = Engine.createEmptyState()
                 root._lastSavedText = ""
                 root.ready = true
@@ -245,6 +247,7 @@ Item {
             }
             try {
                 const parsed = JSON.parse(rawText)
+                root._loadError = false
                 root.state = Engine.normalizeState(parsed, root.todayStr)
                 root._lastSavedText = rawText
                 root.errorMessage = ""
@@ -253,6 +256,7 @@ Item {
                 root.stateUpdated()
             } catch (err) {
                 console.warn("[ExercisesTracker] Failed to parse state.json:", err)
+                root._loadError = true
                 root.errorMessage = "Could not read Exercises Tracker state"
                 root.ready = true
                 root.revision++
@@ -260,6 +264,7 @@ Item {
         }
         onLoadFailed: err => {
             if (err === FileViewError.FileNotFound) {
+                root._loadError = false
                 root.state = Engine.createEmptyState()
                 root._lastSavedText = ""
                 root.errorMessage = ""
@@ -267,6 +272,7 @@ Item {
                 root.revision++
             } else {
                 console.warn("[ExercisesTracker] Load failed:", err)
+                root._loadError = true
                 root.errorMessage = "Could not load Exercises Tracker data"
                 root.ready = true
                 root.revision++
@@ -281,6 +287,7 @@ Item {
         }
         onSaveFailed: err => {
             root._writing = false
+            root._lastSavedText = ""
             if (!root._dirEnsured && root.stateDir.length > 0 && !mkdirProc.running) {
                 root._savePending = true
                 mkdirProc.command = ["/usr/bin/mkdir", "-p", root.stateDir]
@@ -298,16 +305,59 @@ Item {
         onExited: exitCode => {
             if (exitCode === 0)
                 root._dirEnsured = true
+            root._savePending = false
             root._writeSerializedNow()
+        }
+    }
+
+    Timer {
+        id: photoImportFlushTimer
+        interval: 60
+        repeat: false
+        onTriggered: {
+            if (photoImportProc._exited && !photoImportProc._finalized) {
+                photoImportProc._stdoutDone = true
+                photoImportProc._maybeFinalize()
+            }
         }
     }
 
     Process {
         id: photoImportProc
         running: false
-        stdout: StdioCollector { id: photoImportOut }
+        property bool _exited: false
+        property int _exitCode: 0
+        property bool _stdoutDone: false
+        property bool _finalized: false
+        stdout: StdioCollector {
+            id: photoImportOut
+            onStreamFinished: {
+                photoImportProc._stdoutDone = true
+                photoImportProc._maybeFinalize()
+            }
+        }
         stderr: StdioCollector { id: photoImportErr }
+        onStarted: {
+            photoImportProc._exited = false
+            photoImportProc._exitCode = 0
+            photoImportProc._stdoutDone = false
+            photoImportProc._finalized = false
+            photoImportFlushTimer.stop()
+        }
         onExited: exitCode => {
+            photoImportProc._exited = true
+            photoImportProc._exitCode = exitCode
+            if (photoImportProc._stdoutDone)
+                photoImportProc._maybeFinalize()
+            else
+                photoImportFlushTimer.restart()
+        }
+        function _maybeFinalize(): void {
+            if (!photoImportProc._exited || photoImportProc._finalized || !photoImportProc._stdoutDone)
+                return
+            photoImportProc._finalized = true
+            photoImportFlushTimer.stop()
+            const exitCode = photoImportProc._exitCode
             root.photoImportBusy = false
             const req = root._pendingPhotoRequest
             root._pendingPhotoRequest = null
@@ -433,7 +483,7 @@ Item {
     }
 
     function _writeSerializedNow(): void {
-        if (root.filePath.length === 0)
+        if (root._loadError || root.filePath.length === 0)
             return
         const serialized = Engine.serializeState(root.state, root.todayStr)
         if (serialized === root._lastSavedText)

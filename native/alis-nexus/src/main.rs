@@ -10381,6 +10381,14 @@ fn parse_flag<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 }
 
 fn run_cli_args(args: &[String], stdin_override: Option<&str>) -> Result<Value, String> {
+    run_cli_args_inner(args, stdin_override, true)
+}
+
+fn run_cli_args_inner(
+    args: &[String],
+    stdin_override: Option<&str>,
+    allow_process_stdin: bool,
+) -> Result<Value, String> {
     let Some(cmd) = args.first().map(|s| s.as_str()) else {
         return Err("Usage: alis-nexus <scan|read|write|create|daily|calendar|toggle-todo|update-block|link-mention|search|delete|trash|rename|hotkeys|set-frontmatter|journal-weather|search-api|sync-api|finance-add|--serve> [--vault <path>] ...".to_string());
     };
@@ -10424,6 +10432,8 @@ fn run_cli_args(args: &[String], stdin_override: Option<&str>) -> Result<Value, 
                 c.to_string()
             } else if let Some(ov) = stdin_override {
                 ov.to_string()
+            } else if !allow_process_stdin {
+                return Err("Missing --content or serve \"stdin\" payload for write".to_string());
             } else {
                 let mut buf = String::new();
                 std::io::stdin()
@@ -10765,19 +10775,72 @@ fn parse_where_expr(expr: &str) -> Option<(String, String, String)> {
     if trimmed.is_empty() {
         return None;
     }
-    for op in ["!exists", "contains", ">=", "<=", "==", "!=", "=", ">", "<"] {
+    if let Some(left) = trimmed.strip_suffix("!exists") {
+        let valid_delim = left.is_empty()
+            || left.ends_with(char::is_whitespace)
+            || !left
+                .chars()
+                .last()
+                .map(|c| c.is_alphanumeric() || c == '_')
+                .unwrap_or(false);
+        let k = left.trim();
+        if valid_delim
+            && !k.is_empty()
+            && !k.contains('=')
+            && !k.contains('<')
+            && !k.contains('>')
+            && !k.contains('"')
+            && !k.contains('\'')
+            && !k.split_whitespace().any(|w| w == "contains")
+        {
+            return Some((k.to_string(), "!exists".to_string(), String::new()));
+        }
+    }
+    if let Some(left) = trimmed.strip_suffix("exists") {
+        let valid_delim = left.ends_with(char::is_whitespace);
+        let k = left.trim();
+        if valid_delim
+            && !k.is_empty()
+            && !k.contains('=')
+            && !k.contains('<')
+            && !k.contains('>')
+            && !k.contains('"')
+            && !k.contains('\'')
+            && !k.split_whitespace().any(|w| w == "contains")
+        {
+            return Some((k.to_string(), "exists".to_string(), String::new()));
+        }
+    }
+    for (idx, _) in trimmed.match_indices("contains") {
+        let before = trimmed[..idx].chars().last();
+        let after = trimmed[idx + "contains".len()..].chars().next();
+        if before.map(char::is_whitespace).unwrap_or(false)
+            && after.map(char::is_whitespace).unwrap_or(false)
+        {
+            let left = trimmed[..idx].trim();
+            if !left.is_empty()
+                && !left.contains('=')
+                && !left.contains('<')
+                && !left.contains('>')
+                && !left.contains('"')
+                && !left.contains('\'')
+            {
+                let v = trimmed[idx + "contains".len()..]
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string();
+                return Some((left.to_string(), "contains".to_string(), v));
+            }
+        }
+    }
+    for op in [">=", "<=", "==", "!=", "=", ">", "<"] {
         if let Some((left, right)) = trimmed.split_once(op) {
             let k = left.trim().to_string();
             let v = right.trim().trim_matches('"').trim_matches('\'').to_string();
             if !k.is_empty() {
                 return Some((k, op.to_string(), v));
             }
-        }
-    }
-    if let Some((k, _)) = trimmed.split_once(" exists") {
-        let key = k.trim().to_string();
-        if !key.is_empty() {
-            return Some((key, "exists".to_string(), String::new()));
         }
     }
     None
@@ -10907,11 +10970,23 @@ pub fn cmd_query(
             };
             let va = get_val(a);
             let vb = get_val(b);
-            let ord = if let (Ok(na), Ok(nb)) = (va.trim().parse::<f64>(), vb.trim().parse::<f64>()) {
-                na.partial_cmp(&nb).unwrap_or(std::cmp::Ordering::Equal)
-            } else {
-                va.to_ascii_lowercase().cmp(&vb.to_ascii_lowercase())
+            let sort_key = |raw: &str| -> (u8, f64, String) {
+                let t = raw.trim();
+                if let Ok(n) = t.parse::<f64>() {
+                    if n.is_finite() {
+                        let norm = if n == 0.0 { 0.0 } else { n };
+                        return (0, norm, t.to_ascii_lowercase());
+                    }
+                }
+                (1, 0.0, t.to_ascii_lowercase())
             };
+            let ka = sort_key(&va);
+            let kb = sort_key(&vb);
+            let ord = ka
+                .0
+                .cmp(&kb.0)
+                .then_with(|| ka.1.total_cmp(&kb.1))
+                .then_with(|| ka.2.cmp(&kb.2));
             if desc { ord.reverse() } else { ord }
         });
     }
@@ -11457,7 +11532,7 @@ fn handle_serve_line(line: &str) -> Value {
         }
     };
     let stdin_ov = parsed.get("stdin").and_then(|v| v.as_str());
-    match run_cli_args(&req_args, stdin_ov) {
+    match run_cli_args_inner(&req_args, stdin_ov, false) {
         Ok(payload) => json!({ "id": req_id, "ok": true, "result": payload }),
         Err(err) => json!({ "id": req_id, "ok": false, "error": err }),
     }
@@ -12731,6 +12806,109 @@ mod tests {
 
         let nested = handle_serve_line(r#"{"id":4,"args":["--serve"]}"#);
         assert_eq!(nested["ok"], false);
+
+        let missing_stdin_write =
+            json!({"id": 5, "args": ["write", "--vault", v_str, "--path", "Hello.md"]}).to_string();
+        let missing_res = handle_serve_line(&missing_stdin_write);
+        assert_eq!(missing_res["id"], 5);
+        assert_eq!(missing_res["ok"], false);
+        assert!(
+            missing_res["error"]
+                .as_str()
+                .unwrap_or("")
+                .contains("Missing --content or serve \"stdin\""),
+            "unexpected error: {:?}",
+            missing_res
+        );
+        assert!(fs::read_to_string(vault.join("Hello.md"))
+            .unwrap()
+            .contains("Updated via serve"));
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn test_query_where_delimiters_and_mixed_total_order_sort() {
+        assert_eq!(
+            parse_where_expr("contains_code = true"),
+            Some(("contains_code".to_string(), "=".to_string(), "true".to_string()))
+        );
+        assert_eq!(
+            parse_where_expr("my_contains_field = bar"),
+            Some(("my_contains_field".to_string(), "=".to_string(), "bar".to_string()))
+        );
+        assert_eq!(
+            parse_where_expr("exists_flag = false"),
+            Some(("exists_flag".to_string(), "=".to_string(), "false".to_string()))
+        );
+        assert_eq!(
+            parse_where_expr("tags contains work"),
+            Some(("tags".to_string(), "contains".to_string(), "work".to_string()))
+        );
+        assert_eq!(
+            parse_where_expr("note contains exists"),
+            Some(("note".to_string(), "contains".to_string(), "exists".to_string()))
+        );
+        assert_eq!(
+            parse_where_expr("status exists"),
+            Some(("status".to_string(), "exists".to_string(), String::new()))
+        );
+        assert_eq!(
+            parse_where_expr("status !exists"),
+            Some(("status".to_string(), "!exists".to_string(), String::new()))
+        );
+
+        let vault = make_temp_vault("query_mixed_sort");
+        let v_str = vault.to_str().unwrap();
+        for (name, val) in [
+            ("n2.md", "2"),
+            ("n10.md", "10"),
+            ("n15a.md", "15a"),
+            ("nnan.md", "NaN"),
+            ("nneg.md", "-5"),
+        ] {
+            fs::write(
+                vault.join(name),
+                format!("---\nscore: {}\ncontains_code: true\n---\n# {}\n", val, name),
+            )
+            .unwrap();
+        }
+        let q = cmd_query(
+            v_str,
+            None,
+            None,
+            &["contains_code = true".to_string()],
+            Some("score:asc"),
+            None,
+            50,
+        )
+        .unwrap();
+        assert_eq!(q["total"], 5);
+        let ordered: Vec<&str> = q["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["relPath"].as_str().unwrap())
+            .collect();
+        assert_eq!(ordered, vec!["nneg.md", "n2.md", "n10.md", "n15a.md", "nnan.md"]);
+
+        let q_desc = cmd_query(
+            v_str,
+            None,
+            None,
+            &["contains_code = true".to_string()],
+            Some("score:desc"),
+            None,
+            50,
+        )
+        .unwrap();
+        let ordered_desc: Vec<&str> = q_desc["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["relPath"].as_str().unwrap())
+            .collect();
+        assert_eq!(ordered_desc, vec!["nnan.md", "n15a.md", "n10.md", "n2.md", "nneg.md"]);
 
         let _ = fs::remove_dir_all(&vault);
     }
