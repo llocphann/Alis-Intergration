@@ -3,6 +3,12 @@
 import json, os, re, sys, tempfile
 from pathlib import Path
 
+try:
+    from PIL import Image
+except ImportError:
+    print("SKIP: Pillow (PIL) not installed")
+    raise SystemExit(77)
+
 ROOT=Path(__file__).resolve().parents[1]
 OUT=Path(os.environ.get('ALIS_NEXUS_RESPONSIVE_EVIDENCE_DIR') or tempfile.mkdtemp(prefix='alis-responsive-evidence-'))
 OUT.mkdir(parents=True,exist_ok=True)
@@ -11,8 +17,8 @@ HEIGHT=int(os.environ.get('VISUAL_HEIGHT','820'))
 LABEL=os.environ.get('VISUAL_LABEL',str(VIEWPORT))
 sys.path.insert(0,str(ROOT/'scripts'))
 from integration_test_host import resolve_host_root
-HOST=Path(os.environ.get('ALIS_RESPONSIVE_HOST','/home/llocphann/.config/quickshell/alis'))
-PLUGIN=Path(os.environ.get('VISUAL_PLUGIN','/home/llocphann/.local/share/alis-intergration/current')).resolve()
+HOST=Path(os.environ.get('ALIS_RESPONSIVE_HOST',str(resolve_host_root(ROOT)))).resolve()
+PLUGIN=Path(os.environ.get('VISUAL_PLUGIN',str(ROOT))).resolve()
 sys.path.insert(0,str(HOST/'scripts'))
 from native_test_session import private_wayland, run_qs
 
@@ -161,7 +167,6 @@ ShellRoot {
         result=run_qs(shell,env,timeout=90)
     (OUT/('audit-'+LABEL+'.log')).write_text(result.stdout)
     samples=[json.loads(x) for x in re.findall(r'VISUAL_AUDIT (\{[^\n]+\})',result.stdout)]
-    from PIL import Image
     def pixel_test(name,passed,actual): samples.append({'name':name,'status':'PASS' if passed else 'FAIL','actual':actual})
     if result.returncode==0 and 'VISUAL_AUDIT_DONE' in result.stdout:
         photos=[]

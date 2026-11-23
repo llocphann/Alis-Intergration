@@ -193,6 +193,7 @@ ShellRoot {
         function run() {
             try {
                 tryCompare(Config, "ready", true, 5000)
+                AlisIntergration.demandExercisesTracker()
                 tryVerify(() => AlisIntergration.exercisesTracker !== null
                     && AlisIntergration.exercisesTrackerDashboardSource().length > 0, 5000)
 

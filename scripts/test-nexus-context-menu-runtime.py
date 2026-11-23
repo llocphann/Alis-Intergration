@@ -3,8 +3,10 @@ import hashlib,json,os,re,sys,tempfile
 from contextlib import nullcontext
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-HOST=Path(os.environ.get('ALIS_MENU_HOST',str(Path.home()/'.config/quickshell/alis'))).resolve()
-PLUGIN=Path(os.environ.get('ALIS_MENU_PLUGIN',str(Path.home()/'.local/share/alis-intergration/current'))).resolve()
+sys.path.insert(0,str(ROOT/'scripts'))
+from integration_test_host import resolve_host_root
+HOST=Path(os.environ.get('ALIS_MENU_HOST',str(resolve_host_root(ROOT)))).resolve()
+PLUGIN=Path(os.environ.get('ALIS_MENU_PLUGIN',str(ROOT))).resolve()
 OUT=Path(os.environ.get('ALIS_MENU_EVIDENCE') or tempfile.mkdtemp(prefix='alis-menu-evidence-'));OUT.mkdir(parents=True,exist_ok=True)
 LABEL=os.environ.get('ALIS_MENU_LABEL','native')
 sys.path.insert(0,str(HOST/'scripts'))
@@ -62,8 +64,8 @@ ShellRoot {
    menu('file',original);ws.forceActiveFocus();keyClick(Qt.Key_Escape);wait(60);check('native-menu-escape-keeps-workspace-open',!ws.contextMenuOpen&&n.isOpen,{menu:ws.contextMenuOpen,workspaceOpen:n.isOpen});ws.closeContextMenu();n.open();settle();
    for(const size of[{w:750,h:500},{w:1280,h:820}]){win.implicitWidth=size.w;win.implicitHeight=size.h;wait(120);for(const type of['file','folder','base-card','tag','workspace']){menu(type,type==='folder'?FOLDER:original);const popup=findChild(ws,'nexusContextMenuPopup');const texts=nodes(popup,c=>c.text!==undefined&&c.font!==undefined&&String(c.text).length>0);check('bottom-right-fit-'+type+'-'+size.w,popup.x>=0&&popup.y>=0&&popup.x+popup.width<=ws.width&&popup.y+popup.height<=ws.height&&texts.every(t=>{const p=t.mapToItem(popup,0,0);return t.width>0&&p.x>=0&&p.x+t.width<=popup.width+1}),{x:popup.x,y:popup.y,w:popup.width,h:popup.height,workspace:[ws.width,ws.height]});ws.closeContextMenu()}}
    menu('file',original);clickAction('Open Note');settle();check('native-file-open',n.currentPath===original,n.currentPath);
-   menu('file',original,'Legacy "quote" $note');clickAction('Copy Wikilink');menu('file',original);clickAction('Copy Relative Path');menu('file',original);clickAction('Reveal in File Manager');
-   menu('folder',FOLDER);clickAction('Copy Path');menu('folder',FOLDER);clickAction('Reveal in File Manager');
+   menu('file',original,'Legacy "quote" $note');clickAction('Copy Wikilink');check('clipboard-wikilink',Quickshell.clipboardText==='[[Legacy "quote" $note]]',Quickshell.clipboardText);menu('file',original);clickAction('Copy Relative Path');check('clipboard-relpath',Quickshell.clipboardText===original,Quickshell.clipboardText);menu('file',original);clickAction('Reveal in File Manager');
+   menu('folder',FOLDER);clickAction('Copy Path');check('clipboard-folder-path',Quickshell.clipboardText===FOLDER,Quickshell.clipboardText);menu('folder',FOLDER);clickAction('Reveal in File Manager');
    menu('file',original);clickAction('Rename Note...');const ri=renameInput();ri.text='UNSAVED-CANCEL';clickLabel(findChild(ws,'nexusRenameDialog'),'Cancel');check('native-rename-cancel-preserves',!ws.renameDialogOpen&&fs().files[original].sha===initial.files[original].sha,n.currentPath);
    rename(original,'Existing',false);check('rename-collision-preserves-current-path',n.currentPath===original&&String(n.currentDoc?.relPath)===original,{path:n.currentPath,doc:n.currentDoc?.relPath,error:n.errorMessage});check('rename-collision-preserves-both-bytes',fs().files[original].sha===initial.files[original].sha&&fs().files[FOLDER+'/Existing.md'].sha===initial.files[FOLDER+'/Existing.md'].sha,fs());
    n.openFile(original,true);settle();n.draftContent='UNSAVED OWNER DRAFT';n.isDirty=true;rename(original,'Renamed tiếng Việt',false);const renamed=FOLDER+'/Renamed tiếng Việt.md';check('rename-success-keeps-active-draft',n.currentPath===renamed&&n.draftContent==='UNSAVED OWNER DRAFT'&&n.isDirty,{path:n.currentPath,draft:n.draftContent,dirty:n.isDirty});check('rename-success-preserves-legacy-bytes',fs().files[renamed]?.sha===initial.files[original].sha,fs().files[renamed]);
@@ -100,7 +102,7 @@ ShellRoot {
   if offscreen:env['QT_QPA_PLATFORM']='offscreen'
   result=run_qs(shell,env,timeout=50)
  checks=[json.loads(x) for x in re.findall(r'MENU_CHECK (\{[^\n]+\})',result.stdout)];transported=[json.loads(x) for x in transport.read_text().splitlines()] if transport.exists() else []
- expected=[{'command':'wl-copy','args':['[[Legacy "quote" $note]]']},{'command':'wl-copy','args':[folder+'/Legacy "quote" $note.md']},{'command':'xdg-open','args':[str(vault/folder)]},{'command':'wl-copy','args':[folder]},{'command':'xdg-open','args':[str(vault/folder)]}]
+ expected=[{'command':'xdg-open','args':[str(vault/folder)]},{'command':'xdg-open','args':[str(vault/folder)]}]
  checks.append({'name':'private-clipboard-and-path-argv-preserved','status':'PASS' if transported==expected else 'FAIL','actual':transported})
  receipt={'platform':env['QT_QPA_PLATFORM'],'scope':'Exact Integration payload + actual installed host in private compositor/vault/config; clipboard/xdg transport intercepted by private PATH spies; no real vault/config/clipboard/desktop changes.','plugin':str(PLUGIN),'host':str(HOST),'exit':result.returncode,'complete':'MENU_DONE' in result.stdout,'checks':checks,'workspaceSha256':hashlib.sha256((PLUGIN/'modules/nexus/NexusWorkspace.qml').read_bytes()).hexdigest(),'serviceSha256':hashlib.sha256((PLUGIN/'services/NexusService.qml').read_bytes()).hexdigest()}
  (OUT/(LABEL+'.log')).write_text(result.stdout);(OUT/(LABEL+'.json')).write_text(json.dumps(receipt,indent=2,ensure_ascii=False)+'\n');print(json.dumps(receipt,indent=2,ensure_ascii=False))

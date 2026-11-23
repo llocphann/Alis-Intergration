@@ -2,8 +2,10 @@
 import hashlib,json,os,re,shutil,sys,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-HOST=Path(os.environ.get('ALIS_RECENT_HOST',str(Path.home()/'.config/quickshell/alis'))).resolve()
-PLUGIN=Path(os.environ.get('ALIS_RECENT_PLUGIN',str(Path.home()/'.local/share/alis-intergration/current'))).resolve()
+sys.path.insert(0,str(ROOT/'scripts'))
+from integration_test_host import resolve_host_root
+HOST=Path(os.environ.get('ALIS_RECENT_HOST',str(resolve_host_root(ROOT)))).resolve()
+PLUGIN=Path(os.environ.get('ALIS_RECENT_PLUGIN',str(ROOT))).resolve()
 OUT=Path(os.environ.get('ALIS_RECENT_EVIDENCE') or tempfile.mkdtemp(prefix='alis-search-stale-evidence-'));OUT.mkdir(parents=True,exist_ok=True)
 LABEL=os.environ.get('ALIS_RECENT_LABEL','stale')
 sys.path.insert(0,str(HOST/'scripts'))
@@ -17,6 +19,8 @@ with tempfile.TemporaryDirectory(prefix='alis-search-stale-') as name:
 import json,os,signal,sys,time
 from pathlib import Path
 args=sys.argv[1:]
+if args and args[0] in ('serve', '--serve'):
+ sys.exit(1)
 if args[0]=='search' and '--query' in args and args[args.index('--query')+1].startswith('race-'):
  q=args[args.index('--query')+1];signal.signal(signal.SIGTERM,signal.SIG_IGN)
  countfile=Path(__file__).with_name('counter-'+q);count=int(countfile.read_text())+1 if countfile.exists() else 1;countfile.write_text(str(count))

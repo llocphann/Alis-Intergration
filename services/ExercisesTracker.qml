@@ -280,10 +280,8 @@ Item {
         }
         onSaved: {
             root._writing = false
-            if (root._savePending) {
-                root._savePending = false
+            if (root._savePending)
                 saveDebounceTimer.restart()
-            }
         }
         onSaveFailed: err => {
             root._writing = false

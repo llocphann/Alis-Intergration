@@ -16,6 +16,33 @@ Item {
     readonly property var nexus: nexusLoader.item
     readonly property var spacedRepetition: spacedRepetitionLoader.item
     readonly property var exercisesTracker: exercisesTrackerLoader.item
+    readonly property bool _srWanted: (root.host?.spacedRepetitionEnabled ?? false)
+        && ((root.host?.spacedRepetitionDemanded ?? false)
+            || Boolean(GlobalStates?.dashboardOpen)
+            || Boolean(GlobalStates?.settingsOverlayOpen))
+    readonly property bool _etWanted: (root.host?.exercisesTrackerEnabled ?? false)
+        && ((root.host?.exercisesTrackerDemanded ?? false)
+            || Boolean(GlobalStates?.dashboardOpen)
+            || Boolean(GlobalStates?.settingsOverlayOpen))
+    property bool _srLatched: false
+    property bool _etLatched: false
+    on_SrWantedChanged: if (_srWanted) _srLatched = true
+    on_EtWantedChanged: if (_etWanted) _etLatched = true
+    Component.onCompleted: {
+        if (_srWanted) _srLatched = true
+        if (_etWanted) _etLatched = true
+    }
+    Connections {
+        target: root.host
+        function onSpacedRepetitionEnabledChanged(): void {
+            if (!(root.host?.spacedRepetitionEnabled ?? false))
+                root._srLatched = false
+        }
+        function onExercisesTrackerEnabledChanged(): void {
+            if (!(root.host?.exercisesTrackerEnabled ?? false))
+                root._etLatched = false
+        }
+    }
     Loader { id: capabilities; active: host.tlpEnabled; source: "services/TlpRuntimeCapabilities.qml" }
     Loader {
         id: charge; active: host.tlpEnabled
@@ -49,10 +76,7 @@ Item {
     Loader { id: nexusLoader; active: host.nexusEnabled; asynchronous: status !== Loader.Ready; source: "services/NexusService.qml" }
     Loader {
         id: spacedRepetitionLoader
-        active: (host.spacedRepetitionEnabled ?? false)
-            && ((host.spacedRepetitionDemanded ?? false)
-                || Boolean(GlobalStates?.dashboardOpen)
-                || Boolean(GlobalStates?.settingsOverlayOpen))
+        active: (root.host?.spacedRepetitionEnabled ?? false) && root._srLatched
         asynchronous: status !== Loader.Ready
         function syncSource(): void {
             if (active && String(source).length === 0) source = "services/SpacedRepetition.qml"
@@ -63,10 +87,7 @@ Item {
     }
     Loader {
         id: exercisesTrackerLoader
-        active: (host.exercisesTrackerEnabled ?? false)
-            && ((host.exercisesTrackerDemanded ?? false)
-                || Boolean(GlobalStates?.dashboardOpen)
-                || Boolean(GlobalStates?.settingsOverlayOpen))
+        active: (root.host?.exercisesTrackerEnabled ?? false) && root._etLatched
         asynchronous: status !== Loader.Ready
         function syncSource(): void {
             if (active && String(source).length === 0) source = "services/ExercisesTracker.qml"
