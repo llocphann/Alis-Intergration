@@ -917,7 +917,7 @@ tlp_settings_runtime_values_json() {
     '
 }
 
-tlp_settings_validate_platform_profile() {
+_tlp_settings_validate_platform_profile() {
     local key=$1 value=$2 version=$3 runtime_required=${4:-0}
     local current_minor choices candidate match=0 count=0
 
@@ -975,7 +975,20 @@ tlp_settings_validate_platform_profile() {
     return 0
 }
 
-tlp_settings_validate_value() {
+tlp_settings_validate_platform_profile() {
+    local was_noglob=0 rc=0
+    case $- in *f*) was_noglob=1 ;; esac
+    set -f
+    if _tlp_settings_validate_platform_profile "$@"; then
+        rc=0
+    else
+        rc=$?
+    fi
+    [ "$was_noglob" -eq 1 ] || set +f
+    return "$rc"
+}
+
+_tlp_settings_validate_value() {
     local key=$1 value=$2 version=${3:-} runtime_required=${4:-0}
     local definition type minimum maximum candidate
     local multiple_from current_minor multiple_minor
@@ -1079,6 +1092,19 @@ tlp_settings_validate_value() {
             ;;
     esac
     return 0
+}
+
+tlp_settings_validate_value() {
+    local was_noglob=0 rc=0
+    case $- in *f*) was_noglob=1 ;; esac
+    set -f
+    if _tlp_settings_validate_value "$@"; then
+        rc=0
+    else
+        rc=$?
+    fi
+    [ "$was_noglob" -eq 1 ] || set +f
+    return "$rc"
 }
 
 tlp_settings_is_system_conf() {

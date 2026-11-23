@@ -129,7 +129,7 @@ def _read_revision_content(v_canon: Path, norm_rel: str, rev_id: str) -> str:
         if not sha.isalnum():
             raise ValueError("Invalid git revision id")
         res = subprocess.run(
-            ["git", "-C", str(v_canon), "show", f"{sha}:{norm_rel}"],
+            ["git", "-C", str(v_canon), "show", f"{sha}:./{norm_rel}"],
             capture_output=True, text=True, check=False,
         )
         if res.returncode != 0:
@@ -174,9 +174,9 @@ def cmd_diff(vault: Path, rel_path: str, rev_id: str) -> dict:
 
 def cmd_restore(vault: Path, rel_path: str, rev_id: str) -> dict:
     v_canon, target, norm_rel = _resolve_note(vault, rel_path)
+    rev_text = _read_revision_content(v_canon, norm_rel, rev_id)
     if target.is_file():
         cmd_snapshot(v_canon, norm_rel, f"Pre-restore backup before {rev_id[:16]}")
-    rev_text = _read_revision_content(v_canon, norm_rel, rev_id)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(f".{target.name}.{os.getpid()}.tmp")
     tmp.write_text(rev_text, encoding="utf-8")

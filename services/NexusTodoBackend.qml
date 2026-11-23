@@ -669,46 +669,81 @@ Scope {
         }
     }
 
+    Timer {
+        id: scanFlushTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!scanProc._exited || scanProc._finalized)
+                return
+            scanProc._streamDone = true
+            scanProc._finalize()
+        }
+    }
+
+    Timer {
+        id: capabilityFlushTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!capabilityProc._exited || capabilityProc._finalized)
+                return
+            capabilityProc._streamDone = true
+            capabilityProc._finalize()
+        }
+    }
+
+    Timer {
+        id: mutationFlushTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!mutationProc._exited || mutationProc._finalized)
+                return
+            mutationProc._streamDone = true
+            mutationProc._finalize()
+        }
+    }
+
     Process {
         id: scanProc
         running: false
         property bool startObserved: false
         property bool timedOut: false
+        property bool _exited: false
+        property bool _streamDone: false
+        property bool _finalized: false
+        property int _exitCode: -1
 
-        stdout: StdioCollector { id: scanCollector }
-
-        onRunningChanged: {
-            if (scanProc.running) {
-                scanProc.startObserved = false
+        function _finalize(): void {
+            if (!scanProc._exited || scanProc._finalized)
                 return
-            }
-            if (scanProc.startObserved)
-                return
-            scanTimeout.stop()
-            root._clearUnavailable("scanner_start_failed", "Failed to start Nexus Todo scanner")
-            root._finishScan()
-        }
-
-        onStarted: {
-            scanProc.startObserved = true
-            scanProc.timedOut = false
-            scanTimeout.restart()
-        }
-
-        onExited: (exitCode, exitStatus) => {
-            scanTimeout.stop()
             if (!root.configured
                     || root._scanVaultPath !== root.vaultPath
                     || root._scanNotePath !== root.notePath) {
+                scanProc._finalized = true
+                scanProc._exited = false
+                scanProc._streamDone = false
+                scanFlushTimer.stop()
                 root._refreshQueued = root.configured
                 root._finishScan()
                 return
             }
             if (scanProc.timedOut) {
+                scanProc._finalized = true
+                scanProc._exited = false
+                scanProc._streamDone = false
+                scanFlushTimer.stop()
                 root._clearUnavailable("scanner_timeout", "Nexus Todo scanner timed out")
                 root._finishScan()
                 return
             }
+            if (!scanProc._streamDone)
+                return
+            scanProc._finalized = true
+            scanProc._exited = false
+            scanProc._streamDone = false
+            scanFlushTimer.stop()
 
             const output = String(scanCollector.text ?? "").trim()
             if (output.length === 0) {
@@ -726,6 +761,49 @@ Scope {
             }
             root._finishScan()
         }
+
+        stdout: StdioCollector {
+            id: scanCollector
+            onStreamFinished: {
+                scanProc._streamDone = true
+                scanProc._finalize()
+            }
+        }
+
+        onRunningChanged: {
+            if (scanProc.running) {
+                scanProc.startObserved = false
+                scanProc._exited = false
+                scanProc._streamDone = false
+                scanProc._finalized = false
+                scanProc._exitCode = -1
+                scanFlushTimer.stop()
+                return
+            }
+            if (scanProc.startObserved)
+                return
+            scanTimeout.stop()
+            scanFlushTimer.stop()
+            root._clearUnavailable("scanner_start_failed", "Failed to start Nexus Todo scanner")
+            root._finishScan()
+        }
+
+        onStarted: {
+            scanProc.startObserved = true
+            scanProc.timedOut = false
+            scanProc._finalized = false
+            scanTimeout.restart()
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            scanTimeout.stop()
+            scanProc._exitCode = exitCode
+            scanProc._exited = true
+            if (scanProc._streamDone || scanProc.timedOut)
+                scanProc._finalize()
+            else
+                scanFlushTimer.restart()
+        }
     }
 
     Process {
@@ -733,55 +811,43 @@ Scope {
         running: false
         property bool startObserved: false
         property bool timedOut: false
+        property bool _exited: false
+        property bool _streamDone: false
+        property bool _finalized: false
+        property int _exitCode: -1
 
-        stdout: StdioCollector { id: capabilityCollector }
-
-        onRunningChanged: {
-            if (capabilityProc.running) {
-                capabilityProc.startObserved = false
+        function _finalize(): void {
+            if (!capabilityProc._exited || capabilityProc._finalized)
                 return
-            }
-            if (capabilityProc.startObserved)
-                return
-            capabilityTimeout.stop()
-            root.capabilityBusy = false
             if (!root._capabilitySourceCurrent()) {
+                capabilityProc._finalized = true
+                capabilityProc._exited = false
+                capabilityProc._streamDone = false
+                capabilityFlushTimer.stop()
+                root.capabilityBusy = false
                 if (root.configured)
                     capabilityDebounce.restart()
                 return
             }
-            const caps = root._emptyCapabilities()
-            caps.lastError = "Failed to start Nexus capability helper"
-            root.capabilities = caps
-            root._dispatchPendingMutation()
-        }
-
-        onStarted: {
-            capabilityProc.startObserved = true
-            capabilityProc.timedOut = false
-            capabilityTimeout.restart()
-        }
-
-        onExited: (exitCode, exitStatus) => {
-            capabilityTimeout.stop()
-            root.capabilityBusy = false
-
-            // The eval result belongs to the source captured at launch. A
-            // config edit while it was running must not authorize a mutation
-            // or overwrite capability state for the newly selected note.
-            if (!root._capabilitySourceCurrent()) {
-                if (root.configured)
-                    capabilityDebounce.restart()
-                return
-            }
-
             if (capabilityProc.timedOut) {
+                capabilityProc._finalized = true
+                capabilityProc._exited = false
+                capabilityProc._streamDone = false
+                capabilityFlushTimer.stop()
+                root.capabilityBusy = false
                 const caps = root._emptyCapabilities()
                 caps.lastError = "Nexus capability probe timed out"
                 root.capabilities = caps
                 root._dispatchPendingMutation()
                 return
             }
+            if (!capabilityProc._streamDone)
+                return
+            capabilityProc._finalized = true
+            capabilityProc._exited = false
+            capabilityProc._streamDone = false
+            capabilityFlushTimer.stop()
+            root.capabilityBusy = false
 
             const output = String(capabilityCollector.text ?? "").trim()
             if (output.length === 0) {
@@ -812,6 +878,57 @@ Scope {
             }
             root._dispatchPendingMutation()
         }
+
+        stdout: StdioCollector {
+            id: capabilityCollector
+            onStreamFinished: {
+                capabilityProc._streamDone = true
+                capabilityProc._finalize()
+            }
+        }
+
+        onRunningChanged: {
+            if (capabilityProc.running) {
+                capabilityProc.startObserved = false
+                capabilityProc._exited = false
+                capabilityProc._streamDone = false
+                capabilityProc._finalized = false
+                capabilityProc._exitCode = -1
+                capabilityFlushTimer.stop()
+                return
+            }
+            if (capabilityProc.startObserved)
+                return
+            capabilityTimeout.stop()
+            capabilityFlushTimer.stop()
+            root.capabilityBusy = false
+            if (!root._capabilitySourceCurrent()) {
+                if (root.configured)
+                    capabilityDebounce.restart()
+                return
+            }
+            const caps = root._emptyCapabilities()
+            caps.lastError = "Failed to start Nexus capability helper"
+            root.capabilities = caps
+            root._dispatchPendingMutation()
+        }
+
+        onStarted: {
+            capabilityProc.startObserved = true
+            capabilityProc.timedOut = false
+            capabilityProc._finalized = false
+            capabilityTimeout.restart()
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            capabilityTimeout.stop()
+            capabilityProc._exitCode = exitCode
+            capabilityProc._exited = true
+            if (capabilityProc._streamDone || capabilityProc.timedOut)
+                capabilityProc._finalize()
+            else
+                capabilityFlushTimer.restart()
+        }
     }
 
     Process {
@@ -819,56 +936,42 @@ Scope {
         running: false
         property bool startObserved: false
         property bool timedOut: false
+        property bool _exited: false
+        property bool _streamDone: false
+        property bool _finalized: false
+        property int _exitCode: -1
         property string kind: ""
         property string taskId: ""
 
-        stdout: StdioCollector { id: mutationCollector }
-
-        onRunningChanged: {
-            if (mutationProc.running) {
-                mutationProc.startObserved = false
+        function _finalize(): void {
+            if (!mutationProc._exited || mutationProc._finalized)
                 return
-            }
-            if (mutationProc.startObserved)
-                return
-            mutationTimeout.stop()
             if (!root._mutationSourceCurrent()) {
+                mutationProc._finalized = true
+                mutationProc._exited = false
+                mutationProc._streamDone = false
+                mutationFlushTimer.stop()
                 root._refreshQueued = root.configured
                 root._notifyMigrationFinished(false, null)
                 root._finishMutation()
                 return
             }
-            root._setError("mutation_start_failed", "Failed to start Todo mutation helper")
-            root._notifyMigrationFinished(false, null)
-            root._finishMutation()
-        }
-
-        onStarted: {
-            mutationProc.startObserved = true
-            mutationProc.timedOut = false
-            mutationTimeout.restart()
-        }
-
-        onExited: (exitCode, exitStatus) => {
-            mutationTimeout.stop()
-
-            // A mutation may already have reached the old canonical note, but
-            // its result must never be applied to a newly selected source.
-            // Refresh the new source instead; filesystem scan remains
-            // authoritative for whichever backend is currently active.
-            if (!root._mutationSourceCurrent()) {
-                root._refreshQueued = root.configured
-                root._notifyMigrationFinished(false, null)
-                root._finishMutation()
-                return
-            }
-
             if (mutationProc.timedOut) {
+                mutationProc._finalized = true
+                mutationProc._exited = false
+                mutationProc._streamDone = false
+                mutationFlushTimer.stop()
                 root._setError("mutation_timeout", "Todo mutation timed out")
                 root._notifyMigrationFinished(false, null)
                 root._finishMutation()
                 return
             }
+            if (!mutationProc._streamDone)
+                return
+            mutationProc._finalized = true
+            mutationProc._exited = false
+            mutationProc._streamDone = false
+            mutationFlushTimer.stop()
 
             const output = String(mutationCollector.text ?? "").trim()
             if (output.length === 0) {
@@ -885,6 +988,56 @@ Scope {
                 root._notifyMigrationFinished(false, null)
                 root._finishMutation()
             }
+        }
+
+        stdout: StdioCollector {
+            id: mutationCollector
+            onStreamFinished: {
+                mutationProc._streamDone = true
+                mutationProc._finalize()
+            }
+        }
+
+        onRunningChanged: {
+            if (mutationProc.running) {
+                mutationProc.startObserved = false
+                mutationProc._exited = false
+                mutationProc._streamDone = false
+                mutationProc._finalized = false
+                mutationProc._exitCode = -1
+                mutationFlushTimer.stop()
+                return
+            }
+            if (mutationProc.startObserved)
+                return
+            mutationTimeout.stop()
+            mutationFlushTimer.stop()
+            if (!root._mutationSourceCurrent()) {
+                root._refreshQueued = root.configured
+                root._notifyMigrationFinished(false, null)
+                root._finishMutation()
+                return
+            }
+            root._setError("mutation_start_failed", "Failed to start Todo mutation helper")
+            root._notifyMigrationFinished(false, null)
+            root._finishMutation()
+        }
+
+        onStarted: {
+            mutationProc.startObserved = true
+            mutationProc.timedOut = false
+            mutationProc._finalized = false
+            mutationTimeout.restart()
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            mutationTimeout.stop()
+            mutationProc._exitCode = exitCode
+            mutationProc._exited = true
+            if (mutationProc._streamDone || mutationProc.timedOut)
+                mutationProc._finalize()
+            else
+                mutationFlushTimer.restart()
         }
     }
 }

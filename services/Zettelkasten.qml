@@ -137,37 +137,45 @@ Item {
         }
     }
 
+    Timer {
+        id: captureFlushTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!captureProc._exited || captureProc._finalized)
+                return
+            captureProc._streamDone = true
+            captureProc._finalizeCapture()
+        }
+    }
+
     Process {
         id: captureProc
         running: false
         property bool startObserved: false
         property bool timedOut: false
-        stdout: StdioCollector { id: captureCollector }
-
-        onRunningChanged: {
-            if (captureProc.running) {
-                captureProc.startObserved = false
+        property bool _exited: false
+        property bool _streamDone: false
+        property bool _finalized: false
+        property int _exitCode: -1
+        function _finalizeCapture(): void {
+            if (!captureProc._exited || captureProc._finalized)
                 return
-            }
-            if (captureProc.startObserved)
-                return
-            captureTimeout.stop()
-            root._finishCapture(null, "capture_start_failed", "Failed to start Zettelkasten helper")
-        }
-
-        onStarted: {
-            captureProc.startObserved = true
-            captureProc.timedOut = false
-            captureTimeout.restart()
-        }
-
-        onExited: (exitCode, exitStatus) => {
-            captureTimeout.stop()
             if (captureProc.timedOut) {
+                captureProc._finalized = true
+                captureProc._exited = false
+                captureProc._streamDone = false
+                captureFlushTimer.stop()
                 root._finishCapture(null, "capture_timeout", "Zettelkasten quick-note capture timed out")
                 return
             }
-            if (exitCode !== 0) {
+            if (!captureProc._streamDone)
+                return
+            captureProc._finalized = true
+            captureProc._exited = false
+            captureProc._streamDone = false
+            captureFlushTimer.stop()
+            if (captureProc._exitCode !== 0) {
                 root._finishCapture(null, "capture_failed", "Zettelkasten helper failed; no saved-note receipt was accepted")
                 return
             }
@@ -201,6 +209,47 @@ Item {
             } catch (error) {
                 root._finishCapture(null, "capture_invalid_output", "Zettelkasten helper returned invalid JSON")
             }
+        }
+        stdout: StdioCollector {
+            id: captureCollector
+            onStreamFinished: {
+                captureProc._streamDone = true
+                captureProc._finalizeCapture()
+            }
+        }
+
+        onRunningChanged: {
+            if (captureProc.running) {
+                captureProc.startObserved = false
+                captureProc._exited = false
+                captureProc._streamDone = false
+                captureProc._finalized = false
+                captureProc._exitCode = -1
+                captureFlushTimer.stop()
+                return
+            }
+            if (captureProc.startObserved)
+                return
+            captureTimeout.stop()
+            captureFlushTimer.stop()
+            root._finishCapture(null, "capture_start_failed", "Failed to start Zettelkasten helper")
+        }
+
+        onStarted: {
+            captureProc.startObserved = true
+            captureProc.timedOut = false
+            captureProc._finalized = false
+            captureTimeout.restart()
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            captureTimeout.stop()
+            captureProc._exitCode = exitCode
+            captureProc._exited = true
+            if (captureProc._streamDone || captureProc.timedOut)
+                captureProc._finalizeCapture()
+            else
+                captureFlushTimer.restart()
         }
     }
 }

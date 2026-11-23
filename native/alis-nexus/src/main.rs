@@ -292,6 +292,8 @@ pub struct FlatFileEntry {
     pub language: String,
     pub ext: String,
     pub mtime_secs: u64,
+    #[serde(skip)]
+    pub mtime_nanos: u32,
     pub size_bytes: u64,
 }
 
@@ -389,6 +391,21 @@ fn html_escape(input: &str) -> String {
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn encode_wikilink_href_target(input: &str) -> String {
+    let mut out = String::with_capacity(input.len() + 8);
+    for ch in input.chars() {
+        match ch {
+            '%' => out.push_str("%25"),
+            ' ' => out.push_str("%20"),
+            '?' => out.push_str("%3F"),
+            '#' => out.push_str("%23"),
+            '\r' | '\n' | '\t' => {}
             _ => out.push(ch),
         }
     }
@@ -528,9 +545,10 @@ pub fn render_inline_rich_html(line: &str) -> String {
                     } else {
                         alias_part
                     };
+                    let href_target = encode_wikilink_href_target(target_part);
                     result.push_str(&format!(
                         "<a href=\"wikilink:{}\" style=\"color:#38bdf8;text-decoration:none;\">🖼 {}</a>",
-                        html_escape(target_part),
+                        html_escape(&href_target),
                         html_escape(display)
                     ));
                 }
@@ -593,9 +611,10 @@ pub fn render_inline_rich_html(line: &str) -> String {
                         "<span style=\"background-color:#1e293b;color:#94a3b8;font-style:italic;padding:1px 6px;\">&nbsp;Related note&nbsp;</span>",
                     );
                 } else {
+                    let href_target = encode_wikilink_href_target(base_target);
                     result.push_str(&format!(
                         "<a href=\"wikilink:{}\" style=\"color:#7dd3fc;text-decoration:none;font-weight:600;\">{}</a>",
-                        html_escape(base_target),
+                        html_escape(&href_target),
                         html_escape(display)
                     ));
                 }
@@ -2261,6 +2280,7 @@ fn walk_directory_collect_jobs(
                     language: lang.to_string(),
                     ext: ext.clone(),
                     mtime_secs,
+                    mtime_nanos,
                     size_bytes,
                 });
 
@@ -4264,6 +4284,123 @@ fn parse_vault_daily_schedule(
     )
 }
 
+fn extract_js_quote_line_field(line: &str, key: &str) -> Option<String> {
+    let bytes = line.as_bytes();
+    let key_bytes = key.as_bytes();
+    let mut i = 0usize;
+    let mut active_quote: Option<u8> = None;
+    let mut escaped = false;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if let Some(q) = active_quote {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == q {
+                active_quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        if b == b'"' || b == b'\'' {
+            active_quote = Some(b);
+            i += 1;
+            continue;
+        }
+        if bytes[i..].starts_with(key_bytes) {
+            let prev_ok = i == 0 || !bytes[i - 1].is_ascii_alphanumeric() && bytes[i - 1] != b'_';
+            if prev_ok {
+                let mut pos = i + key_bytes.len();
+                while pos < bytes.len() && bytes[pos].is_ascii_whitespace() {
+                    pos += 1;
+                }
+                if pos < bytes.len() && bytes[pos] == b':' {
+                    pos += 1;
+                    while pos < bytes.len() && bytes[pos].is_ascii_whitespace() {
+                        pos += 1;
+                    }
+                    if pos < bytes.len() && (bytes[pos] == b'"' || bytes[pos] == b'\'') {
+                        let delim = bytes[pos];
+                        pos += 1;
+                        let mut val = String::new();
+                        let mut val_esc = false;
+                        while pos < bytes.len() {
+                            let ch_b = bytes[pos];
+                            if val_esc {
+                                val.push(match ch_b {
+                                    b'n' => '\n',
+                                    b't' => '\t',
+                                    b'"' => '"',
+                                    b'\'' => '\'',
+                                    b'\\' => '\\',
+                                    other => other as char,
+                                });
+                                val_esc = false;
+                                pos += 1;
+                            } else if ch_b == b'\\' {
+                                val_esc = true;
+                                pos += 1;
+                            } else if ch_b == delim {
+                                return Some(val);
+                            } else {
+                                let rest = &line[pos..];
+                                if let Some(ch) = rest.chars().next() {
+                                    val.push(ch);
+                                    pos += ch.len_utf8();
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+fn parse_js_quote_line(line: &str) -> Option<(String, String)> {
+    if let (Some(text), Some(author)) = (
+        extract_js_quote_line_field(line, "text"),
+        extract_js_quote_line_field(line, "author"),
+    ) {
+        let t = text.trim().to_string();
+        if !t.is_empty() {
+            return Some((t, author.trim().to_string()));
+        }
+    }
+    if let (Some(t_pos), Some(a_pos)) = (line.find("text:"), line.find("author:")) {
+        if t_pos + 5 <= a_pos {
+            let t_part = &line[t_pos + 5..a_pos];
+            let a_part = &line[a_pos + 7..];
+            let text = t_part
+                .trim()
+                .trim_end_matches(',')
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .replace("\\\"", "\"");
+            let author = a_part
+                .trim()
+                .trim_end_matches(';')
+                .trim_end_matches(']')
+                .trim_end_matches('}')
+                .trim_end_matches(',')
+                .trim_end_matches('}')
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'');
+            if !text.is_empty() {
+                return Some((text, author.to_string()));
+            }
+        }
+    }
+    None
+}
+
 fn pick_vault_quote_for_seed(vault_canon: &Path, seed: usize) -> (String, String) {
     let candidates = [
         vault_canon.join("90_System/93_Configuration/Custom_Views/Journal/quotes.js"),
@@ -4273,29 +4410,8 @@ fn pick_vault_quote_for_seed(vault_canon: &Path, seed: usize) -> (String, String
         if let Ok(raw) = fs::read_to_string(quotes_path) {
             let mut pairs: Vec<(String, String)> = Vec::new();
             for line in raw.lines() {
-                if let (Some(t_pos), Some(a_pos)) = (line.find("text:"), line.find("author:")) {
-                    let t_part = &line[t_pos + 5..a_pos];
-                    let a_part = &line[a_pos + 7..];
-                    let text = t_part
-                        .trim()
-                        .trim_end_matches(',')
-                        .trim()
-                        .trim_matches('"')
-                        .trim_matches('\'')
-                        .replace("\\\"", "\"");
-                    let author = a_part
-                        .trim()
-                        .trim_end_matches(';')
-                        .trim_end_matches(']')
-                        .trim_end_matches('}')
-                        .trim_end_matches(',')
-                        .trim_end_matches('}')
-                        .trim()
-                        .trim_matches('"')
-                        .trim_matches('\'');
-                    if !text.is_empty() {
-                        pairs.push((text, author.to_string()));
-                    }
+                if let Some((text, author)) = parse_js_quote_line(line) {
+                    pairs.push((text, author));
                 }
             }
             if !pairs.is_empty() {
@@ -4546,6 +4662,8 @@ fn ui_sidecar_cache_path(cache_path_str: &str) -> String {
 
 #[derive(Deserialize)]
 struct ScanCacheEnvelope {
+    #[serde(rename = "vaultPath", default)]
+    vault_path: Option<String>,
     #[serde(rename = "_scanSignature")]
     scan_signature: Option<String>,
     #[serde(rename = "_cachedEntries", default)]
@@ -4554,6 +4672,7 @@ struct ScanCacheEnvelope {
 
 fn load_cached_markdown_entries_and_sig(
     cache_file_opt: Option<&str>,
+    vault_canon: &Path,
 ) -> (HashMap<String, CachedMarkdownEntry>, Option<String>) {
     let Some(cache_path_str) = cache_file_opt.map(normalize_cache_path).filter(|s| !s.is_empty()) else {
         return (HashMap::new(), None);
@@ -4564,6 +4683,10 @@ fn load_cached_markdown_entries_and_sig(
     let Ok(env) = serde_json::from_slice::<ScanCacheEnvelope>(&bytes) else {
         return (HashMap::new(), None);
     };
+    let expected_vault = vault_canon.to_string_lossy();
+    if env.vault_path.as_deref() != Some(expected_vault.as_ref()) {
+        return (HashMap::new(), None);
+    }
     (env.cached_entries, env.scan_signature)
 }
 
@@ -4576,15 +4699,16 @@ fn fnv1a_update_bytes(hash: &mut u64, bytes: &[u8]) {
 
 fn fnv1a_update_meta(hash: &mut u64, path: &Path) {
     if let Ok(meta) = fs::metadata(path) {
-        let mtime = meta
+        let (mtime_secs, mtime_nanos) = meta
             .modified()
             .ok()
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+            .map(|d| (d.as_secs(), d.subsec_nanos()))
+            .unwrap_or((0, 0));
         fnv1a_update_bytes(hash, &1u8.to_le_bytes());
         fnv1a_update_bytes(hash, &meta.len().to_le_bytes());
-        fnv1a_update_bytes(hash, &mtime.to_le_bytes());
+        fnv1a_update_bytes(hash, &mtime_secs.to_le_bytes());
+        fnv1a_update_bytes(hash, &mtime_nanos.to_le_bytes());
     } else {
         fnv1a_update_bytes(hash, &0u8.to_le_bytes());
     }
@@ -4609,15 +4733,36 @@ fn parse_scan_today_iso(date_opt: Option<&str>, now_secs: u64) -> Result<String,
     }
 }
 
+fn collect_tree_dir_paths<'a>(node: &'a TreeNode, out: &mut Vec<&'a str>) {
+    if node.is_dir && !node.rel_path.is_empty() {
+        out.push(node.rel_path.as_str());
+    }
+    for child in &node.children {
+        collect_tree_dir_paths(child, out);
+    }
+}
+
 fn compute_vault_scan_signature(
     vault_canon: &Path,
     today_iso: &str,
+    tree: &TreeNode,
     flat_files: &[FlatFileEntry],
     next_cache: &BTreeMap<String, CachedMarkdownEntry>,
 ) -> String {
     let mut hash: u64 = 0xcbf29ce484222325;
+    fnv1a_update_bytes(&mut hash, vault_canon.to_string_lossy().as_bytes());
+    fnv1a_update_bytes(&mut hash, b"|");
     fnv1a_update_bytes(&mut hash, today_iso.as_bytes());
     fnv1a_update_bytes(&mut hash, b"|");
+
+    let mut dir_paths: Vec<&str> = Vec::new();
+    collect_tree_dir_paths(tree, &mut dir_paths);
+    dir_paths.sort_unstable();
+    for dir_rel in &dir_paths {
+        fnv1a_update_bytes(&mut hash, b"d:");
+        fnv1a_update_bytes(&mut hash, dir_rel.as_bytes());
+        fnv1a_update_bytes(&mut hash, b"\n");
+    }
 
     let mut file_refs: Vec<&FlatFileEntry> = flat_files.iter().collect();
     file_refs.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
@@ -4625,6 +4770,7 @@ fn compute_vault_scan_signature(
         fnv1a_update_bytes(&mut hash, f.rel_path.as_bytes());
         fnv1a_update_bytes(&mut hash, &f.size_bytes.to_le_bytes());
         fnv1a_update_bytes(&mut hash, &f.mtime_secs.to_le_bytes());
+        fnv1a_update_bytes(&mut hash, &f.mtime_nanos.to_le_bytes());
         fnv1a_update_bytes(&mut hash, b"\n");
     }
 
@@ -4632,6 +4778,7 @@ fn compute_vault_scan_signature(
         fnv1a_update_bytes(&mut hash, k.as_bytes());
         fnv1a_update_bytes(&mut hash, &entry.size_bytes.to_le_bytes());
         fnv1a_update_bytes(&mut hash, &entry.mtime_secs.to_le_bytes());
+        fnv1a_update_bytes(&mut hash, &entry.mtime_nanos.to_le_bytes());
         fnv1a_update_bytes(&mut hash, b";");
     }
 
@@ -4646,8 +4793,9 @@ fn compute_vault_scan_signature(
     }
 
     format!(
-        "fnv1a64:{:016x}:files={}:notes={}",
+        "fnv1a64:{:016x}:dirs={}:files={}:notes={}",
         hash,
+        dir_paths.len(),
         flat_files.len(),
         next_cache.len()
     )
@@ -4708,7 +4856,7 @@ pub fn cmd_scan_for_date_with_cache_opts(
     skip_if_unchanged: bool,
 ) -> Result<Value, String> {
     let vault_canon = resolve_vault_root(vault_str)?;
-    let (prev_cache, prev_sig) = load_cached_markdown_entries_and_sig(cache_file_opt);
+    let (prev_cache, prev_sig) = load_cached_markdown_entries_and_sig(cache_file_opt, &vault_canon);
     let use_cache = cache_file_opt.map(|s| !s.trim().is_empty()).unwrap_or(false);
     let mut next_cache: BTreeMap<String, CachedMarkdownEntry> = BTreeMap::new();
     let mut cache_stats = (0usize, 0usize);
@@ -4730,7 +4878,7 @@ pub fn cmd_scan_for_date_with_cache_opts(
         .unwrap_or(0);
     let today_iso = parse_scan_today_iso(date_opt, now_secs)?;
     let scan_signature = if use_cache {
-        compute_vault_scan_signature(&vault_canon, &today_iso, &flat_files, &next_cache)
+        compute_vault_scan_signature(&vault_canon, &today_iso, &tree, &flat_files, &next_cache)
     } else {
         String::new()
     };
@@ -8523,16 +8671,29 @@ pub fn cmd_hotkeys(vault_str: &str) -> Result<Value, String> {
 fn format_yaml_scalar(v: &Value) -> String {
     match v {
         Value::Bool(b) => b.to_string(),
-        Value::Number(n) => n.to_string(),
+        Value::Number(n) => {
+            if n.as_f64().map(|v| v.is_finite()).unwrap_or(true) {
+                n.to_string()
+            } else {
+                format!("\"{}\"", n.to_string().replace('\\', "\\\\").replace('"', "\\\""))
+            }
+        }
         Value::Null => String::new(),
         Value::String(s) => {
             let collapsed = s.replace("\r\n", " ").replace('\n', " ").replace('\r', " ");
             let trimmed = collapsed.trim();
+            let is_finite_num = trimmed.parse::<f64>().map(|v| v.is_finite()).unwrap_or(false);
             if trimmed.is_empty() {
                 "\"\"".to_string()
-            } else if trimmed == "true" || trimmed == "false" || trimmed.parse::<f64>().is_ok() {
+            } else if trimmed == "true" || trimmed == "false" || is_finite_num {
                 trimmed.to_string()
-            } else if trimmed.contains(':')
+            } else if trimmed == "---"
+                || trimmed == "..."
+                || trimmed == "-"
+                || trimmed == "?"
+                || trimmed.starts_with("- ")
+                || trimmed.starts_with("? ")
+                || trimmed.contains(':')
                 || trimmed.contains('#')
                 || trimmed.contains('[')
                 || trimmed.contains(']')
@@ -8547,6 +8708,14 @@ fn format_yaml_scalar(v: &Value) -> String {
                 || trimmed.contains('>')
                 || trimmed.contains('%')
                 || trimmed.contains('@')
+                || trimmed.contains('`')
+                || trimmed.contains('\\')
+                || trimmed.eq_ignore_ascii_case("nan")
+                || trimmed.eq_ignore_ascii_case("inf")
+                || trimmed.eq_ignore_ascii_case("-inf")
+                || trimmed.eq_ignore_ascii_case("+inf")
+                || trimmed.eq_ignore_ascii_case("infinity")
+                || trimmed.eq_ignore_ascii_case("-infinity")
             {
                 format!("\"{}\"", trimmed.replace('\\', "\\\\").replace('"', "\\\""))
             } else {
@@ -8557,7 +8726,10 @@ fn format_yaml_scalar(v: &Value) -> String {
             let items: Vec<String> = arr
                 .iter()
                 .map(|x| match x {
-                    Value::String(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+                    Value::String(s) => {
+                        let collapsed = s.replace("\r\n", " ").replace('\n', " ").replace('\r', " ");
+                        format!("\"{}\"", collapsed.replace('\\', "\\\\").replace('"', "\\\""))
+                    }
                     other => other.to_string(),
                 })
                 .collect();
@@ -8572,13 +8744,35 @@ fn format_yaml_list_item(item: &Value) -> String {
         Value::String(s) => {
             let collapsed = s.replace("\r\n", " ").replace('\n', " ").replace('\r', " ");
             let t = collapsed.trim();
-            if t.starts_with('"') && t.ends_with('"') && t.len() >= 2 {
-                t.to_string()
-            } else if t.contains(':')
+            if t.is_empty()
+                || t == "---"
+                || t == "..."
+                || t == "-"
+                || t == "?"
+                || t.starts_with("- ")
+                || t.starts_with("? ")
+                || t.eq_ignore_ascii_case("true")
+                || t.eq_ignore_ascii_case("false")
+                || t.eq_ignore_ascii_case("null")
+                || t.parse::<f64>().is_ok()
+                || t.contains(':')
                 || t.contains('#')
                 || t.contains('[')
                 || t.contains(']')
+                || t.contains('{')
+                || t.contains('}')
                 || t.contains('"')
+                || t.contains('\'')
+                || t.contains('&')
+                || t.contains('*')
+                || t.contains('!')
+                || t.contains('|')
+                || t.contains('>')
+                || t.contains('%')
+                || t.contains('@')
+                || t.contains('`')
+                || t.contains(',')
+                || t.contains('\\')
             {
                 format!("\"{}\"", t.replace('\\', "\\\\").replace('"', "\\\""))
             } else {
@@ -8586,6 +8780,28 @@ fn format_yaml_list_item(item: &Value) -> String {
             }
         }
         other => other.to_string(),
+    }
+}
+
+fn format_yaml_key(key: &str) -> String {
+    let cleaned: String = key
+        .chars()
+        .filter(|&c| c != '\0' && (!c.is_control() || c == '\t' || c == '\n' || c == '\r'))
+        .map(|c| if c == '\n' || c == '\r' || c == '\t' { ' ' } else { c })
+        .collect();
+    let trimmed = cleaned.trim();
+    if !trimmed.is_empty()
+        && trimmed != "---"
+        && trimmed != "..."
+        && !trimmed.starts_with('-')
+        && !trimmed.starts_with('?')
+        && trimmed
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b'/'))
+    {
+        trimmed.to_string()
+    } else {
+        format!("\"{}\"", trimmed.replace('\\', "\\\\").replace('"', "\\\""))
     }
 }
 
@@ -8601,13 +8817,14 @@ fn append_yaml_entry(out: &mut Vec<String>, key: &str, val: &Value, indent: usiz
         return;
     }
     let pad = " ".repeat(indent);
+    let safe_key = format_yaml_key(key);
     match val {
         Value::Array(arr) => {
             if arr.is_empty() {
-                out.push(format!("{}{}: []", pad, key));
+                out.push(format!("{}{}: []", pad, safe_key));
                 return;
             }
-            out.push(format!("{}{}:", pad, key));
+            out.push(format!("{}{}:", pad, safe_key));
             let item_pad = " ".repeat(indent + 2);
             for item in arr {
                 match item {
@@ -8628,7 +8845,7 @@ fn append_yaml_entry(out: &mut Vec<String>, key: &str, val: &Value, indent: usiz
                                             append_yaml_entry(out, ok, ov, indent + 4);
                                         }
                                         _ => {
-                                            out.push(format!("{}- {}: {}", item_pad, ok, format_yaml_scalar(ov)));
+                                            out.push(format!("{}- {}: {}", item_pad, format_yaml_key(ok), format_yaml_scalar(ov)));
                                         }
                                     }
                                 } else {
@@ -8645,23 +8862,28 @@ fn append_yaml_entry(out: &mut Vec<String>, key: &str, val: &Value, indent: usiz
         }
         Value::Object(obj) => {
             if obj.is_empty() {
-                out.push(format!("{}{}: {{}}", pad, key));
+                out.push(format!("{}{}: {{}}", pad, safe_key));
                 return;
             }
-            out.push(format!("{}{}:", pad, key));
+            out.push(format!("{}{}:", pad, safe_key));
             for (ok, ov) in obj {
                 append_yaml_entry(out, ok, ov, indent + 2);
             }
         }
         _ => {
-            out.push(format!("{}{}: {}", pad, key, format_yaml_scalar(val)));
+            out.push(format!("{}{}: {}", pad, safe_key, format_yaml_scalar(val)));
         }
     }
 }
 
 pub fn apply_frontmatter_updates_to_content(raw: &str, updates: &serde_json::Map<String, Value>) -> String {
-    let trailing_newline = raw.ends_with('\n');
-    let lines: Vec<String> = raw.lines().map(|s| s.to_string()).collect();
+    let (bom, body_raw) = if let Some(rest) = raw.strip_prefix('\u{feff}') {
+        ("\u{feff}", rest)
+    } else {
+        ("", raw)
+    };
+    let trailing_newline = body_raw.ends_with('\n');
+    let lines: Vec<String> = body_raw.lines().map(|s| s.to_string()).collect();
 
     if lines.first().map(|s| s.trim()) == Some("---") {
         if let Some(end_idx) = lines.iter().skip(1).position(|s| {
@@ -8713,7 +8935,7 @@ pub fn apply_frontmatter_updates_to_content(raw: &str, updates: &serde_json::Map
             for body_line in &lines[fm_end + 1..] {
                 new_fm.push(body_line.clone());
             }
-            let mut out = new_fm.join("\n");
+            let mut out = format!("{}{}", bom, new_fm.join("\n"));
             if trailing_newline || !out.ends_with('\n') {
                 out.push('\n');
             }
@@ -8731,7 +8953,7 @@ pub fn apply_frontmatter_updates_to_content(raw: &str, updates: &serde_json::Map
     if !lines.is_empty() {
         new_lines.extend(lines);
     }
-    let mut out = new_lines.join("\n");
+    let mut out = format!("{}{}", bom, new_lines.join("\n"));
     if trailing_newline || !out.ends_with('\n') {
         out.push('\n');
     }
@@ -12909,6 +13131,59 @@ mod tests {
             .map(|r| r["relPath"].as_str().unwrap())
             .collect();
         assert_eq!(ordered_desc, vec!["nnan.md", "n15a.md", "n10.md", "n2.md", "nneg.md"]);
+
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn test_wave2_quote_order_yaml_hardening_wikilink_encoding_and_scan_cache_dirs() {
+        let vault = make_temp_vault("wave2_main_hardening");
+        let scripts_dir = vault.join("90_System/92_Scripts");
+        fs::create_dir_all(&scripts_dir).unwrap();
+        fs::write(
+            scripts_dir.join("quotes.js"),
+            "{ author: \"Seneca\", text: \"Order \\\"reversed\\\" safely.\" },\n{ text: \"Normal order\", author: \"Marcus\" },\n",
+        )
+        .unwrap();
+        let (q_text, q_author) = pick_vault_quote_for_seed(&vault, 0);
+        assert_eq!(q_text, "Order \"reversed\" safely.");
+        assert_eq!(q_author, "Seneca");
+
+        let mut updates = serde_json::Map::new();
+        updates.insert("bad\nkey: inject".to_string(), Value::String("NaN".to_string()));
+        updates.insert("doc_end".to_string(), Value::String("---".to_string()));
+        updates.insert(
+            "tags".to_string(),
+            Value::Array(vec![Value::String("\"quoted\" # injection".to_string())]),
+        );
+        let bom_raw = "\u{feff}---\ntitle: Existing\n---\nBody\n";
+        let updated = apply_frontmatter_updates_to_content(bom_raw, &updates);
+        assert!(updated.starts_with("\u{feff}---\n"));
+        assert_eq!(updated.matches("---\n").count(), 2);
+        assert!(updated.contains("\"bad key: inject\": \"NaN\""));
+        assert!(updated.contains("doc_end: \"---\""));
+        assert!(updated.contains("- \"\\\"quoted\\\" # injection\""));
+
+        let encoded = render_inline_rich_html("[[My Notes? 100%.md]] and ![[C# img 100%?.png]]");
+        assert!(encoded.contains("href=\"wikilink:My%20Notes%3F%20100%25.md\""));
+        assert!(encoded.contains("href=\"wikilink:C%23%20img%20100%25%3F.png\""));
+
+        let cache_file = vault.join(".cache_scan.json");
+        let cache_str = cache_file.to_str().unwrap();
+        let v_str = vault.to_str().unwrap();
+        let first = cmd_scan_for_date_with_cache_opts(v_str, Some("2026-11-23"), Some(cache_str), true).unwrap();
+        assert!(first.get("unchanged").is_none());
+        let hit = cmd_scan_for_date_with_cache_opts(v_str, Some("2026-11-23"), Some(cache_str), true).unwrap();
+        assert_eq!(hit["unchanged"], Value::Bool(true));
+
+        let empty_dir = vault.join("EmptyWave2Folder");
+        fs::create_dir_all(&empty_dir).unwrap();
+        let after_mkdir = cmd_scan_for_date_with_cache_opts(v_str, Some("2026-11-23"), Some(cache_str), true).unwrap();
+        assert!(after_mkdir.get("unchanged").is_none());
+
+        fs::remove_dir_all(&empty_dir).unwrap();
+        let after_rmdir = cmd_scan_for_date_with_cache_opts(v_str, Some("2026-11-23"), Some(cache_str), true).unwrap();
+        assert!(after_rmdir.get("unchanged").is_none());
 
         let _ = fs::remove_dir_all(&vault);
     }

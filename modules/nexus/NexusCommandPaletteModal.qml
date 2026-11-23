@@ -781,6 +781,8 @@ Rectangle {
                                 root.nexus.commandPaletteOpen = false;
                                 if (modelData.id === "__new_note_api_modal__") {
                                     root.nexus.openNewNoteModal("movie", "");
+                                } else if (modelData.id === "__paste_clipboard_image__") {
+                                    root.nexus.pasteClipboardImage();
                                 } else {
                                     root.nexus.triggerShortcutAction(modelData.id);
                                 }

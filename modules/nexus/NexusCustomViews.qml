@@ -37,7 +37,7 @@ Item {
         const rows = [];
         for (let i = 0; i < items.length; ++i) {
             const it = items[i];
-            rows.push([String(it.timeRange || it.time || "All day"), String(it.title || "Untitled"), String(it.swatch || "#648392")]);
+            rows.push([String(it.timeRange || it.time || "All day"), String(it.title || "Untitled"), String(it.color || (typeof it.swatch === "string" ? it.swatch : it.swatch?.accent) || "#648392")]);
         }
         return rows;
     }
@@ -47,6 +47,19 @@ Item {
     readonly property var eView: doc?.exerciseView ?? ({})
     readonly property var sView: doc?.settingsView ?? ({})
     readonly property var fSummary: doc?.financeSummary ?? service?.financeSummary ?? ({})
+
+    function _decodeWikilinkHref(href: string): string {
+        let wl = String(href ?? "");
+        if (wl.startsWith("wikilink:"))
+            wl = wl.substring("wikilink:".length);
+        if (wl.startsWith("//"))
+            wl = wl.substring(2);
+        try {
+            return decodeURIComponent(wl);
+        } catch (_e) {
+            return wl;
+        }
+    }
 
     function ccStop(idx): color {
         if (root.workspace && typeof root.workspace.ccStop === "function")
@@ -1837,7 +1850,7 @@ Item {
                                                     wrapMode: Text.Wrap
                                                     onLinkActivated: link => {
                                                         if (root.service && link.startsWith("wikilink:"))
-                                                            root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                                            root.service.followWikilink(root._decodeWikilinkHref(link));
                                                     }
                                                 }
 
@@ -3309,7 +3322,7 @@ Item {
                                 wrapMode: Text.Wrap
                                 onLinkActivated: link => {
                                     if (root.service && link.startsWith("wikilink:"))
-                                        root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                        root.service.followWikilink(root._decodeWikilinkHref(link));
                                 }
                             }
 
@@ -7629,7 +7642,7 @@ Item {
                                     wrapMode: Text.Wrap
                                     onLinkActivated: link => {
                                         if (root.service && link.startsWith("wikilink:"))
-                                            root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                            root.service.followWikilink(root._decodeWikilinkHref(link));
                                     }
                                 }
 
@@ -8746,7 +8759,7 @@ Item {
                                 wrapMode: Text.Wrap
                                 onLinkActivated: link => {
                                     if (root.service && link.startsWith("wikilink:"))
-                                        root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                        root.service.followWikilink(root._decodeWikilinkHref(link));
                                 }
                             }
                         }
@@ -9034,7 +9047,7 @@ Item {
                                             wrapMode: Text.Wrap
                                             onLinkActivated: link => {
                                                 if (root.service && link.startsWith("wikilink:"))
-                                                    root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                                    root.service.followWikilink(root._decodeWikilinkHref(link));
                                             }
                                         }
                                     }
@@ -9129,7 +9142,7 @@ Item {
                                                 wrapMode: Text.Wrap
                                                 onLinkActivated: link => {
                                                     if (root.service && link.startsWith("wikilink:"))
-                                                        root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                                        root.service.followWikilink(root._decodeWikilinkHref(link));
                                                     else if (link.startsWith("http://") || link.startsWith("https://"))
                                                         Qt.openUrlExternally(link);
                                                 }
@@ -9171,7 +9184,7 @@ Item {
                                                 const linkAt = cueRightTxt.linkAt(mouse.x, mouse.y);
                                                 if (linkAt && linkAt.length > 0) {
                                                     if (root.service && linkAt.startsWith("wikilink:"))
-                                                        root.service.followWikilink(decodeURIComponent(linkAt.substring(9)));
+                                                        root.service.followWikilink(root._decodeWikilinkHref(linkAt));
                                                     else if (linkAt.startsWith("http://") || linkAt.startsWith("https://"))
                                                         Qt.openUrlExternally(linkAt);
                                                     return;
@@ -9306,7 +9319,7 @@ Item {
                                 wrapMode: Text.Wrap
                                 onLinkActivated: link => {
                                     if (root.service && link.startsWith("wikilink:"))
-                                        root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                        root.service.followWikilink(root._decodeWikilinkHref(link));
                                 }
                             }
 
@@ -9837,7 +9850,7 @@ Item {
                                     wrapMode: Text.Wrap
                                     onLinkActivated: link => {
                                         if (root.service && link.startsWith("wikilink:"))
-                                            root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                            root.service.followWikilink(root._decodeWikilinkHref(link));
                                         else if (link.startsWith("http://") || link.startsWith("https://"))
                                             Qt.openUrlExternally(link);
                                     }
@@ -9850,7 +9863,7 @@ Item {
                                     const linkAt = zkCoreTxt.linkAt(mouse.x - 12, mouse.y - 34);
                                     if (linkAt && linkAt.length > 0) {
                                         if (root.service && linkAt.startsWith("wikilink:"))
-                                            root.service.followWikilink(decodeURIComponent(linkAt.substring(9)));
+                                            root.service.followWikilink(root._decodeWikilinkHref(linkAt));
                                         else if (linkAt.startsWith("http://") || linkAt.startsWith("https://"))
                                             Qt.openUrlExternally(linkAt);
                                         return;
@@ -9909,7 +9922,7 @@ Item {
                                     wrapMode: Text.Wrap
                                     onLinkActivated: link => {
                                         if (root.service && link.startsWith("wikilink:"))
-                                            root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                            root.service.followWikilink(root._decodeWikilinkHref(link));
                                         else if (link.startsWith("http://") || link.startsWith("https://"))
                                             Qt.openUrlExternally(link);
                                     }
@@ -9922,7 +9935,7 @@ Item {
                                     const linkAt = zkElabTxt.linkAt(mouse.x - 12, mouse.y - 34);
                                     if (linkAt && linkAt.length > 0) {
                                         if (root.service && linkAt.startsWith("wikilink:"))
-                                            root.service.followWikilink(decodeURIComponent(linkAt.substring(9)));
+                                            root.service.followWikilink(root._decodeWikilinkHref(linkAt));
                                         else if (linkAt.startsWith("http://") || linkAt.startsWith("https://"))
                                             Qt.openUrlExternally(linkAt);
                                         return;
@@ -9992,7 +10005,7 @@ Item {
                                     wrapMode: Text.Wrap
                                     onLinkActivated: link => {
                                         if (root.service && link.startsWith("wikilink:"))
-                                            root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                            root.service.followWikilink(root._decodeWikilinkHref(link));
                                         else if (link.startsWith("http://") || link.startsWith("https://"))
                                             Qt.openUrlExternally(link);
                                     }
@@ -10006,7 +10019,7 @@ Item {
                                     const linkAt = zkConnTxt.linkAt(mouse.x - 12, mouse.y - 34);
                                     if (linkAt && linkAt.length > 0) {
                                         if (root.service && linkAt.startsWith("wikilink:"))
-                                            root.service.followWikilink(decodeURIComponent(linkAt.substring(9)));
+                                            root.service.followWikilink(root._decodeWikilinkHref(linkAt));
                                         else if (linkAt.startsWith("http://") || linkAt.startsWith("https://"))
                                             Qt.openUrlExternally(linkAt);
                                         return;
@@ -10064,7 +10077,7 @@ Item {
                                     wrapMode: Text.Wrap
                                     onLinkActivated: link => {
                                         if (root.service && link.startsWith("wikilink:"))
-                                            root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                            root.service.followWikilink(root._decodeWikilinkHref(link));
                                         else if (link.startsWith("http://") || link.startsWith("https://"))
                                             Qt.openUrlExternally(link);
                                     }
@@ -10077,7 +10090,7 @@ Item {
                                     const linkAt = zkSrcTxt.linkAt(mouse.x - 12, mouse.y - 34);
                                     if (linkAt && linkAt.length > 0) {
                                         if (root.service && linkAt.startsWith("wikilink:"))
-                                            root.service.followWikilink(decodeURIComponent(linkAt.substring(9)));
+                                            root.service.followWikilink(root._decodeWikilinkHref(linkAt));
                                         else if (linkAt.startsWith("http://") || linkAt.startsWith("https://"))
                                             Qt.openUrlExternally(linkAt);
                                         return;
@@ -12512,7 +12525,7 @@ Item {
                                     wrapMode: Text.Wrap
                                     onLinkActivated: link => {
                                         if (root.service && link.startsWith("wikilink:"))
-                                            root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                            root.service.followWikilink(root._decodeWikilinkHref(link));
                                     }
                                 }
 
@@ -13568,7 +13581,7 @@ Item {
                                 wrapMode: Text.Wrap
                                 onLinkActivated: link => {
                                     if (root.service && link.startsWith("wikilink:"))
-                                        root.service.followWikilink(decodeURIComponent(link.substring(9)));
+                                        root.service.followWikilink(root._decodeWikilinkHref(link));
                                 }
                             }
 

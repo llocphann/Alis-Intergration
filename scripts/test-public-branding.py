@@ -95,7 +95,8 @@ for path in ('README.md', 'ARCHITECTURE.md', 'STRUCTURE.md', 'CONTRIBUTING.md', 
 # This exact allowlist is the documented security exception. Even changing a
 # policy's wording requires an explicit compatible security migration.
 expected = {
-    'assets/helpers/alis-battery-charge-limit': '9ca3b1aee470a130fdc0e8861953858a9d2da218ee910ff3b4e2dc39398fba03',
+    # Updated for set -f noglob hardening around TLP settings validation loops.
+    'assets/helpers/alis-battery-charge-limit': '8d90045a524c24bb89086d9c07d21abf349a0a5994cb72096d54722422677255',
     # Updated in commit 1898b0a for stale /run/thinkfan.pid cleanup before systemctl enable --now.
     'assets/helpers/alis-thinkfan': 'b8b2c9cf721aff50b31ea1a0cae6d4f91d18d266d479f185deb86217830f1d67',
     'assets/polkit/org.alis.battery-charge-limit.policy': 'a1e82cdf472a6df24fe0539e47012acd70f6e90aaadc328406787eb6917597b0',

@@ -374,43 +374,67 @@ Scope {
         }
     }
 
+    Timer {
+        id: scanFlushTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!scanProc._exited || scanProc._finalized)
+                return
+            scanProc._streamDone = true
+            scanProc._finalize()
+        }
+    }
+
+    Timer {
+        id: mutationFlushTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!mutationProc._exited || mutationProc._finalized)
+                return
+            mutationProc._streamDone = true
+            mutationProc._finalize()
+        }
+    }
+
     Process {
         id: scanProc
         running: false
         property bool startObserved: false
         property bool timedOut: false
-        stdout: StdioCollector { id: scanCollector }
+        property bool _exited: false
+        property bool _streamDone: false
+        property bool _finalized: false
+        property int _exitCode: -1
 
-        onRunningChanged: {
-            if (scanProc.running) {
-                scanProc.startObserved = false
+        function _finalize(): void {
+            if (!scanProc._exited || scanProc._finalized)
                 return
-            }
-            if (scanProc.startObserved)
-                return
-            scanTimeout.stop()
-            root._clearUnavailable("scanner_start_failed", "Failed to start Markdown Todo scanner")
-            root._finishScan()
-        }
-
-        onStarted: {
-            scanProc.startObserved = true
-            scanProc.timedOut = false
-            scanTimeout.restart()
-        }
-
-        onExited: (exitCode, exitStatus) => {
-            scanTimeout.stop()
             if (!root.configured || root._scanSourceKey !== root._sourceKey()) {
+                scanProc._finalized = true
+                scanProc._exited = false
+                scanProc._streamDone = false
+                scanFlushTimer.stop()
                 root._refreshQueued = root.configured
                 root._finishScan()
                 return
             }
             if (scanProc.timedOut) {
+                scanProc._finalized = true
+                scanProc._exited = false
+                scanProc._streamDone = false
+                scanFlushTimer.stop()
                 root._clearUnavailable("scanner_timeout", "Markdown Todo scanner timed out")
                 root._finishScan()
                 return
             }
+            if (!scanProc._streamDone)
+                return
+            scanProc._finalized = true
+            scanProc._exited = false
+            scanProc._streamDone = false
+            scanFlushTimer.stop()
             const output = String(scanCollector.text ?? "").trim()
             if (output.length === 0) {
                 root._clearUnavailable("scanner_failed", "Markdown Todo scanner returned no result")
@@ -424,6 +448,49 @@ Scope {
             }
             root._finishScan()
         }
+
+        stdout: StdioCollector {
+            id: scanCollector
+            onStreamFinished: {
+                scanProc._streamDone = true
+                scanProc._finalize()
+            }
+        }
+
+        onRunningChanged: {
+            if (scanProc.running) {
+                scanProc.startObserved = false
+                scanProc._exited = false
+                scanProc._streamDone = false
+                scanProc._finalized = false
+                scanProc._exitCode = -1
+                scanFlushTimer.stop()
+                return
+            }
+            if (scanProc.startObserved)
+                return
+            scanTimeout.stop()
+            scanFlushTimer.stop()
+            root._clearUnavailable("scanner_start_failed", "Failed to start Markdown Todo scanner")
+            root._finishScan()
+        }
+
+        onStarted: {
+            scanProc.startObserved = true
+            scanProc.timedOut = false
+            scanProc._finalized = false
+            scanTimeout.restart()
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            scanTimeout.stop()
+            scanProc._exitCode = exitCode
+            scanProc._exited = true
+            if (scanProc._streamDone || scanProc.timedOut)
+                scanProc._finalize()
+            else
+                scanFlushTimer.restart()
+        }
     }
 
     Process {
@@ -431,42 +498,41 @@ Scope {
         running: false
         property bool startObserved: false
         property bool timedOut: false
+        property bool _exited: false
+        property bool _streamDone: false
+        property bool _finalized: false
+        property int _exitCode: -1
         property string kind: ""
-        stdout: StdioCollector { id: mutationCollector }
 
-        onRunningChanged: {
-            if (mutationProc.running) {
-                mutationProc.startObserved = false
+        function _finalize(): void {
+            if (!mutationProc._exited || mutationProc._finalized)
                 return
-            }
-            if (mutationProc.startObserved)
-                return
-            mutationTimeout.stop()
-            root._setError("mutation_start_failed", "Failed to start Markdown Todo mutation helper")
-            root._notifyMigrationFinished(false, null)
-            root._finishMutation()
-        }
-
-        onStarted: {
-            mutationProc.startObserved = true
-            mutationProc.timedOut = false
-            mutationTimeout.restart()
-        }
-
-        onExited: (exitCode, exitStatus) => {
-            mutationTimeout.stop()
             if (!root.configured || root._mutationSourceKey !== root._sourceKey()) {
+                mutationProc._finalized = true
+                mutationProc._exited = false
+                mutationProc._streamDone = false
+                mutationFlushTimer.stop()
                 root._refreshQueued = root.configured
                 root._notifyMigrationFinished(false, null)
                 root._finishMutation()
                 return
             }
             if (mutationProc.timedOut) {
+                mutationProc._finalized = true
+                mutationProc._exited = false
+                mutationProc._streamDone = false
+                mutationFlushTimer.stop()
                 root._setError("mutation_timeout", "Markdown Todo mutation timed out")
                 root._notifyMigrationFinished(false, null)
                 root._finishMutation()
                 return
             }
+            if (!mutationProc._streamDone)
+                return
+            mutationProc._finalized = true
+            mutationProc._exited = false
+            mutationProc._streamDone = false
+            mutationFlushTimer.stop()
             const output = String(mutationCollector.text ?? "").trim()
             if (output.length === 0) {
                 root._setError("mutation_failed", "Markdown Todo mutation returned no result")
@@ -504,6 +570,50 @@ Scope {
                 root._notifyMigrationFinished(false, null)
             }
             root._finishMutation()
+        }
+
+        stdout: StdioCollector {
+            id: mutationCollector
+            onStreamFinished: {
+                mutationProc._streamDone = true
+                mutationProc._finalize()
+            }
+        }
+
+        onRunningChanged: {
+            if (mutationProc.running) {
+                mutationProc.startObserved = false
+                mutationProc._exited = false
+                mutationProc._streamDone = false
+                mutationProc._finalized = false
+                mutationProc._exitCode = -1
+                mutationFlushTimer.stop()
+                return
+            }
+            if (mutationProc.startObserved)
+                return
+            mutationTimeout.stop()
+            mutationFlushTimer.stop()
+            root._setError("mutation_start_failed", "Failed to start Markdown Todo mutation helper")
+            root._notifyMigrationFinished(false, null)
+            root._finishMutation()
+        }
+
+        onStarted: {
+            mutationProc.startObserved = true
+            mutationProc.timedOut = false
+            mutationProc._finalized = false
+            mutationTimeout.restart()
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            mutationTimeout.stop()
+            mutationProc._exitCode = exitCode
+            mutationProc._exited = true
+            if (mutationProc._streamDone || mutationProc.timedOut)
+                mutationProc._finalize()
+            else
+                mutationFlushTimer.restart()
         }
     }
 }

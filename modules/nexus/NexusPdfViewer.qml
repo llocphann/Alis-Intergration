@@ -15,6 +15,11 @@ Rectangle {
     readonly property int totalPages: Math.max(1, Number(nexus?.pdfInfo?.pages ?? 1))
     readonly property int curPage: Math.max(1, Number(nexus?.pdfCurrentPage ?? 1))
 
+    onCurPageChanged: {
+        if (pdfRoot.showTextDrawer && pdfRoot.nexus)
+            pdfRoot.nexus.pdfExtractPageText(pdfRoot.curPage);
+    }
+
     focus: true
     Keys.onPressed: event => {
         if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_F) {

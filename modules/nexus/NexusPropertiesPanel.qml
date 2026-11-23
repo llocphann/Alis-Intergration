@@ -40,12 +40,13 @@ Rectangle {
         return "text";
     }
 
-    function updateField(key: string, val): void {
-        if (!nexus || !key)
+    function updateField(key: string, val, targetRelPath = ""): void {
+        const target = String(targetRelPath || propRoot.doc?.relPath || "").trim();
+        if (!nexus || !key || !target)
             return;
         const patch = {};
         patch[key] = val;
-        nexus.updateNoteFrontmatter(patch);
+        nexus.updateNoteFrontmatter(patch, target);
     }
 
     ColumnLayout {
@@ -135,6 +136,7 @@ Rectangle {
                     id: propRow
                     required property var modelData
                     readonly property string kName: String(modelData)
+                    readonly property string ownerPath: String(propRoot.doc?.relPath ?? "")
                     readonly property var rawVal: propRoot.fmObj[kName]
                     readonly property string fType: propRoot.inferType(kName, rawVal)
 
@@ -172,7 +174,7 @@ Rectangle {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 const nextB = !(propRow.rawVal === true || String(propRow.rawVal) === "true");
-                                propRoot.updateField(propRow.kName, nextB);
+                                propRoot.updateField(propRow.kName, nextB, propRow.ownerPath);
                             }
                         }
                     }
@@ -195,7 +197,7 @@ Rectangle {
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: propRoot.updateField(propRow.kName, String(index + 1))
+                                    onClicked: propRoot.updateField(propRow.kName, String(index + 1), propRow.ownerPath)
                                 }
                             }
                         }
@@ -203,24 +205,56 @@ Rectangle {
 
                     // List / Tags display + inline editor
                     TextField {
+                        id: propValueField
                         visible: propRow.fType !== "bool"
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         implicitHeight: 26
-                        text: Array.isArray(propRow.rawVal) ? propRow.rawVal.join(", ") : String(propRow.rawVal ?? "")
+                        readonly property string canonicalText: Array.isArray(propRow.rawVal) ? propRow.rawVal.join(", ") : String(propRow.rawVal ?? "")
+                        property bool _dirty: false
+                        property string _editOwnerPath: ""
                         color: propRoot.settledColors?.colOnLayer1 ?? Appearance.colors.colOnLayer1
                         font.pixelSize: Appearance.font.pixelSize.smaller
                         background: Rectangle {
                             radius: 6
                             color: propRoot.settledColors?.colLayer0 ?? Appearance.colors.colLayer0
                         }
+                        Component.onCompleted: text = canonicalText
+                        onCanonicalTextChanged: {
+                            if (!activeFocus && !_dirty && text !== canonicalText)
+                                text = canonicalText;
+                        }
+                        onActiveFocusChanged: {
+                            if (activeFocus) {
+                                _editOwnerPath = propRow.ownerPath;
+                            } else if (!_dirty && text !== canonicalText) {
+                                text = canonicalText;
+                            }
+                        }
+                        onTextEdited: {
+                            if (!_editOwnerPath)
+                                _editOwnerPath = propRow.ownerPath;
+                            _dirty = true;
+                        }
                         onEditingFinished: {
+                            if (!_dirty)
+                                return;
+                            _dirty = false;
+                            const targetPath = _editOwnerPath || propRow.ownerPath;
+                            _editOwnerPath = "";
+                            if (!targetPath || targetPath !== String(propRoot.nexus?.currentPath ?? ""))
+                                return;
                             const txt = text.trim();
+                            if (txt === canonicalText.trim())
+                                return;
                             if (propRow.fType === "list") {
                                 const arr = txt ? txt.split(",").map(s => s.trim()).filter(s => s.length > 0) : [];
-                                propRoot.updateField(propRow.kName, arr);
+                                propRoot.updateField(propRow.kName, arr, targetPath);
+                            } else if (propRow.fType === "number") {
+                                const num = Number(txt);
+                                propRoot.updateField(propRow.kName, (txt.length > 0 && Number.isFinite(num)) ? num : txt, targetPath);
                             } else {
-                                propRoot.updateField(propRow.kName, txt);
+                                propRoot.updateField(propRow.kName, txt, targetPath);
                             }
                         }
                     }
@@ -271,7 +305,7 @@ Rectangle {
                             const k = addPropKeyField.text.trim();
                             const v = addPropValField.text.trim();
                             if (!k) return;
-                            propRoot.updateField(k, v);
+                            propRoot.updateField(k, v, String(propRoot.doc?.relPath ?? ""));
                             addPropKeyField.text = "";
                             addPropValField.text = "";
                         }

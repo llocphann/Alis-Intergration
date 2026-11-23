@@ -794,23 +794,89 @@ Item {
         }
     }
 
+    Timer {
+        id: statusFlushTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!statusProcess._exited || statusProcess._finalized)
+                return
+            statusProcess._stdoutDone = true
+            statusProcess._stderrDone = true
+            statusProcess._finalize()
+        }
+    }
+
     Process {
         id: statusProcess
         property bool timedOut: false
         property bool startObserved: false
+        property bool _exited: false
+        property bool _stdoutDone: false
+        property bool _stderrDone: false
+        property bool _finalized: false
+        property int _exitCode: -1
         command: [root.helperPath, "--config-status"]
+
+        function _finalize(): void {
+            if (!statusProcess._exited || statusProcess._finalized)
+                return
+            if (statusProcess.timedOut) {
+                statusProcess._finalized = true
+                statusProcess._exited = false
+                statusProcess._stdoutDone = false
+                statusProcess._stderrDone = false
+                statusFlushTimer.stop()
+                root._clearStatus("status-timeout")
+                root.lastError = "TLP settings status helper timed out"
+                console.warn("[TLP Settings]", root.lastError)
+                if (root._refreshPending)
+                    Qt.callLater(() => { if (root._live) root.refresh() })
+                return
+            }
+            if (!statusProcess._stdoutDone || !statusProcess._stderrDone)
+                return
+            statusProcess._finalized = true
+            statusProcess._exited = false
+            statusProcess._stdoutDone = false
+            statusProcess._stderrDone = false
+            statusFlushTimer.stop()
+            if (statusProcess._exitCode === 0) {
+                root._parseStatus(statusOutput.text)
+            } else {
+                root._clearStatus("status-failed")
+                root.lastError = statusError.text.trim()
+            }
+
+            if (root._refreshPending)
+                Qt.callLater(() => { if (root._live) root.refresh() })
+        }
 
         stdout: StdioCollector {
             id: statusOutput
+            onStreamFinished: {
+                statusProcess._stdoutDone = true
+                statusProcess._finalize()
+            }
         }
 
         stderr: StdioCollector {
             id: statusError
+            onStreamFinished: {
+                statusProcess._stderrDone = true
+                statusProcess._finalize()
+            }
         }
 
         onRunningChanged: {
             if (statusProcess.running) {
                 statusProcess.startObserved = false
+                statusProcess._exited = false
+                statusProcess._stdoutDone = false
+                statusProcess._stderrDone = false
+                statusProcess._finalized = false
+                statusProcess._exitCode = -1
+                statusFlushTimer.stop()
                 return
             }
             if (statusProcess.startObserved)
@@ -829,6 +895,7 @@ Item {
             }
 
             statusTimeout.stop()
+            statusFlushTimer.stop()
             root._clearStatus("helper-unavailable")
             root.lastError = "TLP settings status helper failed to start"
             console.warn("[TLP Settings]", root.lastError)
@@ -839,24 +906,18 @@ Item {
         onStarted: {
             statusProcess.startObserved = true
             statusProcess.timedOut = false
+            statusProcess._finalized = false
             statusTimeout.restart()
         }
 
         onExited: (exitCode, exitStatus) => {
             statusTimeout.stop()
-            if (statusProcess.timedOut) {
-                root._clearStatus("status-timeout")
-                root.lastError = "TLP settings status helper timed out"
-                console.warn("[TLP Settings]", root.lastError)
-            } else if (exitCode === 0) {
-                root._parseStatus(statusOutput.text)
-            } else {
-                root._clearStatus("status-failed")
-                root.lastError = statusError.text.trim()
-            }
-
-            if (root._refreshPending)
-                Qt.callLater(() => { if (root._live) root.refresh() })
+            statusProcess._exitCode = exitCode
+            statusProcess._exited = true
+            if ((statusProcess._stdoutDone && statusProcess._stderrDone) || statusProcess.timedOut)
+                statusProcess._finalize()
+            else
+                statusFlushTimer.restart()
         }
     }
 
@@ -872,49 +933,49 @@ Item {
         }
     }
 
+    Timer {
+        id: mutationFlushTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!mutationProcess._exited || mutationProcess._finalized)
+                return
+            mutationProcess._stdoutDone = true
+            mutationProcess._stderrDone = true
+            mutationProcess._finalize()
+        }
+    }
+
     Process {
         id: mutationProcess
         property bool timedOut: false
         property bool startObserved: false
+        property bool _exited: false
+        property bool _stdoutDone: false
+        property bool _stderrDone: false
+        property bool _finalized: false
+        property int _exitCode: -1
+        property string _pendingKind: ""
+        property var _pendingAppliedChargePolicy: null
 
-        stdout: StdioCollector {
-            id: mutationOutput
-        }
-
-        stderr: StdioCollector {
-            id: mutationError
-        }
-
-        onRunningChanged: {
-            if (mutationProcess.running) {
-                mutationProcess.startObserved = false
+        function _finalize(): void {
+            if (!mutationProcess._exited || mutationProcess._finalized)
                 return
-            }
-            if (mutationProcess.startObserved || !root.busy)
+            if (!mutationProcess.timedOut && (!mutationProcess._stdoutDone || !mutationProcess._stderrDone))
                 return
-
-            mutationTimeout.stop()
-            const kind = root._mutationKind
-            root.busy = false
-            root.lastError = "TLP settings operation failed to start"
-            root._mutationKind = ""
-            console.warn("[TLP Settings]", root.lastError)
-            root.refresh()
-            root.mutationFinished(kind, false)
-        }
-
-        onStarted: {
-            mutationProcess.startObserved = true
-            mutationProcess.timedOut = false
-            mutationTimeout.restart()
-        }
-
-        onExited: (exitCode, exitStatus) => {
-            mutationTimeout.stop()
-            const kind = root._mutationKind
+            mutationProcess._finalized = true
+            mutationProcess._exited = false
+            mutationProcess._stdoutDone = false
+            mutationProcess._stderrDone = false
+            mutationFlushTimer.stop()
+            const kind = mutationProcess._pendingKind.length > 0 ? mutationProcess._pendingKind : root._mutationKind
+            const exitCode = mutationProcess._exitCode
             const success = exitCode === 0 && !mutationProcess.timedOut
-            const appliedChargePolicy = root.pendingChargePolicy === null
-                ? null : root._clone(root.pendingChargePolicy)
+            const appliedChargePolicy = mutationProcess._pendingAppliedChargePolicy !== undefined
+                ? mutationProcess._pendingAppliedChargePolicy
+                : (root.pendingChargePolicy === null ? null : root._clone(root.pendingChargePolicy))
+            mutationProcess._pendingKind = ""
+            mutationProcess._pendingAppliedChargePolicy = undefined
             root.busy = false
             if (success) {
                 if (root.helperPath === root.packagedHelperPath)
@@ -943,6 +1004,69 @@ Item {
             root._mutationKind = ""
             root.refresh()
             root.mutationFinished(kind, success)
+        }
+
+        stdout: StdioCollector {
+            id: mutationOutput
+            onStreamFinished: {
+                mutationProcess._stdoutDone = true
+                mutationProcess._finalize()
+            }
+        }
+
+        stderr: StdioCollector {
+            id: mutationError
+            onStreamFinished: {
+                mutationProcess._stderrDone = true
+                mutationProcess._finalize()
+            }
+        }
+
+        onRunningChanged: {
+            if (mutationProcess.running) {
+                mutationProcess.startObserved = false
+                mutationProcess._exited = false
+                mutationProcess._stdoutDone = false
+                mutationProcess._stderrDone = false
+                mutationProcess._finalized = false
+                mutationProcess._exitCode = -1
+                mutationFlushTimer.stop()
+                mutationProcess._pendingKind = root._mutationKind
+                mutationProcess._pendingAppliedChargePolicy = root.pendingChargePolicy === null
+                    ? null : root._clone(root.pendingChargePolicy)
+                return
+            }
+            if (mutationProcess.startObserved || !root.busy)
+                return
+
+            mutationTimeout.stop()
+            mutationFlushTimer.stop()
+            const kind = root._mutationKind
+            mutationProcess._pendingKind = ""
+            mutationProcess._pendingAppliedChargePolicy = undefined
+            root.busy = false
+            root.lastError = "TLP settings operation failed to start"
+            root._mutationKind = ""
+            console.warn("[TLP Settings]", root.lastError)
+            root.refresh()
+            root.mutationFinished(kind, false)
+        }
+
+        onStarted: {
+            mutationProcess.startObserved = true
+            mutationProcess.timedOut = false
+            mutationProcess._finalized = false
+            mutationTimeout.restart()
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            mutationTimeout.stop()
+            mutationProcess._exitCode = exitCode
+            mutationProcess._exited = true
+            if ((mutationProcess._stdoutDone && mutationProcess._stderrDone) || mutationProcess.timedOut)
+                mutationProcess._finalize()
+            else
+                mutationFlushTimer.restart()
         }
     }
 

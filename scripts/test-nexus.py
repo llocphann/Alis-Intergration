@@ -988,6 +988,7 @@ ShellRoot {{
                 // Verify Exercise Custom View (Obsidian Exercise.html/js/css parity + Alis auto-theming + NO top generic dossier photo banner) & virtualized Exercises Base GridView
                 check(nexus.createCollectionEntry("exercises", "Ab Crunch Machine") === true, "createCollectionEntry(exercises) failed")
                 tryVerify(() => nexus.activeView === "document" && nexus.currentDoc !== null && !nexus.docBusy && nexus.currentDoc.noteKind === "exercise", 4000)
+                tryVerify(() => findChild(ws, "nexusExerciseMediaFrame") !== null, 4000)
                 const exerciseCustomView = findChild(ws, "nexusExerciseCustomView")
                 const exDossierBanner = findChild(ws, "nexusDocumentDossierBanner")
                 const exMediaFrame = findChild(ws, "nexusExerciseMediaFrame")
@@ -1243,6 +1244,7 @@ ShellRoot {{
                 // Finance Custom View (`Finance.html` parity: 4 KPI cards, range switcher, Balance movement canvas, Cash flow & Expense categories, Transactions ledger)
                 check(nexus.createCollectionEntry("finance", "2026-11 Personal Finance") === true, "createCollectionEntry(finance) failed")
                 tryVerify(() => !nexus.docBusy && nexus.currentDoc?.noteKind === "finance", 4000)
+                tryVerify(() => findChild(ws, "nexusFinanceBalanceCanvas") !== null, 4000)
                 wait(20)
                 const finView = findChild(ws, "nexusFinanceCustomView")
                 const finRangeMonthly = findChild(ws, "nexusFinanceRangeBtn_monthly")

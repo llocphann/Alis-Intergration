@@ -1118,6 +1118,7 @@ ColumnLayout {
                                     && !inputMethodComposing
                                     && root.standardNoteInlineEditing
                                     && !root._cancelingStandardInlineEdit
+                                    && !(root.nexus?.findBarOpen)
                                     && !standardCancelMouse.containsMouse
                                     && !standardCancelMouse.pressed) {
                                     root.commitStandardNoteInlineEdit();
@@ -1635,15 +1636,23 @@ ColumnLayout {
                                         font.weight: blockDelegate.modelData.kind === "heading" ? Font.Bold : Font.Normal
                                         font.strikeout: blockDelegate.modelData.todoState === "DONE"
                                         color: blockDelegate.modelData.todoState === "DONE" ? settledColors.colSubtext : settledColors.colOnLayer1
+                                        function _safeDecodeUriComponent(raw) {
+                                            const str = String(raw ?? "");
+                                            try {
+                                                return decodeURIComponent(str);
+                                            } catch (_e) {
+                                                return str;
+                                            }
+                                        }
                                         onLinkActivated: link => {
                                             if (!root.nexus)
                                                 return;
                                             if (link.startsWith("wikilink:")) {
                                                 let wl = link.substring("wikilink:".length);
                                                 if (wl.startsWith("//")) wl = wl.substring(2);
-                                                root.nexus.followWikilink(decodeURIComponent(wl));
+                                                root.nexus.followWikilink(_safeDecodeUriComponent(wl));
                                             } else if (link.startsWith("tag:")) {
-                                                const tag = decodeURIComponent(link.substring("tag:".length));
+                                                const tag = _safeDecodeUriComponent(link.substring("tag:".length));
                                                 root.nexus.leftSidebarTab = "search";
                                                 root.nexus.searchVault("#" + tag);
                                             } else if (/^https?:\/\//i.test(link)) {
@@ -1660,7 +1669,7 @@ ColumnLayout {
                                                 if (la.startsWith("wikilink:")) {
                                                     let tgt = la.substring("wikilink:".length);
                                                     if (tgt.startsWith("//")) tgt = tgt.substring(2);
-                                                    tgt = decodeURIComponent(tgt);
+                                                    tgt = parent._safeDecodeUriComponent(tgt);
                                                     if (documentViewRoot._hoveredPreviewTarget !== tgt) {
                                                         documentViewRoot._hoveredPreviewTarget = tgt;
                                                         hoverPreviewDelayTimer.restart();

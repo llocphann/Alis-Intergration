@@ -8,6 +8,28 @@ function escapeHtml(text) {
         .replace(/"/g, "&quot;");
 }
 
+function unescapeHtmlEntities(text) {
+    return String(text ?? "")
+        .replace(/&quot;/g, "\"")
+        .replace(/&#39;/g, "'")
+        .replace(/&gt;/g, ">")
+        .replace(/&lt;/g, "<")
+        .replace(/&amp;/g, "&");
+}
+
+function encodeWikilinkTarget(rawTarget) {
+    return encodeURIComponent(unescapeHtmlEntities(rawTarget));
+}
+
+function safeDecodeUriComponent(raw) {
+    const str = String(raw ?? "");
+    try {
+        return decodeURIComponent(str);
+    } catch (_e) {
+        return str;
+    }
+}
+
 function _applyLatexReplacements(raw) {
     let s = String(raw ?? "");
     const symbols = {
@@ -106,8 +128,12 @@ function renderInlineMarkdownToHtml(rawText, textColor, accentColor, mutedColor)
     // Strikethrough ~~...~~
     s = s.replace(/~~([^~\n]+)~~/g, "<s>$1</s>");
     // Wikilinks [[Target|Alias]] or [[Target]] as clickable links
-    s = s.replace(/\[\[([^\]|\n]+)\|([^\]\n]+)\]\]/g, "<a href=\"wikilink://$1\" style=\"color:" + acc + "; text-decoration:underline;\">$2</a>");
-    s = s.replace(/\[\[([^\]\n]+)\]\]/g, "<a href=\"wikilink://$1\" style=\"color:" + acc + "; text-decoration:underline;\">$1</a>");
+    s = s.replace(/\[\[([^\]|\n]+)\|([^\]\n]+)\]\]/g, function(_m, target, alias) {
+        return "<a href=\"wikilink://" + escapeHtml(encodeWikilinkTarget(target)) + "\" style=\"color:" + acc + "; text-decoration:underline;\">" + alias + "</a>";
+    });
+    s = s.replace(/\[\[([^\]\n]+)\]\]/g, function(_m, target) {
+        return "<a href=\"wikilink://" + escapeHtml(encodeWikilinkTarget(target)) + "\" style=\"color:" + acc + "; text-decoration:underline;\">" + target + "</a>";
+    });
     // External HTTP links [label](https://...) and bare https://...
     s = s.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, "<a href=\"$2\" style=\"color:" + acc + "; text-decoration:underline;\">$1</a>");
     s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, "$1<a href=\"$2\" style=\"color:" + acc + "; text-decoration:underline;\">$2</a>");

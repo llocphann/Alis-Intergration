@@ -353,17 +353,56 @@ Item {
 
         stdout: StdioCollector {
             id: gpuOutput
+            onStreamFinished: {
+                gpuProbe._streamDone = true
+                gpuProbe._finalize()
+            }
+        }
+
+        property bool _exited: false
+        property bool _streamDone: false
+        property bool _finalized: false
+        property int _exitCode: -1
+
+        function _finalize(): void {
+            if (!gpuProbe._exited || gpuProbe._finalized)
+                return
+            if (gpuProbe.timedOut) {
+                gpuProbe._finalized = true
+                gpuProbe._exited = false
+                gpuProbe._streamDone = false
+                gpuProbeFlushTimer.stop()
+                root._clearGpuCapabilities()
+                console.warn("[TLP] Timed out while probing GPU capabilities")
+                return
+            }
+            if (!gpuProbe._streamDone)
+                return
+            gpuProbe._finalized = true
+            gpuProbe._exited = false
+            gpuProbe._streamDone = false
+            gpuProbeFlushTimer.stop()
+            if (gpuProbe._exitCode === 0)
+                root._applyGpuCapabilities(gpuOutput.text)
+            else
+                root._clearGpuCapabilities()
         }
 
         onRunningChanged: {
             if (gpuProbe.running) {
                 gpuProbe.startObserved = false
+                gpuProbe._exited = false
+                gpuProbe._streamDone = false
+                gpuProbe._finalized = false
+                gpuProbe._exitCode = -1
+                gpuProbeFlushTimer.stop()
                 return
             }
             if (gpuProbe.startObserved)
                 return
 
             gpuProbeTimeout.stop()
+            gpuProbeFlushTimer.stop()
             root._clearGpuCapabilities()
             console.warn("[TLP] Failed to start GPU capability probe")
         }
@@ -371,20 +410,30 @@ Item {
         onStarted: {
             gpuProbe.startObserved = true
             gpuProbe.timedOut = false
+            gpuProbe._finalized = false
             gpuProbeTimeout.restart()
         }
 
         onExited: (exitCode, exitStatus) => {
             gpuProbeTimeout.stop()
-            if (gpuProbe.timedOut) {
-                root._clearGpuCapabilities()
-                console.warn("[TLP] Timed out while probing GPU capabilities")
-                return
-            }
-            if (exitCode === 0)
-                root._applyGpuCapabilities(gpuOutput.text)
+            gpuProbe._exitCode = exitCode
+            gpuProbe._exited = true
+            if (gpuProbe._streamDone || gpuProbe.timedOut)
+                gpuProbe._finalize()
             else
-                root._clearGpuCapabilities()
+                gpuProbeFlushTimer.restart()
+        }
+    }
+
+    Timer {
+        id: gpuProbeFlushTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!gpuProbe._exited || gpuProbe._finalized)
+                return
+            gpuProbe._streamDone = true
+            gpuProbe._finalize()
         }
     }
 

@@ -234,6 +234,9 @@ FocusScope {
     property bool standardNoteInlineEditing: false
     property string standardNoteInlineDraft: ""
     property bool _cancelingStandardInlineEdit: false
+    property string _standardNoteInlinePath: ""
+    property string _standardNoteInlineDocRaw: ""
+    property int _standardNoteInlineBodyStart: 1
 
     function plannerAccentColor(swatch): color {
         if (typeof swatch === "string" && swatch.trim().length > 0)
@@ -264,6 +267,9 @@ FocusScope {
         if (Boolean(root.nexusCustomViewsLoader?.item?.isCustomViewNote))
             return false;
         root._cancelingStandardInlineEdit = false;
+        root._standardNoteInlinePath = String(root.nexus.currentPath ?? "");
+        root._standardNoteInlineDocRaw = String(root.nexus.currentDoc.content ?? root.nexus.draftContent ?? "");
+        root._standardNoteInlineBodyStart = Number(root.nexus.currentDoc.bodyStartLine ?? 1);
         root.standardNoteInlineDraft = root.nexus.getNoteBodyMarkdown();
         root.standardNoteInlineEditing = true;
         return true;
@@ -273,15 +279,24 @@ FocusScope {
         if (!root.standardNoteInlineEditing)
             return false;
         if (root.nexus && root._docBodyEditor) {
-            root.nexus.saveNoteBodyMarkdown(root._docBodyEditor.text);
+            root.nexus.saveNoteBodyMarkdown(
+                root._docBodyEditor.text,
+                root._standardNoteInlinePath,
+                root._standardNoteInlineDocRaw,
+                root._standardNoteInlineBodyStart
+            );
         }
         root.standardNoteInlineEditing = false;
+        root._standardNoteInlinePath = "";
+        root._standardNoteInlineDocRaw = "";
         return true;
     }
 
     function cancelStandardNoteInlineEdit(): void {
         root._cancelingStandardInlineEdit = true;
         root.standardNoteInlineEditing = false;
+        root._standardNoteInlinePath = "";
+        root._standardNoteInlineDocRaw = "";
         Qt.callLater(() => {
             root._cancelingStandardInlineEdit = false;
         });
@@ -1676,8 +1691,14 @@ FocusScope {
             }
         }
         function onCurrentPathChanged() {
-            if (root.standardNoteInlineEditing)
-                root.cancelStandardNoteInlineEdit();
+            if (root.standardNoteInlineEditing) {
+                if (root._docBodyEditor && root._standardNoteInlinePath.length > 0
+                        && root._docBodyEditor.text !== root.standardNoteInlineDraft) {
+                    root.commitStandardNoteInlineEdit();
+                } else {
+                    root.cancelStandardNoteInlineEdit();
+                }
+            }
         }
         function onNewNoteModalOpenChanged() {
             if (root.nexus?.newNoteModalOpen) {
@@ -5999,12 +6020,13 @@ FocusScope {
                                                     model: homepageScheduleCard.plannerAllDayEvents
                                                     delegate: Rectangle {
                                                         required property var modelData
+                                                        readonly property color pillAccent: root.plannerAccentColor(modelData.swatch)
                                                         Layout.fillWidth: true
                                                         Layout.preferredHeight: 28
                                                         radius: 5
-                                                        color: modelData.swatch?.bg ?? "#3a2e1d"
+                                                        color: Qt.rgba(pillAccent.r, pillAccent.g, pillAccent.b, 0.22)
                                                         border.width: 1
-                                                        border.color: modelData.swatch?.border ?? "#d99b26"
+                                                        border.color: Qt.rgba(pillAccent.r, pillAccent.g, pillAccent.b, 0.65)
 
                                                         RowLayout {
                                                             anchors.fill: parent

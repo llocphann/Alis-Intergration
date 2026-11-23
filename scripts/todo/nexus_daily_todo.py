@@ -402,10 +402,14 @@ def add_task(
 ) -> dict[str, Any]:
     doc = _load_document(vault_path, folder, fmt, day, heading, heading_level)
     _require_hashes(doc, expected_document_sha, expected_section_sha)
+    newline = _preferred_newline(doc)
     lines = list(doc["lines"])
+    idx = _insertion_index(doc, start_time)
+    if idx > 0 and not lines[idx - 1].endswith(("\n", "\r")):
+        lines[idx - 1] += newline
     lines.insert(
-        _insertion_index(doc, start_time),
-        "- [ ] " + _format_task_text(text, start_time, end_time) + _preferred_newline(doc),
+        idx,
+        "- [ ] " + _format_task_text(text, start_time, end_time) + newline,
     )
     core._atomic_replace_if_unchanged(doc, _encode_document(doc, lines))
     common = {
@@ -574,6 +578,8 @@ def migrate_internal_json(
     newline = _preferred_newline(doc)
     lines = list(doc["lines"])
     index = _section_append_index(doc)
+    if index > 0 and not lines[index - 1].endswith(("\n", "\r")):
+        lines[index - 1] += newline
     lines[index:index] = [
         "- [" + ("x" if done else " ") + "] " + content + newline
         for content, done in imported

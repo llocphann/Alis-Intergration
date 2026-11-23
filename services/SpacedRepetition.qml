@@ -729,7 +729,11 @@ Item {
         }
         lookupProc.pendingLocal = local
         lookupProc.pendingCardId = String(nextReq.cardId || "")
-        lookupProc.outputBuffer = ""
+        lookupProc._exited = false
+        lookupProc._stdoutDone = false
+        lookupProc._finalized = false
+        lookupProc._exitCode = -1
+        lookupFlushTimer.stop()
         lookupProc.command = [
             "/usr/bin/python3",
             root.lookupScriptPath,
@@ -782,18 +786,36 @@ Item {
         root._startNextQueuedLookup()
     }
 
+    Timer {
+        id: lookupFlushTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (!lookupProc._exited || lookupProc._finalized)
+                return
+            lookupProc._stdoutDone = true
+            lookupProc._finalizeLookup()
+        }
+    }
+
     Process {
         id: lookupProc
         property var pendingLocal: null
         property string pendingCardId: ""
-        property string outputBuffer: ""
-        stdout: StdioCollector {
-            id: lookupStdoutCollector
-        }
-        onExited: (exitCode) => {
+        property bool _exited: false
+        property bool _stdoutDone: false
+        property bool _finalized: false
+        property int _exitCode: -1
+        function _finalizeLookup(): void {
+            if (root._destroyed || !lookupProc._exited || lookupProc._finalized || !lookupProc._stdoutDone)
+                return
+            lookupProc._finalized = true
+            lookupProc._exited = false
+            lookupProc._stdoutDone = false
+            lookupFlushTimer.stop()
             let merged = lookupProc.pendingLocal ?? ({})
             const rawText = String(lookupStdoutCollector.text ?? "").trim()
-            if (exitCode === 0 && rawText.length > 0) {
+            if (lookupProc._exitCode === 0 && rawText.length > 0) {
                 try {
                     const online = JSON.parse(rawText)
                     merged = Lexicon.mergeOnlineLookup(merged, online)
@@ -815,9 +837,34 @@ Item {
                 root.lookupBusy = false
             }
         }
+        stdout: StdioCollector {
+            id: lookupStdoutCollector
+            onStreamFinished: {
+                lookupProc._stdoutDone = true
+                lookupProc._finalizeLookup()
+            }
+        }
+        onStarted: {
+            lookupProc._exited = false
+            lookupProc._stdoutDone = false
+            lookupProc._finalized = false
+            lookupProc._exitCode = -1
+            lookupFlushTimer.stop()
+        }
+        onExited: (exitCode) => {
+            lookupProc._exitCode = exitCode
+            lookupProc._exited = true
+            if (lookupProc._stdoutDone)
+                lookupProc._finalizeLookup()
+            else
+                lookupFlushTimer.restart()
+        }
     }
 
     property bool _savePending: false
+    property string _pendingSavedJson: ""
+    property bool _loadError: false
+    property bool _destroyed: false
     readonly property bool persistenceBusy: root._saving || root._saveQueued || root._savePending
 
     function scheduleSave(): void {
@@ -858,6 +905,9 @@ Item {
             root._savePending = false
             return
         }
+        if (root._loadError) {
+            return
+        }
         if (root._saving || initDirProc.running) {
             root._saveQueued = true
             return
@@ -878,22 +928,34 @@ Item {
         root._savePending = false
         root._saveQueued = false
         root._saving = true
-        root._lastSavedJson = snapshot
+        root._pendingSavedJson = snapshot
         srFileView.setText(snapshot)
     }
 
     Process {
         id: initDirProc
         property bool attempted: false
-        onExited: {
+        onExited: (exitCode) => {
+            if (root._destroyed)
+                return
+            if (exitCode !== 0) {
+                root._savePending = false
+                root._saveQueued = false
+                root.errorMessage = Translation.tr("Could not save Spaced Repetition progress.")
+                return
+            }
             root.saveToFile()
         }
     }
 
     Component.onDestruction: {
+        if (root._savePending && !root._loadError && !root._saving)
+            root.saveToFile()
+        root._destroyed = true
         saveTimer.stop()
         deferredBootLoadTimer.stop()
         clockRefreshTimer.stop()
+        lookupFlushTimer.stop()
         lookupProc.running = false
         root.stopPronouncing()
     }
@@ -956,6 +1018,7 @@ Item {
                 root.nextId = migrated.nextId
                 root._applyDataState(migrated.cards, migrated.historyByDay)
                 root._lastSavedJson = rawText
+                root._loadError = false
                 root.errorMessage = ""
                 if (!root.ready) {
                     root.syncConfiguredStudyDirection(false)
@@ -981,6 +1044,7 @@ Item {
             } catch (e) {
                 root.errorMessage = Translation.tr("Could not parse Spaced Repetition storage file.")
                 if (!root.ready) {
+                    root._loadError = true
                     const fallback = Engine.migrateStorage(null, Date.now(), root.options, Lexicon.analyzeTerm)
                     root.nextId = fallback.nextId
                     root._applyDataState(fallback.cards, fallback.historyByDay)
@@ -992,7 +1056,16 @@ Item {
             }
         }
         onLoadFailed: (error) => {
+            if (root.ready && root.cards.length > 0) {
+                if (error === FileViewError.FileNotFound) {
+                    root.scheduleSave()
+                } else {
+                    root.errorMessage = Translation.tr("Could not reload Spaced Repetition storage file.")
+                }
+                return
+            }
             if (error === FileViewError.FileNotFound) {
+                root._loadError = false
                 const seeded = Engine.migrateStorage(null, Date.now(), root.options, Lexicon.analyzeTerm)
                 root.retainedStorageFields = seeded.retainedStorageFields
                 root.nextId = seeded.nextId
@@ -1004,10 +1077,15 @@ Item {
                 root.scheduleSave()
                 return
             }
+            root._loadError = true
             root.ready = true
         }
         onSaved: {
             root._saving = false
+            root._loadError = false
+            if (root._pendingSavedJson.length > 0)
+                root._lastSavedJson = root._pendingSavedJson
+            root._pendingSavedJson = ""
             root.errorMessage = ""
             root.cardsPersisted(root.cards.length)
             if (root._saveQueued) {
@@ -1017,7 +1095,12 @@ Item {
         }
         onSaveFailed: (error) => {
             root._saving = false
+            root._pendingSavedJson = ""
             root.errorMessage = Translation.tr("Could not save Spaced Repetition progress.")
+            if (root._saveQueued) {
+                root._saveQueued = false
+                root.scheduleSave()
+            }
         }
     }
 

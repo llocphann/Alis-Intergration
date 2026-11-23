@@ -1627,9 +1627,24 @@ Item {
         root._velPitch = 0.0;
     }
 
-    onFilterQueryChanged: { root._recomputeFilterMask(); root.requestPaint(); }
-    onFilterFolderChanged: { root._recomputeFilterMask(); root.requestPaint(); }
-    onFilterTagChanged: { root._recomputeFilterMask(); root.requestPaint(); }
+    onFilterQueryChanged: {
+        if (graphSearchInput.text !== root.filterQuery)
+            graphSearchInput.text = root.filterQuery;
+        root._recomputeFilterMask();
+        root.requestPaint();
+    }
+    onFilterFolderChanged: {
+        if (graphFolderInput.text !== root.filterFolder)
+            graphFolderInput.text = root.filterFolder;
+        root._recomputeFilterMask();
+        root.requestPaint();
+    }
+    onFilterTagChanged: {
+        if (graphTagInput.text !== root.filterTag)
+            graphTagInput.text = root.filterTag;
+        root._recomputeFilterMask();
+        root.requestPaint();
+    }
     onHideOrphansChanged: { root._recomputeFilterMask(); root.requestPaint(); }
     onHideTagNodesChanged: { root._recomputeFilterMask(); root.requestPaint(); }
     onLocalMaxHopChanged: { root._recomputeFilterMask(); root.requestPaint(); }
@@ -3161,8 +3176,8 @@ Item {
                             font.pixelSize: 11
                             clip: true
                             selectByMouse: true
-                            text: root.filterQuery
-                            onTextChanged: root.filterQuery = text
+                            Component.onCompleted: text = root.filterQuery
+                            onTextChanged: if (root.filterQuery !== text) root.filterQuery = text
                             onAccepted: root.focusNodeByQuery(text)
                             StyledText {
                                 anchors.fill: parent
@@ -3188,14 +3203,15 @@ Item {
                         border.width: 1
                         border.color: root.borderSubtle
                         TextInput {
+                            id: graphFolderInput
                             anchors.fill: parent
                             anchors.margins: 4
                             verticalAlignment: Text.AlignVCenter
                             color: root.textColor
                             font.pixelSize: 10
                             clip: true
-                            text: root.filterFolder
-                            onTextChanged: root.filterFolder = text
+                            Component.onCompleted: text = root.filterFolder
+                            onTextChanged: if (root.filterFolder !== text) root.filterFolder = text
                             StyledText {
                                 anchors.fill: parent
                                 verticalAlignment: Text.AlignVCenter
@@ -3214,14 +3230,15 @@ Item {
                         border.width: 1
                         border.color: root.borderSubtle
                         TextInput {
+                            id: graphTagInput
                             anchors.fill: parent
                             anchors.margins: 4
                             verticalAlignment: Text.AlignVCenter
                             color: root.textColor
                             font.pixelSize: 10
                             clip: true
-                            text: root.filterTag
-                            onTextChanged: root.filterTag = text
+                            Component.onCompleted: text = root.filterTag
+                            onTextChanged: if (root.filterTag !== text) root.filterTag = text
                             StyledText {
                                 anchors.fill: parent
                                 verticalAlignment: Text.AlignVCenter
@@ -3310,6 +3327,10 @@ Item {
                                 root.hideOrphans = false;
                                 root.hideTagNodes = false;
                                 root.colorByMode = "cluster";
+                                root._recomputeFilterMask();
+                                root._rebuildNodeColors();
+                                root._projCacheValid = false;
+                                root.requestPaint();
                             }
                         }
                     }

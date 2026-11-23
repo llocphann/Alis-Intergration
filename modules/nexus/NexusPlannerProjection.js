@@ -471,7 +471,7 @@ function decorateRow(row) {
         startHour: startMin / 60.0,
         durationHours: durMin / 60.0,
         swatch: swatch,
-        color: swatch.accent,
+        color: swatch,
         source: row.source === "external" ? "calendar" : "dashboard",
         rawSource: row.source,
         recurrence: String(ev.recurrence || "none")

@@ -2834,13 +2834,13 @@ Item {
         if (!target)
             return;
         const p = page > 0 ? Math.round(Number(page)) : root.pdfCurrentPage;
-        root.pdfBusy = true;
-        if (pdfProc.running)
-            pdfProc.running = false;
-        pdfProc.opKind = "extract-text";
-        pdfProc.command = ["python3", root.pdfHelperPath, "extract-text", "--pdf", target, "--page", String(p)];
-        pdfProc.running = true;
-        pdfTimeout.restart();
+        if (pdfTextProc.running)
+            pdfTextProc.running = false;
+        pdfTextProc._requestTarget = target;
+        pdfTextProc._requestPage = p;
+        pdfTextProc.command = ["python3", root.pdfHelperPath, "extract-text", "--pdf", target, "--page", String(p)];
+        pdfTextProc.running = true;
+        pdfTextTimeout.restart();
     }
 
     function capturePdfHighlight(quoteText: string, noteRelPath = "", page = -1): void {
@@ -3233,8 +3233,8 @@ Item {
         return true;
     }
 
-    function updateNoteFrontmatter(updatesObj): bool {
-        return root.setFrontmatter(root.currentPath, updatesObj);
+    function updateNoteFrontmatter(updatesObj, relPath = ""): bool {
+        return root.setFrontmatter(String(relPath ?? "").trim() || root.currentPath, updatesObj);
     }
 
     function apiKindForNoteKind(noteKind: string): string {
@@ -3412,12 +3412,20 @@ Item {
         return filtered.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
     }
 
-    function saveNoteBodyMarkdown(newBodyText: string): void {
-        if (!root.vaultConfigured || root.currentPath.length === 0 || !root.currentDoc)
+    function saveNoteBodyMarkdown(newBodyText: string, targetRelPath = "", rawDocSnapshot = "", startLineSnapshot = -1): void {
+        const destPath = String(targetRelPath ?? "").trim() || root.currentPath;
+        if (!root.vaultConfigured || destPath.length === 0)
             return;
-        const raw = String(root.currentDoc.content ?? root.draftContent ?? "").replace(/\r\n/g, "\n");
+        if (destPath === root.currentPath && !root.currentDoc)
+            return;
+        const isCurrent = destPath === root.currentPath;
+        const raw = isCurrent
+            ? String(root.currentDoc.content ?? root.draftContent ?? "").replace(/\r\n/g, "\n")
+            : String(rawDocSnapshot ?? "").replace(/\r\n/g, "\n");
         const lines = raw.split("\n");
-        const startIdx = Math.max(0, Number(root.currentDoc.bodyStartLine ?? 1) - 1);
+        const startIdx = (!isCurrent && startLineSnapshot > 0)
+            ? Math.max(0, startLineSnapshot - 1)
+            : Math.max(0, Number((isCurrent ? root.currentDoc?.bodyStartLine : 1) ?? 1) - 1);
         const prefixLines = lines.slice(0, startIdx);
         // Preserve any Obsidian Custom_Views embed line at the top of the body
         for (let i = startIdx; i < lines.length; ++i) {
@@ -3437,7 +3445,31 @@ Item {
         }
         if (!combined.endsWith("\n"))
             combined += "\n";
-        root.saveCurrentNote(combined);
+        if (isCurrent) {
+            root.saveCurrentNote(combined);
+            return;
+        }
+        root.pushDocUndo(destPath, raw, combined);
+        root._rescanAfterDoc = false;
+        if (root._live && raw !== combined
+                && Quickshell.env("ALIS_NEXUS_DISABLE_SNAPSHOT") !== "1"
+                && Quickshell.env("ALIS_NEXUS_HEADLESS_SERVICE_ONLY") !== "1") {
+            root._enqueueDocOp({
+                "kind": "history-snapshot",
+                "relPath": destPath,
+                "recordHistory": false,
+                "useStdin": false,
+                "args": ["python3", root.historyHelperPath, "snapshot", "--vault", root.configuredVaultPath, "--path", destPath, "--label", "Auto-save snapshot"]
+            });
+        }
+        root._enqueueDocOp({
+            "kind": "write",
+            "relPath": destPath,
+            "recordHistory": false,
+            "useStdin": true,
+            "stdinPayload": combined,
+            "args": [root.binaryPath, "write", "--vault", root.configuredVaultPath, "--path", destPath]
+        });
     }
 
     function saveRecipePersonalNotes(newNotesText: string): void {
@@ -5929,6 +5961,76 @@ Item {
                     root.refreshVault();
                     root.pdfHighlightCaptured(noteRel, Number(payload.page ?? root.pdfCurrentPage));
                 }
+            } catch (e) {}
+        }
+    }
+
+    Timer {
+        id: pdfTextTimeout
+        interval: 12000
+        repeat: false
+        onTriggered: {
+            if (pdfTextProc.running)
+                pdfTextProc.running = false;
+            pdfTextFlushTimer.stop();
+        }
+    }
+
+    Timer {
+        id: pdfTextFlushTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (pdfTextProc._exited && !pdfTextProc._finalized) {
+                pdfTextProc._stdoutDone = true;
+                pdfTextProc._maybeFinalize();
+            }
+        }
+    }
+
+    Process {
+        id: pdfTextProc
+        property string _requestTarget: ""
+        property int _requestPage: 1
+        property bool _exited: false
+        property int _exitCode: 0
+        property bool _stdoutDone: false
+        property bool _finalized: false
+        stdout: StdioCollector {
+            id: pdfTextStdout
+            onStreamFinished: {
+                pdfTextProc._stdoutDone = true;
+                pdfTextProc._maybeFinalize();
+            }
+        }
+        onStarted: {
+            pdfTextProc._exited = false;
+            pdfTextProc._exitCode = 0;
+            pdfTextProc._stdoutDone = false;
+            pdfTextProc._finalized = false;
+            pdfTextFlushTimer.stop();
+        }
+        onExited: (code, status) => {
+            pdfTextProc._exited = true;
+            pdfTextProc._exitCode = code;
+            if (pdfTextProc._stdoutDone)
+                pdfTextProc._maybeFinalize();
+            else
+                pdfTextFlushTimer.restart();
+        }
+        function _maybeFinalize(): void {
+            if (!pdfTextProc._exited || pdfTextProc._finalized || !pdfTextProc._stdoutDone)
+                return;
+            pdfTextProc._finalized = true;
+            pdfTextFlushTimer.stop();
+            pdfTextTimeout.stop();
+            const curTarget = String(root.pdfLastTarget || root.currentDoc?.absPath || "").trim();
+            if (pdfTextProc._requestTarget !== curTarget || pdfTextProc._requestPage !== root.pdfCurrentPage)
+                return;
+            try {
+                const payload = JSON.parse(pdfTextStdout.text);
+                if (payload && payload.ok)
+                    root.pdfExtractedText = String(payload.text ?? "");
             } catch (e) {}
         }
     }
