@@ -1582,7 +1582,7 @@ FocusScope {
         enabled: Boolean(root.nexus?.isOpen)
             && root.visible
             && (!root.embeddedSurface || !Boolean(GlobalStates.abyssPerimeterActive))
-            && !Boolean(Window.activeFocusItem?.inputMethodComposing)
+            && !Boolean(root.Window.activeFocusItem?.inputMethodComposing)
         onActivated: {
             if (!root.handleEscape() && root.nexus) {
                 root.nexus.close();
@@ -1611,7 +1611,7 @@ FocusScope {
                 enabled: Boolean(root.nexus?.isOpen)
                     && root.visible
                     && String(winShortcutDelegate.modelData?.sequence ?? "").length > 0
-                    && !Boolean(Window.activeFocusItem?.inputMethodComposing)
+                    && !Boolean(root.Window.activeFocusItem?.inputMethodComposing)
                 onActivated: {
                     root.triggerWindowShortcutAction(String(winShortcutDelegate.modelData?.actionId ?? ""));
                 }
@@ -1637,7 +1637,7 @@ FocusScope {
         grabPermissions: PointerHandler.ApprovesTakeOverByAnything
         onTapped: (eventPoint, button) => {
             const pt = eventPoint.position;
-            const activeFocused = Window.activeFocusItem;
+            const activeFocused = root.Window.activeFocusItem;
             if (activeFocused && activeFocused.inputMethodComposing === true)
                 return;
             if (root._isEditableTextFocused() && root._pointInsideItem(activeFocused, pt.x, pt.y))
