@@ -228,7 +228,7 @@ Item {
         id: prefsView
         path: "file://" + root._configPath
         preload: true
-        watchChanges: true
+        watchChanges: root._live
         printErrors: false
         onLoaded: root._applyConfigJsonText(prefsView.text())
         onFileChanged: prefsReloadTimer.restart()

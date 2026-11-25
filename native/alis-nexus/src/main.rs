@@ -10965,11 +10965,7 @@ fn history_state_root(vault_canon: &Path, norm_rel: &str) -> Result<PathBuf, Str
     Ok(folder)
 }
 
-fn history_now_parts() -> (String, String, String) {
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+fn history_utc_parts(secs: i64) -> (String, String, String) {
     // Civil date/time from Unix timestamp in UTC (Howard Hinnant's algorithm)
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
@@ -10990,6 +10986,129 @@ fn history_now_parts() -> (String, String, String) {
     let iso = format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00", year, m, d, hh, mm, ss);
     let display = format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", year, m, d, hh, mm, ss);
     (compact, iso, display)
+}
+
+#[cfg(target_os = "linux")]
+fn history_now_parts() -> (String, String, String) {
+    use std::ffi::{c_char, c_int, c_long};
+
+    #[repr(C)]
+    struct CTm {
+        tm_sec: c_int,
+        tm_min: c_int,
+        tm_hour: c_int,
+        tm_mday: c_int,
+        tm_mon: c_int,
+        tm_year: c_int,
+        tm_wday: c_int,
+        tm_yday: c_int,
+        tm_isdst: c_int,
+        tm_gmtoff: c_long,
+        tm_zone: *const c_char,
+    }
+
+    unsafe extern "C" {
+        fn localtime_r(timep: *const i64, result: *mut CTm) -> *mut CTm;
+    }
+
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let mut tm = CTm {
+        tm_sec: 0,
+        tm_min: 0,
+        tm_hour: 0,
+        tm_mday: 0,
+        tm_mon: 0,
+        tm_year: 0,
+        tm_wday: 0,
+        tm_yday: 0,
+        tm_isdst: 0,
+        tm_gmtoff: 0,
+        tm_zone: std::ptr::null(),
+    };
+    let res = unsafe { localtime_r(&secs, &mut tm) };
+    if res.is_null() {
+        return history_utc_parts(secs);
+    }
+    let year = (tm.tm_year as i64) + 1900;
+    let m = (tm.tm_mon as i64) + 1;
+    let d = tm.tm_mday as i64;
+    let hh = tm.tm_hour as i64;
+    let mm = tm.tm_min as i64;
+    let ss = tm.tm_sec as i64;
+    let off = tm.tm_gmtoff as i64;
+    let sign = if off >= 0 { '+' } else { '-' };
+    let off_abs = off.abs();
+    let off_h = off_abs / 3600;
+    let off_m = (off_abs % 3600) / 60;
+    let compact = format!("{:04}{:02}{:02}{:02}{:02}{:02}", year, m, d, hh, mm, ss);
+    let iso = format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}{}{:02}:{:02}",
+        year, m, d, hh, mm, ss, sign, off_h, off_m
+    );
+    let display = format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", year, m, d, hh, mm, ss);
+    (compact, iso, display)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn history_now_parts() -> (String, String, String) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    history_utc_parts(secs)
+}
+
+fn parse_iso_epoch_secs(ts: &str) -> Option<i64> {
+    let s = ts.trim();
+    if s.len() < 19 {
+        return None;
+    }
+    let b = s.as_bytes();
+    if b[4] != b'-' || b[7] != b'-' || (b[10] != b'T' && b[10] != b' ') || b[13] != b':' || b[16] != b':' {
+        return None;
+    }
+    let year: i64 = s[0..4].parse().ok()?;
+    let month: i64 = s[5..7].parse().ok()?;
+    let day: i64 = s[8..10].parse().ok()?;
+    let hour: i64 = s[11..13].parse().ok()?;
+    let min: i64 = s[14..16].parse().ok()?;
+    let sec: i64 = s[17..19].parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || min > 59 || sec > 60 {
+        return None;
+    }
+    let mut rest = &s[19..];
+    if let Some(after_dot) = rest.strip_prefix('.') {
+        let frac_end = after_dot
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after_dot.len());
+        rest = &after_dot[frac_end..];
+    }
+    let offset_secs: i64 = if rest.is_empty() || rest == "Z" || rest == "z" {
+        0
+    } else if (rest.starts_with('+') || rest.starts_with('-')) && rest.len() >= 5 {
+        let sign: i64 = if rest.starts_with('-') { -1 } else { 1 };
+        let oh: i64 = rest[1..3].parse().ok()?;
+        let om: i64 = if rest.as_bytes().get(3) == Some(&b':') && rest.len() >= 6 {
+            rest[4..6].parse().ok()?
+        } else {
+            rest[3..5].parse().ok()?
+        };
+        sign * (oh * 3600 + om * 60)
+    } else {
+        0
+    };
+    // Howard Hinnant's days_from_civil
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = (y - era * 400) as u64;
+    let mp = (if month > 2 { month - 3 } else { month + 9 }) as u64;
+    let doy = (153 * mp + 2) / 5 + (day as u64) - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + (doe as i64) - 719_468;
+    Some(days * 86_400 + hour * 3600 + min * 60 + sec - offset_secs)
 }
 
 fn history_load_index(hist_dir: &Path) -> Vec<Value> {
@@ -11282,7 +11401,12 @@ pub fn cmd_history_list(vault_str: &str, rel_str: &str) -> Result<Value, String>
     revisions.sort_by(|a, b| {
         let ta = a.get("timestamp").and_then(|v| v.as_str()).unwrap_or("");
         let tb = b.get("timestamp").and_then(|v| v.as_str()).unwrap_or("");
-        tb.cmp(ta)
+        let ea = parse_iso_epoch_secs(ta);
+        let eb = parse_iso_epoch_secs(tb);
+        match (eb, ea) {
+            (Some(vb), Some(va)) if vb != va => vb.cmp(&va),
+            _ => tb.cmp(ta),
+        }
     });
     revisions.truncate(40);
     Ok(json!({
@@ -13701,6 +13825,11 @@ mod tests {
         let list_res = cmd_history_list(v_str, "Note.md").unwrap();
         assert_eq!(list_res["ok"], Value::Bool(true));
         assert!(list_res["revisions"].as_array().unwrap().len() >= 2);
+
+        // Mixed UTC and local timezone ISO-8601 epoch comparison must order chronologically
+        let older_local = parse_iso_epoch_secs("2026-11-26T00:28:44+07:00").unwrap();
+        let newer_utc = parse_iso_epoch_secs("2026-11-25T17:28:45+00:00").unwrap();
+        assert_eq!(newer_utc - older_local, 1);
 
         // Path traversal rejected
         assert!(cmd_history_snapshot(v_str, "../escape.md", "Bad").is_err());

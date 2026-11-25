@@ -59,6 +59,20 @@ struct ThumbPool {
     cvar: Condvar,
     closed: AtomicBool,
     generation: Arc<AtomicU64>,
+    writer: SharedWriter,
+}
+
+fn send_thumb_cancelled(writer: &SharedWriter, job: &ThumbJob) {
+    let path = job
+        .params
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    send_result(
+        writer,
+        job.id,
+        Ok(json!({ "path": path, "thumb_path": "", "cancelled": true })),
+    );
 }
 
 impl ThumbPool {
@@ -68,6 +82,7 @@ impl ThumbPool {
             cvar: Condvar::new(),
             closed: AtomicBool::new(false),
             generation,
+            writer: writer.clone(),
         });
         let workers = std::thread::available_parallelism()
             .map(|n| n.get().clamp(2, 4))
@@ -84,28 +99,44 @@ impl ThumbPool {
 
     fn enqueue(&self, id: u64, params: Value) {
         let epoch = self.generation.load(Ordering::Relaxed);
+        let mut evicted = Vec::new();
         if let Ok(mut q) = self.queue.lock() {
             while q.len() >= OVERLAY_THUMB_MAX_PENDING {
-                q.pop_front();
+                if let Some(old) = q.pop_front() {
+                    evicted.push(old);
+                }
             }
             q.push_back(ThumbJob { id, epoch, params });
             self.cvar.notify_one();
+        }
+        for job in &evicted {
+            send_thumb_cancelled(&self.writer, job);
         }
     }
 
     fn cancel_stale(&self) {
         self.generation.fetch_add(1, Ordering::Relaxed);
-        if let Ok(mut q) = self.queue.lock() {
-            q.clear();
+        let drained: Vec<ThumbJob> = if let Ok(mut q) = self.queue.lock() {
+            q.drain(..).collect()
+        } else {
+            Vec::new()
+        };
+        for job in &drained {
+            send_thumb_cancelled(&self.writer, job);
         }
     }
 
     fn shutdown(&self) {
         self.closed.store(true, Ordering::Relaxed);
-        if let Ok(mut q) = self.queue.lock() {
-            q.clear();
-        }
+        let drained: Vec<ThumbJob> = if let Ok(mut q) = self.queue.lock() {
+            q.drain(..).collect()
+        } else {
+            Vec::new()
+        };
         self.cvar.notify_all();
+        for job in &drained {
+            send_thumb_cancelled(&self.writer, job);
+        }
     }
 
     fn worker_loop(&self, writer: &SharedWriter) {
@@ -131,11 +162,14 @@ impl ThumbPool {
                 continue;
             };
             if job.epoch != self.generation.load(Ordering::Relaxed) {
+                send_thumb_cancelled(writer, &job);
                 continue;
             }
             let res = cmd_thumb(&job.params);
             if job.epoch == self.generation.load(Ordering::Relaxed) {
                 send_result(writer, job.id, res);
+            } else {
+                send_thumb_cancelled(writer, &job);
             }
         }
     }
@@ -1247,7 +1281,11 @@ fn count_trash_items_in(dir: &Path) -> usize {
     let count = fs::read_dir(dir)
         .map(|it| it.filter_map(Result::ok).count())
         .unwrap_or(0);
-    if let Some(cur_mtime) = mtime
+    // Only populate the cache once mtime has settled (> 1s old) so a second
+    // write within the same coarse filesystem timestamp tick can never poison
+    // the cached count.
+    if mtime_settled
+        && let Some(cur_mtime) = mtime
         && let Ok(mut guard) = cache.lock()
     {
         *guard = Some((dir.to_path_buf(), cur_mtime, count));
