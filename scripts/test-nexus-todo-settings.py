@@ -2,7 +2,7 @@
 """Owned Nexus task/capture settings contract; host routing is tested in Alis."""
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-todo=(ROOT/'modules/settings/NexusTodoSettings.qml').read_text()
+todo=(ROOT/'plugins/nexus/modules/settings/NexusTodoSettings.qml').read_text()
 required = [
     'Translation.tr("To-do & Quick Notes")',
     'title: Translation.tr("Task source")',
@@ -28,6 +28,7 @@ required = [
 for token in required:
     assert token in todo, f"Nexus task settings contract lost: {token}"
 assert 'Config.setNestedValue("todo.backend", "nexus")' not in todo
+assert 'Translation.tr("Open source")' not in todo
 for token in ['Day Planner', 'Planner heading', 'font.pixelSize: Appearance.font.pixelSize.smallest', 'id: zettelkastenVaultPath', 'Translation.tr("Vault path override")']:
     assert token not in todo, token
 assert todo.count('Translation.tr("To-do & Quick Notes")')==1

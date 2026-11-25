@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const root = path.resolve(__dirname, '..');
 function load(name) {
     const context = vm.createContext({});
-    vm.runInContext(fs.readFileSync(path.join(root, 'services', name + '.js'), 'utf8')
+    vm.runInContext(fs.readFileSync(path.join(root, 'plugins', 'spaced_repetition', 'services', name + '.js'), 'utf8')
         .replace(/^\.pragma.*$/mg, ''), context);
     return context;
 }

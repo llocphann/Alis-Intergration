@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parent / "todo" / "nexus_todo.py"
+SCRIPT = Path(__file__).resolve().parent.parent / "plugins/nexus/scripts/todo/nexus_todo.py"
 sys.path.insert(0,str(SCRIPT.parent))
 SPEC = importlib.util.spec_from_file_location("nexus_todo", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None

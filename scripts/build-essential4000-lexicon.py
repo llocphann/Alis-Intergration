@@ -21,7 +21,7 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_JS = ROOT / "services" / "SpacedRepetitionEssential4000.js"
+OUT_JS = ROOT / "plugins" / "spaced_repetition" / "services" / "SpacedRepetitionEssential4000.js"
 
 CANONICAL_POS = (
     "noun",

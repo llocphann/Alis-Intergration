@@ -106,7 +106,7 @@ def main():
                 state = private / 'state/quickshell'
                 state.mkdir(parents=True)
                 (state / 'states.json').write_text(json.dumps({'aquaCheckIn':{'date':ci_date.isoformat(),'mood':mood,'energy':energy}}))
-                qml = QML.replace('COMPANION', companion.as_uri()).replace('SERVICE', (plugin / 'services/NexusService.qml').as_uri()).replace('EXPECTED', json.dumps({'mood':expected_mood,'energy':expected_energy})).replace('TODAY', today.isoformat()).replace('RELPATH', rel)
+                qml = QML.replace('COMPANION', companion.as_uri()).replace('SERVICE', (plugin / 'plugins/nexus/services/NexusService.qml').as_uri()).replace('EXPECTED', json.dumps({'mood':expected_mood,'energy':expected_energy})).replace('TODAY', today.isoformat()).replace('RELPATH', rel)
                 (shell / 'shell.qml').write_text(qml)
                 home = private / 'home'
                 home.mkdir()

@@ -4,18 +4,22 @@
   "host": "Alis",
   "hostApi": 1,
   "session": "AlisSession.qml",
+  "pluginsDir": "plugins",
   "integrations": [
     "tlp",
     "thinkfan",
     "nexus",
     "spaced_repetition",
-    "exercises_tracker"
+    "exercises_tracker",
+    "alis_files"
   ],
   "plugins": [
     {
       "id": "tlp",
       "name": "TLP",
       "icon": "battery_saver",
+      "payloadDir": "plugins/tlp",
+      "helpersScope": "tlp",
       "capabilities": [
         {
           "id": "power",
@@ -29,6 +33,8 @@
       "id": "thinkfan",
       "name": "Thinkfan",
       "icon": "mode_fan",
+      "payloadDir": "plugins/thinkfan",
+      "helpersScope": "thinkfan",
       "capabilities": [
         {
           "id": "cooling",
@@ -41,23 +47,12 @@
       "id": "nexus",
       "name": "Nexus",
       "icon": "hub",
+      "payloadDir": "plugins/nexus",
       "capabilities": [
         {
-          "id": "theming",
-          "name": "Theming",
+          "id": "workspace",
+          "name": "Nexus & Vault",
           "settings": "nexus"
-        },
-        {
-          "id": "quicknotes",
-          "name": "Quicknotes",
-          "settings": "nexusTodo",
-          "view": "quicknotes"
-        },
-        {
-          "id": "todo",
-          "name": "Todo",
-          "settings": "nexusTodo",
-          "view": "todo"
         }
       ]
     },
@@ -65,6 +60,7 @@
       "id": "spaced_repetition",
       "name": "Spaced Repetition",
       "icon": "school",
+      "payloadDir": "plugins/spaced_repetition",
       "capabilities": [
         {
           "id": "vocabulary",
@@ -77,6 +73,7 @@
       "id": "exercises_tracker",
       "name": "Exercises Tracker",
       "icon": "fitness_center",
+      "payloadDir": "plugins/exercises_tracker",
       "capabilities": [
         {
           "id": "workouts",
@@ -84,22 +81,47 @@
           "settings": "exercisesTracker"
         }
       ]
+    },
+    {
+      "id": "alis_files",
+      "name": "Alis Files",
+      "icon": "folder_open",
+      "payloadDir": "plugins/alis_files",
+      "capabilities": [
+        {
+          "id": "files",
+          "name": "File Manager",
+          "settings": "alisFiles"
+        }
+      ]
     }
   ],
   "settings": {
-    "tlp": "modules/settings/TlpPowerSettings.qml",
-    "nexus": "modules/settings/NexusThemeSettings.qml",
-    "nexusTodo": "modules/settings/NexusTodoSettings.qml",
-    "tlpRow": "modules/settings/TlpSettingRow.qml",
-    "tlpWaffle": "modules/waffle/settings/WTlpPowerSettings.qml",
-    "tlpWaffleRow": "modules/waffle/settings/WTlpSettingRow.qml",
-    "thinkfan": "modules/settings/ThinkfanSettings.qml",
-    "spacedRepetition": "modules/settings/DashboardSpacedRepetitionSettings.qml",
-    "exercisesTracker": "modules/settings/DashboardExercisesTrackerSettings.qml"
+    "tlp": "plugins/tlp/modules/settings/TlpPowerSettings.qml",
+    "nexus": "plugins/nexus/modules/settings/NexusThemeSettings.qml",
+    "nexusTodo": "plugins/nexus/modules/settings/NexusTodoSettings.qml",
+    "tlpRow": "plugins/tlp/modules/settings/TlpSettingRow.qml",
+    "tlpWaffle": "plugins/tlp/modules/waffle/settings/WTlpPowerSettings.qml",
+    "tlpWaffleRow": "plugins/tlp/modules/waffle/settings/WTlpSettingRow.qml",
+    "thinkfan": "plugins/thinkfan/modules/settings/ThinkfanSettings.qml",
+    "spacedRepetition": "plugins/spaced_repetition/modules/settings/DashboardSpacedRepetitionSettings.qml",
+    "exercisesTracker": "plugins/exercises_tracker/modules/settings/DashboardExercisesTrackerSettings.qml",
+    "alisFiles": "plugins/alis_files/modules/settings/AlisFilesSettings.qml"
+  },
+  "views": {
+    "nexusWorkspace": "plugins/nexus/modules/nexus/NexusWorkspace.qml",
+    "alisFilesWorkspace": "plugins/alis_files/modules/files/AlisFilesOverlayWorkspace.qml",
+    "spacedRepetitionDashboard": "plugins/spaced_repetition/modules/dashboard/DashboardSpacedRepetition.qml",
+    "exercisesTrackerDashboard": "plugins/exercises_tracker/modules/dashboard/DashboardExercisesTracker.qml"
   },
   "backends": {
-    "managedTodo": "services/NexusTodoBackend.qml",
-    "dailyTodo": "services/DailyNoteTodoBackend.qml"
+    "managedTodo": "plugins/nexus/services/NexusTodoBackend.qml",
+    "dailyTodo": "plugins/nexus/services/DailyNoteTodoBackend.qml"
+  },
+  "scripts": {
+    "spacedRepetitionLookup": "plugins/spaced_repetition/scripts/integrations/lookup_word_level.py",
+    "exercisesTrackerHelper": "plugins/exercises_tracker/scripts/integrations/exercises_tracker.py",
+    "alisFilesInstaller": "plugins/alis_files/scripts/install_alis_files.py"
   },
   "derivedFrom": {
     "repository": "llocphann/Alis",

@@ -2,7 +2,7 @@
 """Preserved Nexus worker contracts; native/private-vault tests cover behavior."""
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-CONTRACTS = {'services/NexusTodoBackend.qml': ['Scope {',
+CONTRACTS = {'plugins/nexus/services/NexusTodoBackend.qml': ['Scope {',
                                       'property bool active: false',
                                       'property string vaultPath: ""',
                                       'property string notePath: ""',
@@ -66,7 +66,7 @@ CONTRACTS = {'services/NexusTodoBackend.qml': ['Scope {',
                                       'root.migrationPreview = payload',
                                       'root.migrationCommitted(payload)',
                                       'JSON.parse(output)'],
- 'services/DailyNoteTodoBackend.qml': ['property string folder: "00_Capture/01_Journal"',
+ 'plugins/nexus/services/DailyNoteTodoBackend.qml': ['property string folder: "00_Capture/01_Journal"',
                                        'property string noteFormat: "YYYY/MMMM/DD-MM-YYYY-dddd"',
                                        'property string plannerHeading: "Tasks"',
                                        'property int plannerHeadingLevel: 2',
@@ -86,7 +86,7 @@ CONTRACTS = {'services/NexusTodoBackend.qml': ['Scope {',
                                        'expected-section-sha',
                                        'root.migrationFinished(success, payload)',
                                        'root.migrationCommitted(payload)'],
- 'scripts/todo/nexus_daily_todo.py': ['DEFAULT_FOLDER = "00_Capture/01_Journal"',
+ 'plugins/nexus/scripts/todo/nexus_daily_todo.py': ['DEFAULT_FOLDER = "00_Capture/01_Journal"',
                                          'DEFAULT_FORMAT = "YYYY/MMMM/DD-MM-YYYY-dddd"',
                                          'DEFAULT_HEADING = "Tasks"',
                                          'def scan_daily_note(',
@@ -95,7 +95,7 @@ CONTRACTS = {'services/NexusTodoBackend.qml': ['Scope {',
                                          'def delete_task(',
                                          'daily_note_not_found',
                                          'invalid_planner_section'],
- 'services/Zettelkasten.qml': ['Item {',
+ 'plugins/nexus/services/Zettelkasten.qml': ['Item {',
                                'Qt.resolvedUrl("../scripts/notes/zettelkasten.py")',
                                'function capture(title, body): bool',
                                'readonly property string configuredVaultPath: '
@@ -103,7 +103,7 @@ CONTRACTS = {'services/NexusTodoBackend.qml': ['Scope {',
                                '?? "00_Capture/03_Zettelkasten"',
                                '?? "Fleeting"',
                                'signal captured(var payload)'],
- 'scripts/notes/zettelkasten.py': ['ALLOWED_TYPES = ("Permanent", "Literature", "Fleeting")',
+ 'plugins/nexus/scripts/notes/zettelkasten.py': ['ALLOWED_TYPES = ("Permanent", "Literature", "Fleeting")',
                                    'DEFAULT_FOLDER = "00_Capture/03_Zettelkasten"',
                                    'DEFAULT_TYPE = "Fleeting"',
                                    '"## Core Idea"',
@@ -116,23 +116,23 @@ for path,tokens in CONTRACTS.items():
     text=(ROOT/path).read_text(encoding="utf-8")
     for token in tokens:
         assert token in text, path+" lost contract: "+token
-managed=(ROOT/"services/NexusTodoBackend.qml").read_text()
+managed=(ROOT/"plugins/nexus/services/NexusTodoBackend.qml").read_text()
 for token in ('root._notifyMigrationFinished(false, null)', 'root._notifyMigrationFinished(true, payload)'):
     assert token in managed, "owned migration completion lost contract: "+token
 for token in ('["nexus"','"eval"','vault=','bySymbol[symbol] ?? item.statusType'):
     assert token not in managed, "QML must not bypass non-launching/active-vault/status guards: "+token
-daily=(ROOT/"services/DailyNoteTodoBackend.qml").read_text()
+daily=(ROOT/"plugins/nexus/services/DailyNoteTodoBackend.qml").read_text()
 assert "nexus_tasks.py" not in daily and "probe-capabilities" not in daily
-for path in ("scripts/todo/nexus_todo.py","scripts/todo/nexus_tasks.py"):
+for path in ("plugins/nexus/scripts/todo/nexus_todo.py","plugins/nexus/scripts/todo/nexus_tasks.py"):
     assert (ROOT/path).is_file()
-settings=(ROOT/"modules/settings/NexusThemeSettings.qml").read_text()
+settings=(ROOT/"plugins/nexus/modules/settings/NexusThemeSettings.qml").read_text()
 for token in ('id: todoNexusVaultPath','updates["todo.nexus.vaultPath"] = value','updates["notes.zettelkasten.vaultPath"] = ""','Config.setNestedValues(updates)'):
     assert token in settings, "shared-vault settings lost contract: "+token
 for token in ('Translation.tr("Nexus vault folder")', 'Translation.tr("Shared by To-do and Zettelkasten.")', 'text: Todo.sharedVaultPath'):
     assert token in settings, "shared-vault label/help lost contract: "+token
 # Agenda-to-Todo automation was withdrawn by the owner. Backends must never
 # expose its mutation API; still parse historical metadata without rewriting it.
-for name in ("services/NexusTodoBackend.qml", "services/DailyNoteTodoBackend.qml"):
+for name in ("plugins/nexus/services/NexusTodoBackend.qml", "plugins/nexus/services/DailyNoteTodoBackend.qml"):
     source=(ROOT/name).read_text(encoding="utf-8")
     for retired in ("AgendaTaskMutation", "agendaJob", "ensureAgenda(",
                     "unlinkAgenda(", "deleteAgenda(", "agendaMutationFinished"):
@@ -141,12 +141,12 @@ for name in ("services/AgendaTaskMutation.qml", "services/qmldir",
              "scripts/todo/nexus_agenda.py",
              "scripts/test-nexus-agenda-helper.py"):
     assert not (ROOT/name).exists(), name+" resurrected obsolete linking code"
-metadata=(ROOT/"scripts/todo/agenda_metadata.py").read_text(encoding="utf-8")
+metadata=(ROOT/"plugins/nexus/scripts/todo/agenda_metadata.py").read_text(encoding="utf-8")
 assert "def split(content):" in metadata and "def render(" not in metadata
 import base64
 import json
 import sys
-sys.path.insert(0,str(ROOT/"scripts/todo"))
+sys.path.insert(0,str(ROOT/"plugins/nexus/scripts/todo"))
 import agenda_metadata
 legacy={"version":1,"key":"agenda-legacy-test-001","date":"2026-10-12"}
 encoded=base64.urlsafe_b64encode(json.dumps(legacy).encode()).decode().rstrip("=")

@@ -8,7 +8,7 @@ from integration_test_host import resolve_host_root
 HOST=Path(os.environ.get('ALIS_GRAPH_HOST',str(resolve_host_root(ROOT))))
 sys.path.insert(0,str(HOST/'scripts'))
 from native_test_session import private_wayland,run_qs
-GRAPH=Path(os.environ.get('GRAPH_FILE',str(ROOT/'modules/nexus/NexusGraphCanvas.qml')))
+GRAPH=Path(os.environ.get('GRAPH_FILE',str(ROOT/'plugins/nexus/modules/nexus/NexusGraphCanvas.qml')))
 LABEL=os.environ.get('FREEZE_LABEL','result')
 with tempfile.TemporaryDirectory(prefix='alis-freeze-') as name:
  p=Path(name)

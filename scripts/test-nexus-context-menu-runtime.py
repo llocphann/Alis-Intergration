@@ -90,7 +90,7 @@ ShellRoot {
  }
  Timer{interval:300;running:true;onTriggered:tc.run()}
 }'''
- for key,value in {'SERVICE':str(PLUGIN/'services/NexusService.qml'),'WORKSPACE':str(PLUGIN/'modules/nexus/NexusWorkspace.qml'),'INSPECTOR':str(inspector),'VAULT':str(vault),'FOLDER':folder,'ORIGINAL':folder+'/Legacy "quote" $note.md','OUT':str(OUT),'LABEL':LABEL}.items():qml=qml.replace(key,json.dumps(value,ensure_ascii=False))
+ for key,value in {'SERVICE':str(PLUGIN/'plugins/nexus/services/NexusService.qml'),'WORKSPACE':str(PLUGIN/'plugins/nexus/modules/nexus/NexusWorkspace.qml'),'INSPECTOR':str(inspector),'VAULT':str(vault),'FOLDER':folder,'ORIGINAL':folder+'/Legacy "quote" $note.md','OUT':str(OUT),'LABEL':LABEL}.items():qml=qml.replace(key,json.dumps(value,ensure_ascii=False))
  (shell/'shell.qml').write_text(qml);runtime=p/'runtime';runtime.mkdir(mode=0o700)
  env=dict(os.environ,QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',XDG_RUNTIME_DIR=str(runtime),PATH=str(binpath)+':'+os.environ['PATH'],ALIS_NEXUS_DISABLE_XDG_OPEN='0',ALIS_NEXUS_HEADLESS_SERVICE_ONLY='1')
  for kind in ('config','state','cache','data'):env['XDG_'+kind.upper()+'_HOME']=str(p/kind)
@@ -104,6 +104,6 @@ ShellRoot {
  checks=[json.loads(x) for x in re.findall(r'MENU_CHECK (\{[^\n]+\})',result.stdout)];transported=[json.loads(x) for x in transport.read_text().splitlines()] if transport.exists() else []
  expected=[{'command':'xdg-open','args':[str(vault/folder)]},{'command':'xdg-open','args':[str(vault/folder)]}]
  checks.append({'name':'private-clipboard-and-path-argv-preserved','status':'PASS' if transported==expected else 'FAIL','actual':transported})
- receipt={'platform':env['QT_QPA_PLATFORM'],'scope':'Exact Integration payload + actual installed host in private compositor/vault/config; clipboard/xdg transport intercepted by private PATH spies; no real vault/config/clipboard/desktop changes.','plugin':str(PLUGIN),'host':str(HOST),'exit':result.returncode,'complete':'MENU_DONE' in result.stdout,'checks':checks,'workspaceSha256':hashlib.sha256((PLUGIN/'modules/nexus/NexusWorkspace.qml').read_bytes()).hexdigest(),'serviceSha256':hashlib.sha256((PLUGIN/'services/NexusService.qml').read_bytes()).hexdigest()}
+ receipt={'platform':env['QT_QPA_PLATFORM'],'scope':'Exact Integration payload + actual installed host in private compositor/vault/config; clipboard/xdg transport intercepted by private PATH spies; no real vault/config/clipboard/desktop changes.','plugin':str(PLUGIN),'host':str(HOST),'exit':result.returncode,'complete':'MENU_DONE' in result.stdout,'checks':checks,'workspaceSha256':hashlib.sha256((PLUGIN/'plugins/nexus/modules/nexus/NexusWorkspace.qml').read_bytes()).hexdigest(),'serviceSha256':hashlib.sha256((PLUGIN/'plugins/nexus/services/NexusService.qml').read_bytes()).hexdigest()}
  (OUT/(LABEL+'.log')).write_text(result.stdout);(OUT/(LABEL+'.json')).write_text(json.dumps(receipt,indent=2,ensure_ascii=False)+'\n');print(json.dumps(receipt,indent=2,ensure_ascii=False))
  if result.returncode or not receipt['complete'] or any(c['status']!='PASS' for c in checks):raise SystemExit(1)

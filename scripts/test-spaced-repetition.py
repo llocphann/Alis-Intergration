@@ -21,14 +21,14 @@ const fs = require("fs");
 const vm = require("vm");
 const assert = require("assert");
 
-const essentialCode = fs.readFileSync("services/SpacedRepetitionEssential4000.js", "utf8")
+const essentialCode = fs.readFileSync("plugins/spaced_repetition/services/SpacedRepetitionEssential4000.js", "utf8")
     .replace(/^\.pragma\s+library\s*$/m, "");
-const promptsCode = fs.readFileSync("services/SpacedRepetitionPrompts.js", "utf8")
+const promptsCode = fs.readFileSync("plugins/spaced_repetition/services/SpacedRepetitionPrompts.js", "utf8")
     .replace(/^\.pragma\s+library\s*$/m, "");
-const lexiconCode = fs.readFileSync("services/SpacedRepetitionLexicon.js", "utf8")
+const lexiconCode = fs.readFileSync("plugins/spaced_repetition/services/SpacedRepetitionLexicon.js", "utf8")
     .replace(/^\.pragma\s+library\s*$/m, "")
     .replace(/^\.import\s+"SpacedRepetitionEssential4000\.js"\s+as\s+Essential4000\s*$/m, "");
-const engineCode = fs.readFileSync("services/SpacedRepetitionEngine.js", "utf8")
+const engineCode = fs.readFileSync("plugins/spaced_repetition/services/SpacedRepetitionEngine.js", "utf8")
     .replace(/^\.pragma\s+library\s*$/m, "")
     .replace(/^\.import\s+"SpacedRepetitionPrompts\.js"\s+as\s+Prompts\s*$/m, "")
     .replace(/^\.import\s+"SpacedRepetitionEssential4000\.js"\s+as\s+Essential4000\s*$/m, "")
@@ -339,9 +339,9 @@ console.log("ALIS_INTERGRATION_SR_ENGINE_PASS");
 
 
 def verify_qml_contracts() -> None:
-    sr_qml = (ROOT / "modules" / "dashboard" / "DashboardSpacedRepetition.qml").read_text(encoding="utf-8")
-    sr_service = (ROOT / "services" / "SpacedRepetition.qml").read_text(encoding="utf-8")
-    sr_settings = (ROOT / "modules" / "settings" / "DashboardSpacedRepetitionSettings.qml").read_text(encoding="utf-8")
+    sr_qml = (ROOT / "plugins" / "spaced_repetition" / "modules" / "dashboard" / "DashboardSpacedRepetition.qml").read_text(encoding="utf-8")
+    sr_service = (ROOT / "plugins" / "spaced_repetition" / "services" / "SpacedRepetition.qml").read_text(encoding="utf-8")
+    sr_settings = (ROOT / "plugins" / "spaced_repetition" / "modules" / "settings" / "DashboardSpacedRepetitionSettings.qml").read_text(encoding="utf-8")
 
     for required in (
         'objectName: "srMatchingBoard"',

@@ -17,6 +17,7 @@ protected = [
     '.alis-zettel-backup-', '.alis-backup-', '.alis.',
     '<!-- alis:todo:start -->', '<!-- alis:todo:end -->',
     '/usr/libexec/alis-thinkfan', '/usr/libexec/alis-battery-charge-limit',
+    'plugins/thinkfan/assets/helpers/alis-thinkfan', 'plugins/tlp/assets/helpers/alis-battery-charge-limit',
     'assets/helpers/alis-thinkfan', 'assets/helpers/alis-battery-charge-limit',
     'alis-intergration-gateway', 'alis-intergration-system-provision',
     'org.alis.intergration-system-provision.policy',
@@ -30,7 +31,7 @@ def public(text, location):
         text = text.replace(identifier, '<compatibility-identifier>')
     assert not legacy.search(text), (location, text)
 
-package_qml = sorted((ROOT / 'modules').rglob('*.qml'))
+package_qml = [ROOT / 'AlisSession.qml'] + sorted((ROOT / 'plugins').rglob('*.qml'))
 host_qml = [HOST / path for path in (
     'modules/settings/IntegrationsConfig.qml', 'modules/settings/NexusThemeSettings.qml',
     'modules/settings/NexusTodoSettings.qml', 'modules/settings/ThinkfanSettings.qml',
@@ -43,7 +44,7 @@ for path in package_qml + host_qml:
     if path.name == 'IntegrationsConfig.qml':
         assert '"Alis-Intergration " + AlisIntergration.version' in source
 
-for root, names in ((ROOT, ('scripts/install.py', 'scripts/notes/zettelkasten.py', 'scripts/todo/nexus_todo.py')),
+for root, names in ((ROOT, ('scripts/install.py', 'plugins/nexus/scripts/notes/zettelkasten.py', 'plugins/nexus/scripts/todo/nexus_todo.py')),
                     (HOST, ('scripts/alis-intergration-manager.py', 'scripts/alis-intergration-system-package.py'))):
     for name in names:
         for node in ast.walk(ast.parse((root / name).read_text())):
@@ -96,12 +97,12 @@ for path in ('README.md', 'ARCHITECTURE.md', 'STRUCTURE.md', 'CONTRIBUTING.md', 
 # policy's wording requires an explicit compatible security migration.
 expected = {
     # Updated for set -f noglob hardening around TLP settings validation loops.
-    'assets/helpers/alis-battery-charge-limit': '8d90045a524c24bb89086d9c07d21abf349a0a5994cb72096d54722422677255',
+    'plugins/tlp/assets/helpers/alis-battery-charge-limit': '8d90045a524c24bb89086d9c07d21abf349a0a5994cb72096d54722422677255',
     # Updated in commit 1898b0a for stale /run/thinkfan.pid cleanup before systemctl enable --now.
-    'assets/helpers/alis-thinkfan': 'b8b2c9cf721aff50b31ea1a0cae6d4f91d18d266d479f185deb86217830f1d67',
-    'assets/polkit/org.alis.battery-charge-limit.policy': 'a1e82cdf472a6df24fe0539e47012acd70f6e90aaadc328406787eb6917597b0',
-    'assets/polkit/org.alis.thinkfan.policy': 'b50ddbdd2619496e22322a3f02dd7a94522b627e2b9bff08818fd9cfae2fa17d',
-    'assets/tlp/tlp-settings-schema.json': 'b23cdaa8b3bb4fd3f8bd36e1bb1c8b61fcce0018eaa5175656353af42d309adb',
+    'plugins/thinkfan/assets/helpers/alis-thinkfan': 'b8b2c9cf721aff50b31ea1a0cae6d4f91d18d266d479f185deb86217830f1d67',
+    'plugins/tlp/assets/polkit/org.alis.battery-charge-limit.policy': 'a1e82cdf472a6df24fe0539e47012acd70f6e90aaadc328406787eb6917597b0',
+    'plugins/thinkfan/assets/polkit/org.alis.thinkfan.policy': 'b50ddbdd2619496e22322a3f02dd7a94522b627e2b9bff08818fd9cfae2fa17d',
+    'plugins/tlp/assets/tlp/tlp-settings-schema.json': 'b23cdaa8b3bb4fd3f8bd36e1bb1c8b61fcce0018eaa5175656353af42d309adb',
 }
 for path, value in expected.items():
     assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == value, path

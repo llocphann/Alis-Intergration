@@ -2,13 +2,13 @@
 # Preserved worker timeout/recovery guards; physical helpers use private fixtures.
 set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-tlp_service="$repo_root/services/TlpService.qml"
-tlp_settings="$repo_root/services/TlpSettingsService.qml"
+tlp_service="$repo_root/plugins/tlp/services/TlpService.qml"
+tlp_settings="$repo_root/plugins/tlp/services/TlpSettingsService.qml"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 assert_file_contains() { grep -Fq -- "$1" "$2" || fail "$3"; }
 tlp="$tlp_service"
-thinkfan="$repo_root/services/ThinkFanService.qml"
-tlp_caps="$repo_root/services/TlpRuntimeCapabilities.qml"
+thinkfan="$repo_root/plugins/thinkfan/services/ThinkFanService.qml"
+tlp_caps="$repo_root/plugins/tlp/services/TlpRuntimeCapabilities.qml"
 require() { grep -Fq -- "$2" "$1" || fail "$3"; }
 reject() { if grep -Fq -- "$2" "$1"; then fail "$3"; fi; }
 # Battery policy status/apply calls cross the privileged helper boundary. Keep

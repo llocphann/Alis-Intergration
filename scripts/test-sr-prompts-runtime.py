@@ -19,8 +19,8 @@ import QtTest
 import Quickshell
 import Quickshell.Io
 import qs.modules.common
-import "__PACKAGE__/services" as IntegrationServices
-import "__PACKAGE__/modules/dashboard" as IntegrationViews
+import "__PACKAGE__/plugins/spaced_repetition/services" as IntegrationServices
+import "__PACKAGE__/plugins/spaced_repetition/modules/dashboard" as IntegrationViews
 Window {
     id: win
     width: 1240; height: 820; visible: true

@@ -22,7 +22,8 @@ for count in (0, 1, len(manifest["plugins"])):
     assert len(host.plugin_metadata(data)) == count
 legacy = {key: value for key, value in manifest.items() if key != "plugins"}
 assert installer.plugin_metadata(legacy) == host.plugin_metadata(legacy) == []
-assert [cap["id"] for cap in manifest["plugins"][2]["capabilities"]] == ["theming", "quicknotes", "todo"]
+assert [cap["id"] for cap in manifest["plugins"][2]["capabilities"]] == ["workspace"]
+assert manifest["plugins"][2]["capabilities"][0]["settings"] == "nexus"
 invalid = []
 for field, value in (("id", "../escape"), ("id", "management"), ("name", "bad\nlabel"), ("capabilities", [])):
     data = copy.deepcopy(manifest); data["plugins"][0][field] = value; invalid.append(data)

@@ -8,7 +8,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parent / "notes" / "zettelkasten.py"
+SCRIPT = Path(__file__).resolve().parent.parent / "plugins/nexus/scripts/notes/zettelkasten.py"
 SPEC = importlib.util.spec_from_file_location("zettelkasten", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 zettel = importlib.util.module_from_spec(SPEC)

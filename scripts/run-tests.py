@@ -68,6 +68,7 @@ def build_checks(tmp_root: Path, host_root: Path, companion_root: Path | None) -
         {"name": "test-spaced-repetition.py", "group": "fast", "cmd": py("test-spaced-repetition.py")},
         {"name": "test-sr-prompts.cjs", "group": "fast", "cmd": ["node", "scripts/test-sr-prompts.cjs"]},
         {"name": "test-exercises-tracker.py", "group": "fast", "cmd": py("test-exercises-tracker.py")},
+        {"name": "test-alis-files.py", "group": "fast", "cmd": py("test-alis-files.py")},
         {"name": "test-qml.py", "group": "fast", "cmd": py("test-qml.py")},
         # Quickshell / Wayland runtime suites
         {"name": "test-zettelkasten-failure-runtime.py", "group": "runtime", "cmd": py("test-zettelkasten-failure-runtime.py")},

@@ -19,7 +19,7 @@ from integration_test_host import resolve_host_root  # noqa: E402
 
 HOST = Path(os.environ.get("ALIS_TEST_HOST", str(resolve_host_root(ROOT)))).resolve()
 PLUGIN = Path(os.environ.get("ALIS_TEST_PLUGIN", str(ROOT))).resolve()
-BIN = PLUGIN / "assets/bin/alis-nexus"
+BIN = PLUGIN / "plugins/nexus/assets/bin/alis-nexus"
 sys.path.insert(0, str(HOST / "scripts"))
 from native_test_session import private_wayland, run_qs  # noqa: E402
 
@@ -677,9 +677,9 @@ ShellRoot {
 }
 '''
         for k, v in {
-            "SERVICE_URL": str(PLUGIN / "services/NexusService.qml"),
-            "HOST_URL": str(PLUGIN / "modules/nexus/NexusHost.qml"),
-            "WORKSPACE_URL": str(PLUGIN / "modules/nexus/NexusWorkspace.qml"),
+            "SERVICE_URL": str(PLUGIN / "plugins/nexus/services/NexusService.qml"),
+            "HOST_URL": str(PLUGIN / "plugins/nexus/modules/nexus/NexusHost.qml"),
+            "WORKSPACE_URL": str(PLUGIN / "plugins/nexus/modules/nexus/NexusWorkspace.qml"),
             "HELPER_PY": str(helper_py),
             "VAULT_DIR": str(vault),
         }.items():

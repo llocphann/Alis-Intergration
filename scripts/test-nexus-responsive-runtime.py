@@ -90,8 +90,11 @@ ShellRoot {
           const noteFlick=findChild(ws,"nexusHybridOutlinerPane"); if(noteFlick) noteFlick.contentY=0; wait(120);
           if (k.kind==="recipe") report("recipe-default-overview",cv.recipeActiveSection==="overview",cv.recipeActiveSection);
           const header=findChild(ws,"nexusMainHeaderBar");const hb=box(header);
-          const headerActions=[findLabel(header,"Homepage"),findChild(ws,"nexusVimModeBadge"),findChild(ws,"nexusSplitModeButton"),findChild(ws,"nexusWindowModeToggleButton"),findLabel(header,"Saved")];
-          report("header-actions-contained-"+k.kind,headerActions.every(x=>{if(!x||!x.visible||x.width<=0)return false;const p=x.mapToItem(header,0,0);return p.x>=0&&p.y>=0&&p.x+x.width<=header.width+1&&p.y+x.height<=header.height+1;}),{header:hb,actions:headerActions.map(box)});
+          const breadcrumb=findChild(ws,"nexusActiveTabBreadcrumb");
+          const ribbon=findChild(ws,"nexusObsidianRibbon");
+          const ribbonActions=[findChild(ws,"nexusBasesRibbonButton"),findChild(ws,"nexusCanvasRibbonButton"),findChild(ws,"nexusPaneRibbonButton"),findChild(ws,"nexusVimModeBadge"),findChild(ws,"nexusSplitModeButton"),findChild(ws,"nexusSaveNoteButton")];
+          const breadcrumbOk=(breadcrumb && header && breadcrumb.visible && (function(){const p=breadcrumb.mapToItem(header,0,0);return p.x>=0&&p.y>=0&&p.x+breadcrumb.width<=header.width+1&&p.y+breadcrumb.height<=header.height+1;})());
+          report("header-actions-contained-"+k.kind,Boolean(breadcrumbOk)&&Boolean(ribbon)&&ribbonActions.every(x=>{if(!x||!x.visible||x.width<=0)return false;const p=x.mapToItem(ribbon,0,0);return p.x>=0&&p.y>=0&&p.x+x.width<=ribbon.width+1&&p.y+x.height<=ribbon.height+1;}),{header:hb,ribbon:box(ribbon),actions:ribbonActions.map(box)});
           capture(k.kind+"-1280");
           const started=cv.startPrimaryInlineEdit(); wait(100);
           const edit=findChild(ws,k.editor);
@@ -147,7 +150,7 @@ ShellRoot {
     }
   }
   Timer { interval:500; running:true; onTriggered:tc.runAudit() }
-}'''.replace('INITIAL_WIDTH',str(VIEWPORT)).replace('INITIAL_HEIGHT',str(HEIGHT)).replace('LABEL',LABEL).replace('SERVICE',str(PLUGIN/'services/NexusService.qml')).replace('WORKSPACE',str(PLUGIN/'modules/nexus/NexusWorkspace.qml')).replace('OUT',str(OUT))
+}'''.replace('INITIAL_WIDTH',str(VIEWPORT)).replace('INITIAL_HEIGHT',str(HEIGHT)).replace('LABEL',LABEL).replace('SERVICE',str(PLUGIN/'plugins/nexus/services/NexusService.qml')).replace('WORKSPACE',str(PLUGIN/'plugins/nexus/modules/nexus/NexusWorkspace.qml')).replace('OUT',str(OUT))
     (shell/'shell.qml').write_text(qml)
     runtime=private/'runtime'; runtime.mkdir(mode=0o700)
     env=dict(os.environ,QT_QPA_PLATFORM='offscreen',QT_QUICK_BACKEND='software',XDG_RUNTIME_DIR=str(runtime),ALIS_NEXUS_DISABLE_XDG_OPEN='1',ALIS_NEXUS_HEADLESS_SERVICE_ONLY='1')

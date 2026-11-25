@@ -209,14 +209,76 @@ ShellRoot {
                 check(svc.dayPlan.completedExercises === 2, "Expected 2 completed exercises")
                 check(svc.dayPlan.volumeKg > 600, "Expected positive training volume")
 
+                // Removed navigation & manual sync/export controls must not be mounted
+                check(findChild(view, "exercisesOpenPlannerButton") === null, "exercisesOpenPlannerButton must be removed")
+                check(findChild(view, "exercisesOpenNexusButton") === null, "exercisesOpenNexusButton must be removed")
+                check(findChild(view, "exercisesSyncPlannerButton") === null, "exercisesSyncPlannerButton must be removed")
+                check(findChild(view, "exercisesExportNexusButton") === null, "exercisesExportNexusButton must be removed")
+                check(findChild(view, "exercisesPlannerSyncBanner") === null, "exercisesPlannerSyncBanner must be removed")
+
+                // Search existing Nexus exercise, add linked exercise, and inspect Detail/Anatomy panel
+                tryVerify(() => svc.searchExercises("Barbell Bench").some(e => e.title === "Barbell Bench Press" && e.relPath.length > 0), 4000)
+                nameField.text = "Barbell Bench"
+                const searchToggleBtn = findChild(view, "exerciseSearchToggleButton")
+                check(searchToggleBtn !== null, "exerciseSearchToggleButton missing")
+                searchToggleBtn.clicked()
+                tryVerify(() => findChild(view, "exerciseSearchDropdown")?.visible === true, 2000)
+                let searchFirst = null
+                tryVerify(() => {
+                    searchFirst = findChild(view, "exerciseSearchResult_0")
+                    return searchFirst !== null
+                }, 2000)
+                searchFirst.clicked()
+                setsField.text = "3"
+                repsField.text = "8"
+                weightField.text = "80"
+                submitBtn.clicked()
+
+                const benchEx = svc.dayPlan.exercises.find(
+                    e => e.name === "Barbell Bench Press" && String(e.nexusRelPath || "").length > 0
+                )
+                check(!!benchEx, "Linked Nexus exercise was not attached on add")
+                let inspectArea = null
+                tryVerify(() => {
+                    inspectArea = findChild(view, "exerciseInspectArea_" + benchEx.id)
+                    return inspectArea !== null
+                }, 2000)
+                inspectArea.clicked(null)
+                tryVerify(() => findChild(view, "exercisesDetailPanel")?.visible === true, 2000)
+                tryVerify(() => !view.inspectedDetail?.loading && (view.inspectedDetail?.steps?.length ?? 0) >= 2 && findChild(view, "exercisesDetailTipsCard")?.visible === true, 4000)
+                check(findChild(view, "exercisesDetailStepsCard")?.visible === true, "Detail steps card missing")
+                check(findChild(view, "exercisesDetailBodyMapCanvas")?.visible === true, "Detail body map missing")
+                check(findChild(view, "exercisesDetailPreviewImage")?.visible === true, "Detail preview image missing")
+                const backBtn = findChild(view, "exercisesDetailBackButton")
+                check(backBtn !== null && backBtn.visible === true, "exercisesDetailBackButton missing")
+                backBtn.clicked()
+                tryVerify(() => {
+                    const panel = findChild(view, "exercisesDetailPanel")
+                    return panel === null || !panel.visible
+                }, 2000)
+
+                // Rest timer syncs 2-way with TimerService (stays running across page switches)
+                tryCompare(Persistent, "ready", true, 4000)
                 svc.startRestTimer(75, "Weighted Dips")
-                check(svc.restRunning === true && svc.restRemainingSec === 75, "Rest timer did not start")
+                check(svc.restRunning === true && svc.restRemainingSec >= 74 && svc.restRemainingSec <= 75, "Rest timer did not start")
+                check(TimerService.countdownRunning === true && TimerService.countdownSecondsLeft >= 74 && TimerService.countdownLabel === "Weighted Dips",
+                    "TimerService did not mirror rest timer")
                 dashboard.selectPage("dashboard")
                 tryCompare(dashboard, "currentPageId", "dashboard", 2000)
-                tryVerify(() => svc.restRunning === false, 2000)
+                wait(80)
+                check(svc.restRunning === true && TimerService.countdownRunning === true,
+                    "Rest timer should keep running via Timer Edgebar when switching tabs")
+                TimerService.toggleCountdown()
+                check(svc.restRunning === false && svc.restPaused === true && TimerService.countdownPaused === true,
+                    "TimerService pause did not sync back to ExercisesTracker")
+                TimerService.toggleCountdown()
+                check(svc.restRunning === true && svc.restPaused === false && TimerService.countdownRunning === true && !TimerService.countdownPaused,
+                    "TimerService resume did not sync back to ExercisesTracker")
+                TimerService.stopCountdown()
+                check(svc.restRunning === false && svc.restRemainingSec === 0 && TimerService.countdownRunning === false && TimerService.countdownLabel === "",
+                    "TimerService reset did not clear ExercisesTracker rest timer")
                 dashboard.selectPage("exercisesTracker")
                 tryCompare(dashboard, "currentPageId", "exercisesTracker", 2000)
-                svc.stopRestTimer()
 
                 const photo1 = Quickshell.env("ET_PHOTO_1")
                 const photo2 = Quickshell.env("ET_PHOTO_2")
@@ -229,6 +291,9 @@ ShellRoot {
                 const bc2 = svc.bodyCheckins[0]
                 check(bc2.hasWeightDelta && bc2.weightDeltaKg === -0.6,
                     "Expected -0.6 kg delta, got " + bc2.weightDeltaKg)
+                check(bc2.photoPath.indexOf("/90_System/95_Attachments/Body_Tracker/") !== -1
+                    && bc2.photoVaultRel.indexOf("90_System/95_Attachments/Body_Tracker/") === 0,
+                    "Body photo should auto-route to Nexus vault Body_Tracker dir, got " + bc2.photoPath + " / " + bc2.photoVaultRel)
 
                 wait(50)
                 const thumb = findChild(view, "bodyCheckinThumbnail_" + bc2.id)
@@ -251,10 +316,8 @@ ShellRoot {
                 check(svc.deleteBodyCheckin(bc1Id) === true && svc.bodyCheckins.length === 1,
                     "Deleting body check-in failed")
 
-                const syncedEventId = svc.syncDayToWeeklyPlanner(svc.selectedDate)
-                check(syncedEventId > 0, "syncDayToWeeklyPlanner did not create an Events record")
-                check(Events.list.some(ev => Number(ev.id) === syncedEventId && String(ev.title).indexOf("[Workout]") === 0),
-                    "Synced workout event missing from Events.list")
+                // Automatic 2-way Weekly Planner sync (no manual Sync/Import buttons needed)
+                tryVerify(() => Events.list.some(ev => String(ev.title).indexOf("[Workout]") === 0), 3000)
 
                 const origDate = svc.selectedDate
                 svc.stepDate(1)
@@ -273,25 +336,18 @@ ShellRoot {
                     endDt.toISOString(),
                     false
                 )
-                tryVerify(() => svc.plannerWorkouts.length === 1, 2000)
-                const plannerBanner = findChild(view, "exercisesPlannerSyncBanner")
-                check(plannerBanner !== null && plannerBanner.visible === true,
-                    "Weekly Planner workout banner did not appear for planned [Workout] event")
-                check(svc.importPlannerWorkout(svc.plannerWorkouts[0]) === true, "importPlannerWorkout failed")
-                check(svc.dayPlan.exercises.some(e => e.name === "Hack Squat" && e.weight === 100),
-                    "Imported planner exercise missing from checklist")
+                tryVerify(() => svc.dayPlan.exercises.some(e => e.name === "Hack Squat" && e.weight === 100), 3000)
 
-                svc.openInWeeklyPlanner(origDate)
+                dashboard.selectPage("weeklyPlanner")
                 tryCompare(dashboard, "currentPageId", "weeklyPlanner", 3000)
                 let plannerView = null
                 tryVerify(() => {
                     plannerView = findChild(dashboard, "dashboardWeeklyPlanner")
                     return plannerView !== null && plannerView.visible
                 }, 3000)
-                const plannerJumpBtn = findChild(plannerView, "plannerExercisesAction")
-                check(plannerJumpBtn !== null && plannerJumpBtn.visible === true,
-                    "plannerExercisesAction button missing in DashboardWeeklyPlanner")
-                plannerJumpBtn.clicked()
+                check(findChild(plannerView, "plannerExercisesAction") === null,
+                    "plannerExercisesAction tab-jump button should be removed from DashboardWeeklyPlanner")
+                dashboard.selectPage("exercisesTracker")
                 tryCompare(dashboard, "currentPageId", "exercisesTracker", 3000)
 
                 const workoutCard = findChild(view, "exercisesWorkoutCard")
@@ -312,7 +368,73 @@ ShellRoot {
                 const settingsView = settingsComp.createObject(win, { width: 720 })
                 check(settingsView !== null && settingsView.implicitHeight > 100,
                     "DashboardExercisesTrackerSettings failed to instantiate")
+                check(findChild(settingsView, "exercisesSettingsReminderSelector") !== null,
+                    "exercisesSettingsReminderSelector missing in Settings")
+                check(findChild(settingsView, "exercisesSettingsPhotoStorageModeSelector") !== null,
+                    "exercisesSettingsPhotoStorageModeSelector missing in Settings")
+                check(findChild(settingsView, "exercisesSettingsPhotosStorageStatus") !== null,
+                    "exercisesSettingsPhotosStorageStatus missing in Settings")
+                svc.updatePreferences({
+                    bodyPhotosStorageMode: "custom",
+                    bodyPhotosCustomDir: "90_System/CustomBody"
+                })
+                wait(80)
+                const customField = findChild(settingsView, "exercisesSettingsCustomPhotoDirField")
+                const browsePhotoBtn = findChild(settingsView, "exercisesSettingsBrowsePhotoDirButton")
+                check(customField !== null && customField.visible === true && browsePhotoBtn !== null && browsePhotoBtn.visible === true,
+                    "Custom photo directory controls should become visible in custom storage mode")
+                svc.updatePreferences({ bodyPhotosStorageMode: "auto", bodyPhotosCustomDir: "" })
                 settingsView.destroy()
+
+                // Verify future-workout vs completed/past-workout notification state preservation
+                let spams = 0
+                const onEvt = () => { spams++ }
+                const onRem = () => { spams++ }
+                Events.eventTriggered.connect(onEvt)
+                Events.reminderTriggered.connect(onRem)
+                const pastDate = "2020-05-01"
+                svc.selectDate(pastDate)
+                svc.addExercise({ name: "Past Squat", category: "legs", sets: 3, reps: "8", weight: 60 })
+                let pastEv = null
+                tryVerify(() => {
+                    pastEv = Events.list.find(e => String(e.description || "").includes("#workout · " + pastDate))
+                    return Boolean(pastEv && pastEv.notified === true && pastEv.reminderNotified === true)
+                }, 3000)
+                Events.checkDueEvents()
+                check(spams === 0, "Past synced workout emitted unexpected notification(s): " + spams)
+
+                const futureDate = "2099-05-01"
+                svc.selectDate(futureDate)
+                svc.addExercise({ name: "Future Press", category: "chest", sets: 3, reps: "8", weight: 50 })
+                let futEv = null
+                tryVerify(() => {
+                    futEv = Events.list.find(e => String(e.description || "").includes("#workout · " + futureDate))
+                    return Boolean(futEv && futEv.notified === false && futEv.reminderMinutes === 15)
+                }, 3000)
+                Events.updateEvent(futEv.id, { notified: true, reminderNotified: true })
+                const futExId = svc.dayPlan.exercises[0].id
+                svc.updateExercise(futExId, { reps: "12" })
+                wait(200)
+                futEv = Events.list.find(e => Number(e.id) === Number(futEv.id))
+                check(futEv.notified === true && futEv.reminderNotified === true,
+                    "Updating future workout description reset notified/reminderNotified flags")
+                Events.checkDueEvents()
+                check(spams === 0, "Unchanged start time re-triggered notification after workout edit")
+                const futureDate2 = "2099-05-02"
+                svc.selectDate(futureDate2)
+                svc.addExercise({ name: "Completed Bench", category: "chest", sets: 3, reps: "8", weight: 50 })
+                let futEv2 = null
+                tryVerify(() => {
+                    futEv2 = Events.list.find(e => String(e.description || "").includes("#workout · " + futureDate2))
+                    return Boolean(futEv2 && futEv2.notified === false)
+                }, 3000)
+                svc.toggleExercise(svc.dayPlan.exercises[0].id)
+                tryVerify(() => {
+                    futEv2 = Events.list.find(e => Number(e.id) === Number(futEv2.id))
+                    return Boolean(futEv2 && futEv2.notified === true && futEv2.reminderNotified === true && futEv2.reminderMinutes === 0)
+                }, 3000)
+                Events.eventTriggered.disconnect(onEvt)
+                Events.reminderTriggered.disconnect(onRem)
 
                 svc.selectDate(origDate)
                 verifyNexusExport(svc)
@@ -456,13 +578,71 @@ ShellRoot {
                 check(svc.dayPlan.completedExercises === 2, "Expected 2 completed exercises")
                 check(svc.dayPlan.volumeKg > 600, "Expected positive training volume")
 
-                // 2. Rest timer starts while visible and pauses deterministically when hidden
+                // 1b. Removed buttons/banners must not be mounted + Search + Detail inspector
+                check(findChild(view, "exercisesOpenPlannerButton") === null, "exercisesOpenPlannerButton must be removed")
+                check(findChild(view, "exercisesOpenNexusButton") === null, "exercisesOpenNexusButton must be removed")
+                check(findChild(view, "exercisesSyncPlannerButton") === null, "exercisesSyncPlannerButton must be removed")
+                check(findChild(view, "exercisesExportNexusButton") === null, "exercisesExportNexusButton must be removed")
+                check(findChild(view, "exercisesPlannerSyncBanner") === null, "exercisesPlannerSyncBanner must be removed")
+
+                tryVerify(() => svc.searchExercises("Barbell Bench").some(e => e.title === "Barbell Bench Press" && e.relPath.length > 0), 4000)
+                nameField.text = "Barbell Bench"
+                const searchToggleBtn = findChild(view, "exerciseSearchToggleButton")
+                check(searchToggleBtn !== null, "exerciseSearchToggleButton missing")
+                searchToggleBtn.clicked()
+                tryVerify(() => findChild(view, "exerciseSearchDropdown")?.visible === true, 2000)
+                let searchFirst = null
+                tryVerify(() => {
+                    searchFirst = findChild(view, "exerciseSearchResult_0")
+                    return searchFirst !== null
+                }, 2000)
+                searchFirst.clicked()
+                setsField.text = "3"
+                repsField.text = "8"
+                weightField.text = "80"
+                submitBtn.clicked()
+
+                const benchEx = svc.dayPlan.exercises.find(
+                    e => e.name === "Barbell Bench Press" && String(e.nexusRelPath || "").length > 0
+                )
+                check(!!benchEx, "Linked Nexus exercise was not attached on add")
+                let inspectArea = null
+                tryVerify(() => {
+                    inspectArea = findChild(view, "exerciseInspectArea_" + benchEx.id)
+                    return inspectArea !== null
+                }, 2000)
+                inspectArea.clicked(null)
+                tryVerify(() => findChild(view, "exercisesDetailPanel")?.visible === true, 2000)
+                tryVerify(() => !view.inspectedDetail?.loading && (view.inspectedDetail?.steps?.length ?? 0) >= 2 && findChild(view, "exercisesDetailTipsCard")?.visible === true, 4000)
+                check(findChild(view, "exercisesDetailStepsCard")?.visible === true, "Detail steps card missing")
+                check(findChild(view, "exercisesDetailBodyMapCanvas")?.visible === true, "Detail body map missing")
+                check(findChild(view, "exercisesDetailPreviewImage")?.visible === true, "Detail preview image missing")
+                check(view.handleEscape() === true, "handleEscape() did not dismiss detail inspector")
+                tryVerify(() => {
+                    const panel = findChild(view, "exercisesDetailPanel")
+                    return panel === null || !panel.visible
+                }, 2000)
+
+                // 2. Rest timer syncs 2-way with TimerService & keeps running while hidden
+                tryCompare(Persistent, "ready", true, 4000)
                 svc.startRestTimer(75, "Weighted Dips")
-                check(svc.restRunning === true && svc.restRemainingSec === 75, "Rest timer did not start")
+                check(svc.restRunning === true && svc.restRemainingSec >= 74 && svc.restRemainingSec <= 75, "Rest timer did not start")
+                check(TimerService.countdownRunning === true && TimerService.countdownSecondsLeft >= 74 && TimerService.countdownLabel === "Weighted Dips",
+                    "TimerService did not mirror rest timer")
                 root.tabPresentationActive = false
-                tryVerify(() => svc.restRunning === false, 2000)
+                wait(80)
+                check(svc.restRunning === true && TimerService.countdownRunning === true,
+                    "Rest timer should remain active via TimerService when hidden")
+                TimerService.toggleCountdown()
+                check(svc.restRunning === false && svc.restPaused === true && TimerService.countdownPaused === true,
+                    "TimerService pause did not sync back to ExercisesTracker")
+                TimerService.toggleCountdown()
+                check(svc.restRunning === true && svc.restPaused === false && TimerService.countdownRunning === true && !TimerService.countdownPaused,
+                    "TimerService resume did not sync back to ExercisesTracker")
                 root.tabPresentationActive = true
-                svc.stopRestTimer()
+                TimerService.stopCountdown()
+                check(svc.restRunning === false && svc.restRemainingSec === 0 && TimerService.countdownRunning === false && TimerService.countdownLabel === "",
+                    "TimerService reset did not clear ExercisesTracker rest timer")
 
                 // 3. Body Tracker Photo Check-in (explicit path import, bounded sourceSize, Lightbox Escape, delete)
                 const photo1 = Quickshell.env("ET_PHOTO_1")
@@ -476,6 +656,9 @@ ShellRoot {
                 const bc2 = svc.bodyCheckins[0]
                 check(bc2.hasWeightDelta && bc2.weightDeltaKg === -0.6,
                     "Expected -0.6 kg delta, got " + bc2.weightDeltaKg)
+                check(bc2.photoPath.indexOf("/90_System/95_Attachments/Body_Tracker/") !== -1
+                    && bc2.photoVaultRel.indexOf("90_System/95_Attachments/Body_Tracker/") === 0,
+                    "Body photo should auto-route to Nexus vault Body_Tracker dir, got " + bc2.photoPath + " / " + bc2.photoVaultRel)
 
                 wait(50)
                 const thumb = findChild(view, "bodyCheckinThumbnail_" + bc2.id)
@@ -497,11 +680,8 @@ ShellRoot {
                 check(svc.deleteBodyCheckin(bc1Id) === true && svc.bodyCheckins.length === 1,
                     "Deleting body check-in failed")
 
-                // 4. Two-Way Weekly Planner Sync (ExercisesTracker <-> Events + GlobalStates)
-                const syncedEventId = svc.syncDayToWeeklyPlanner(svc.selectedDate)
-                check(syncedEventId > 0, "syncDayToWeeklyPlanner did not create an Events record")
-                check(Events.list.some(ev => Number(ev.id) === syncedEventId && String(ev.title).indexOf("[Workout]") === 0),
-                    "Synced workout event missing from Events.list")
+                // 4. Automatic Two-Way Weekly Planner Sync (ExercisesTracker <-> Events)
+                tryVerify(() => Events.list.some(ev => String(ev.title).indexOf("[Workout]") === 0), 3000)
 
                 const origDate = svc.selectedDate
                 svc.stepDate(1)
@@ -520,20 +700,7 @@ ShellRoot {
                     endDt.toISOString(),
                     false
                 )
-                tryVerify(() => svc.plannerWorkouts.length === 1, 2000)
-                const plannerBanner = findChild(view, "exercisesPlannerSyncBanner")
-                check(plannerBanner !== null && plannerBanner.visible === true,
-                    "Weekly Planner workout banner did not appear for planned [Workout] event")
-                check(svc.importPlannerWorkout(svc.plannerWorkouts[0]) === true, "importPlannerWorkout failed")
-                check(svc.dayPlan.exercises.some(e => e.name === "Hack Squat" && e.weight === 100),
-                    "Imported planner exercise missing from checklist")
-
-                svc.openInWeeklyPlanner(origDate)
-                check(GlobalStates.dashboardPageId === "weeklyPlanner" && GlobalStates.dashboardOpen === true,
-                    "openInWeeklyPlanner did not route Dashboard to weeklyPlanner")
-                svc.openDashboardTracker(origDate)
-                check(GlobalStates.dashboardPageId === "exercisesTracker",
-                    "openDashboardTracker did not route Dashboard back to exercisesTracker")
+                tryVerify(() => svc.dayPlan.exercises.some(e => e.name === "Hack Squat" && e.weight === 100), 3000)
 
                 // 5. Verify borderless inner cards & Spaced Repetition colBorder parity + Integrations Settings view
                 const workoutCard = findChild(view, "exercisesWorkoutCard")
@@ -557,14 +724,77 @@ ShellRoot {
                 const settingsView = settingsComp.createObject(win, { width: 720 })
                 check(settingsView !== null && settingsView.implicitHeight > 100,
                     "DashboardExercisesTrackerSettings failed to instantiate")
-                svc.updatePreferences({ defaultSets: 4, defaultGalleryMode: "compare", showBodyMetrics: false })
+                check(findChild(settingsView, "exercisesSettingsReminderSelector") !== null,
+                    "exercisesSettingsReminderSelector missing in Settings")
+                check(findChild(settingsView, "exercisesSettingsPhotoStorageModeSelector") !== null,
+                    "exercisesSettingsPhotoStorageModeSelector missing in Settings")
+                check(findChild(settingsView, "exercisesSettingsPhotosStorageStatus") !== null,
+                    "exercisesSettingsPhotosStorageStatus missing in Settings")
+                svc.updatePreferences({
+                    defaultSets: 4,
+                    defaultGalleryMode: "compare",
+                    showBodyMetrics: false,
+                    bodyPhotosStorageMode: "custom",
+                    bodyPhotosCustomDir: "90_System/CustomBody"
+                })
+                wait(80)
                 check(svc.preferences.defaultSets === 4 && svc.preferences.defaultGalleryMode === "compare",
                     "ExercisesTracker.updatePreferences did not update preferences")
+                const customField = findChild(settingsView, "exercisesSettingsCustomPhotoDirField")
+                const browsePhotoBtn = findChild(settingsView, "exercisesSettingsBrowsePhotoDirButton")
+                check(customField !== null && customField.visible === true && browsePhotoBtn !== null && browsePhotoBtn.visible === true,
+                    "Custom photo directory controls should become visible in custom storage mode")
                 svc.applySplitPreset("upper_lower")
                 check(svc.weeklyTemplates["1"] === "push" && svc.weeklyTemplates["2"] === "legs" && svc.weeklyTemplates["4"] === "pull",
                     "ExercisesTracker.applySplitPreset failed")
-                svc.updatePreferences({ defaultSets: 3, defaultGalleryMode: "timeline", showBodyMetrics: true })
+                svc.updatePreferences({
+                    defaultSets: 3,
+                    defaultGalleryMode: "timeline",
+                    showBodyMetrics: true,
+                    bodyPhotosStorageMode: "auto",
+                    bodyPhotosCustomDir: ""
+                })
                 settingsView.destroy()
+
+                // Verify future-workout vs completed/past-workout notification state preservation
+                let spams = 0
+                const onEvt = () => { spams++ }
+                const onRem = () => { spams++ }
+                Events.eventTriggered.connect(onEvt)
+                Events.reminderTriggered.connect(onRem)
+                const savedSelected = svc.selectedDate
+                const pastDate = "2020-05-01"
+                svc.selectDate(pastDate)
+                svc.addExercise({ name: "Past Squat", category: "legs", sets: 3, reps: "8", weight: 60 })
+                let pastEv = null
+                tryVerify(() => {
+                    pastEv = Events.list.find(e => String(e.description || "").includes("#workout · " + pastDate))
+                    return Boolean(pastEv && pastEv.notified === true && pastEv.reminderNotified === true)
+                }, 3000)
+                Events.checkDueEvents()
+                check(spams === 0, "Past synced workout emitted unexpected notification(s): " + spams)
+
+                const futureDate = "2099-05-01"
+                svc.selectDate(futureDate)
+                svc.addExercise({ name: "Future Press", category: "chest", sets: 3, reps: "8", weight: 50 })
+                let futEv = null
+                tryVerify(() => {
+                    futEv = Events.list.find(e => String(e.description || "").includes("#workout · " + futureDate))
+                    return Boolean(futEv && futEv.notified === false && futEv.reminderMinutes === 15)
+                }, 3000)
+                // Simulating an already-fired reminder/notification before editing exercise notes/sets must preserve flags
+                Events.updateEvent(futEv.id, { notified: true, reminderNotified: true })
+                const futExId = svc.dayPlan.exercises[0].id
+                svc.updateExercise(futExId, { reps: "12" })
+                wait(200)
+                futEv = Events.list.find(e => Number(e.id) === Number(futEv.id))
+                check(futEv.notified === true && futEv.reminderNotified === true,
+                    "Updating future workout description reset notified/reminderNotified flags")
+                Events.checkDueEvents()
+                check(spams === 0, "Unchanged start time re-triggered notification after workout edit")
+                Events.eventTriggered.disconnect(onEvt)
+                Events.reminderTriggered.disconnect(onRem)
+                svc.selectDate(savedSelected)
 
                 // 6. Explicit toggle off & back on via AlisIntergration
                 AlisIntergration.setExercisesTrackerEnabled(false)
@@ -623,6 +853,33 @@ def main() -> None:
         vault = private / "vault"
         vault.mkdir()
         (vault / "Blocked").write_text("fixture sentinel", encoding="utf-8")
+        ex_note = vault / "20_Personal_Life/33_Bodybuilding/Gym_n_Calisthenics_Exercises/Barbell Bench Press.md"
+        ex_note.parent.mkdir(parents=True, exist_ok=True)
+        ex_note.write_text(
+            "---\n"
+            "type: exercise\n"
+            "muscles:\n"
+            "  - chest\n"
+            "  - triceps\n"
+            "secondaryMuscles:\n"
+            "  - shoulders\n"
+            "equipment: Barbell\n"
+            "force: push\n"
+            "level: intermediate\n"
+            "mechanic: compound\n"
+            "category: strength\n"
+            'previewImage: "[[90_System/95_Attachments/bench.png]]"\n'
+            "---\n\n"
+            "## How to Perform\n"
+            "1. Unrack the barbell with scapulae retracted.\n"
+            "2. Lower to mid-chest under control and press up.\n\n"
+            "## Tips\n"
+            "- Keep feet planted and wrists stacked.\n",
+            encoding="utf-8",
+        )
+        bench_img = vault / "90_System/95_Attachments/bench.png"
+        bench_img.parent.mkdir(parents=True, exist_ok=True)
+        bench_img.write_bytes(make_png(64, 64, (210, 90, 60)))
         options["todo"]["nexus"]["vaultPath"] = str(vault)
         options["notes"]["zettelkasten"]["folder"] = "Logs"
         options["integrations"]["alisIntergration"] = {
@@ -755,12 +1012,12 @@ def main() -> None:
             if use_virtual_wayland:
                 notes = list(vault.rglob("*.md"))
                 workouts = [note for note in notes if "Workout" in note.name]
-                assert len(notes) == 2 and len(workouts) == 1, notes
+                assert len(notes) == 3 and len(workouts) == 1, notes
                 assert "Weighted Dips" in workouts[0].read_text(encoding="utf-8")
                 assert (vault / "Blocked").read_text(encoding="utf-8") == "fixture sentinel"
 
-            photos_on_disk = list((et_state_dir / "photos").glob("*.png"))
-            assert len(photos_on_disk) == 1, f"Expected 1 retained photo on disk, got {photos_on_disk}"
+            vault_photos = list((vault / "90_System/95_Attachments/Body_Tracker").glob("*.png"))
+            assert len(vault_photos) == 1, f"Expected 1 retained photo in Nexus vault Body_Tracker dir, got {vault_photos}"
 
             restart_env = dict(base_env, ET_PHASE="restart")
             res2 = run_qs(shell, restart_env, timeout=30)

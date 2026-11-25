@@ -4,9 +4,9 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
-helper="$repo_root/assets/helpers/alis-battery-charge-limit"
-runtime="$repo_root/services/TlpRuntimeCapabilities.qml"
-power="$repo_root/modules/settings/TlpPowerSettings.qml"
+helper="$repo_root/plugins/tlp/assets/helpers/alis-battery-charge-limit"
+runtime="$repo_root/plugins/tlp/services/TlpRuntimeCapabilities.qml"
+power="$repo_root/plugins/tlp/modules/settings/TlpPowerSettings.qml"
 
 fail() {
     printf 'not ok - %s\n' "$1" >&2
@@ -131,8 +131,8 @@ assert_not_contains 'Apply validates every change and authenticates only once' "
 assert_not_contains 'Reset removes only the general Alis TLP' "$power" \
     'Battery/TLP summary must keep reset guidance concise'
 
-schema="$repo_root/assets/tlp/tlp-settings-schema.json"
-settings_service="$repo_root/services/TlpSettingsService.qml"
+schema="$repo_root/plugins/tlp/assets/tlp/tlp-settings-schema.json"
+settings_service="$repo_root/plugins/tlp/services/TlpSettingsService.qml"
 jq -e '
  .schema == 1 and
  ([.categories[].settings[]] | length) == 125 and
@@ -147,9 +147,9 @@ assert_contains 'command.push("--charge-set"' "$settings_service" 'charge care m
 assert_eq 1 "$(grep -Fc 'const command = ["/usr/bin/pkexec", root.helperPath, "--config-apply"]' "$settings_service")" 'settings service must build one privileged Apply command'
 assert_not_contains 'applyOnLeave' "$settings_service" 'settings service must require explicit Apply'
 
-classic="$repo_root/modules/settings/TlpSettingRow.qml"
-waffle="$repo_root/modules/waffle/settings/WTlpSettingRow.qml"
-waffle_page="$repo_root/modules/waffle/settings/WTlpPowerSettings.qml"
+classic="$repo_root/plugins/tlp/modules/settings/TlpSettingRow.qml"
+waffle="$repo_root/plugins/tlp/modules/waffle/settings/WTlpSettingRow.qml"
+waffle_page="$repo_root/plugins/tlp/modules/waffle/settings/WTlpPowerSettings.qml"
 for row in "$classic" "$waffle"; do
     assert_contains 'gpuFrequencyGroupKeys' "$row" \
         "$(basename "$row") must stage Intel GPU frequency groups atomically"

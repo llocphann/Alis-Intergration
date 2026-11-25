@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix="alis-intergration-native-") as name:
     config = private / "config/alis"
     config.mkdir(parents=True)
     options = json.loads((HOST / "defaults/config.json").read_text())
-    options["integrations"]["alisIntergration"] = {key:False for key in ("tlp","thinkfan","nexus","spaced_repetition","exercises_tracker")}
+    options["integrations"]["alisIntergration"] = {key:False for key in ("tlp","thinkfan","nexus","spaced_repetition","exercises_tracker","alis_files")}
     options["battery"]["chargeLimit"]["enable"] = False
     options["powerProfiles"]["fanControl"]["enabled"] = False
     options["integrations"]["nexus"]["autoTheme"] = False
@@ -92,26 +92,34 @@ ShellRoot {
    check(AlisIntergration.session===null,"default-off package started workers")
    check(findChild(integrations,"alisIntergrationNexusTodoSettings")===null,"disabled Nexus rendered owned controls")
    const installed = AlisIntergration.installedPlugins
-   check(findChild(integrations,"integrationPrimaryTabs")===null,"top plugin sub-tabs should be replaced by Management cards + modal")
+   const installedIds = AlisIntergration.installedPluginIds
+   check(findChild(integrations,"integrationPrimaryTabs")===null,"top plugin sub-tabs should be replaced by Management cards + drill-down")
    check(waffleIntegrations.primaryTabs.length===installed.length+1,"Waffle plugin metadata count mismatch")
-   check(installed.length===5 && integrations.primaryTabs.length===6,"N installed plugins must have N+1 entries")
+   check(installed.length===6 && integrations.primaryTabs.length===7,"N installed plugins must have N+1 entries")
    AlisIntergration.installedPlugins=[]
+   AlisIntergration.installedPluginIds=[]
    check(integrations.primaryTabs.length===1 && integrations.activePlugin==="management","empty package did not fall back to Management")
    AlisIntergration.installedPlugins=installed.slice(0,1)
+   AlisIntergration.installedPluginIds=[installed[0].id]
    check(integrations.primaryTabs.length===2,"single plugin must expose only 1 installed entry plus management")
    check(AlisIntergration.isPluginInstalled(installed[0].id) && !AlisIntergration.isPluginInstalled("nexus"),"per-plugin installed check failed")
-   integrations.openPluginModal(installed[0].id)
-   check(integrations.modalOpen && integrations.modalPluginId===installed[0].id,"opening plugin card modal failed")
+   integrations.openPluginSettings(installed[0].id)
+   check(integrations.detailOpen && integrations.selectedPluginId===installed[0].id,"opening installed plugin drill-down failed")
    AlisIntergration.installedPlugins=[]
-   check(!integrations.isModalPluginInstalled && findChild(integrations,"integrationModalInstallButton")!==null,"uninstalled plugin modal must offer Install CTA")
-   check(integrations.handleEscape()===true && !integrations.modalOpen && integrations.activePlugin==="management","Escape did not close plugin modal")
+   AlisIntergration.installedPluginIds=[]
+   check(!integrations.detailOpen && findChild(integrations,"integrationInstall_"+installed[0].id)!==null,"uninstalled plugin must close detail and offer Download & Install CTA")
+   integrations.openPluginSettings(installed[0].id)
+   check(!integrations.detailOpen,"uninstalled plugin must NOT slide into Settings")
    AlisIntergration.installedPlugins=installed
+   AlisIntergration.installedPluginIds=installedIds
+   integrations.openPluginSettings(installed[0].id)
+   check(integrations.detailOpen && integrations.handleEscape()===true && !integrations.detailOpen && integrations.activePlugin==="management","Escape did not close plugin drill-down")
    for(const width of [320,500,800]){
     integrations.width=width
     tryCompare(integrations,"width",width,1000);wait(50)
     const pkg=findChild(integrations,"integrationOptionalPluginsCard")
     check(pkg!==null && pkg.width>0 && pkg.width<=integrations.width+.1,"Optional Plugins card missing or overflows width "+width)
-    for(const pid of ["nexus","spaced_repetition","exercises_tracker","tlp","thinkfan"]){
+    for(const pid of ["alis_files","nexus","spaced_repetition","exercises_tracker","tlp","thinkfan"]){
      const card=findChild(integrations,"integrationPluginCard_"+pid)
      check(card!==null && card.width>0,"plugin card "+pid+" missing at width "+width)
      const rightEdge=card.mapToItem(integrations,card.width,0).x
@@ -136,35 +144,37 @@ ShellRoot {
    const session=AlisIntergration.session
    session.batteryHelperPath=Quickshell.env("FIXTURE_HELPER");session.fanHelperPath=Quickshell.env("FIXTURE_HELPER")
    integrations.activateSettingsSearchSection("Nexus Todo")
-   check(integrations.capabilityTabs.length===3,"Nexus capability tabs missing")
-   const capabilityTabs=findChild(findChild(integrations,"integrationCapabilityTabs"),"settingsTaskOptions")
-   tryVerify(()=>capabilityTabs.children.filter(child=>child.hasOwnProperty("modelData")).length===3,1000)
-   tryVerify(()=>capabilityTabs.children.filter(child=>child.hasOwnProperty("modelData")).every(button=>button.buttonText.length>0 && button.width>50 && capabilityTabs.width>200),2000)
-   tryVerify(()=>findChild(integrations,"alisIntergrationNexusTodoSettings")!==null,3000)
-   const pattern=findChild(integrations,"nexusTodoNotePattern"),heading=findChild(integrations,"nexusTodoHeading"),folder=findChild(integrations,"nexusQuickNoteFolder")
-   check(pattern && heading && folder,"owned Todo/capture editors missing")
-   check(pattern.visible && !folder.visible,"Todo tab exposed Quicknotes controls")
+   check(integrations.detailOpen && integrations.selectedPluginId==="nexus","Nexus deep link failed to open detail view")
+   check(integrations.capabilityTabs.length===0,"Nexus should not expose separate capability tabs")
+   const capTabsRail=findChild(integrations,"integrationCapabilityTabs")
+   check(!capTabsRail || !capTabsRail.visible,"Nexus capability tabs bar must stay hidden")
+   tryVerify(()=>findChild(integrations,"alisIntergrationNexusSettings")!==null && findChild(integrations,"alisIntergrationNexusTodoSettings")!==null,3000)
+   const vault=findChild(integrations,"nexusVaultPath"),pattern=findChild(integrations,"nexusTodoNotePattern"),heading=findChild(integrations,"nexusTodoHeading"),folder=findChild(integrations,"nexusQuickNoteFolder")
+   check(vault && pattern && heading && folder,"owned Nexus/Todo/capture editors missing")
+   check(vault.visible && pattern.visible && heading.visible && folder.visible,"Unified Nexus single-tab view must show vault, Todo, and Quicknotes controls together")
    capture("nexus-todo")
    pattern.text=" /Capture/My Tasks.md/ ";pattern.editingFinished()
    heading.text=" New tasks ";heading.editingFinished()
-   integrations.selectCapability("quicknotes")
-   tryVerify(()=>findChild(integrations,"nexusQuickNoteFolder")?.visible===true,2000)
-   const quickFolder=findChild(integrations,"nexusQuickNoteFolder")
-   check(!findChild(integrations,"nexusTodoNotePattern").visible,"Quicknotes tab exposed Todo controls")
-   quickFolder.text=" Capture/Fleeting ";quickFolder.editingFinished()
+   folder.text=" Capture/Fleeting ";folder.editingFinished()
    tryCompare(Config.options.todo.nexus.dailyNote,"folder","Capture",1000)
    check(Config.options.todo.nexus.dailyNote.format==="My Tasks.md" && Config.options.todo.nexus.dailyNote.plannerHeading==="New tasks","extracted task fields lost parsing/save behavior")
    check(Config.options.notes.zettelkasten.folder==="Capture/Fleeting","extracted capture field did not save")
-   integrations.activateSettingsSearchSection("Calendar Sync")
+   integrations.activateSettingsSearchSection("Management")
    tryVerify(()=>findChild(integrations,"alisIntergrationNexusTodoSettings")===null,1000)
    integrations.activateSettingsSearchSection("Nexus Todo")
    tryVerify(()=>findChild(integrations,"nexusTodoNotePattern")!==null,2000)
    check(findChild(integrations,"nexusTodoNotePattern").text==="Capture/My Tasks.md","reopening task fields lost saved state")
+   check(findChild(integrations,"nexusQuickNoteFolder").text==="Capture/Fleeting","reopening quicknotes field lost saved state")
    Config.setNestedValue("integrations.alisIntergration.exercises_tracker",true)
-   integrations.openPluginModal("exercises_tracker")
+   integrations.openPluginSettings("exercises_tracker")
    tryVerify(()=>findChild(integrations,"alisIntergrationExercisesTrackerSettings")!==null,3000)
-   integrations.closePluginModal()
+   integrations.closePluginDetail()
    Config.setNestedValue("integrations.alisIntergration.exercises_tracker",false)
+   Config.setNestedValue("integrations.alisIntergration.alis_files",true)
+   integrations.openPluginSettings("alis_files")
+   tryVerify(()=>findChild(integrations,"alisIntergrationAlisFilesSettings")!==null,3000)
+   integrations.closePluginDetail()
+   Config.setNestedValue("integrations.alisIntergration.alis_files",false)
    Config.setNestedValue("integrations.alisIntergration.tlp",true)
    tryCompare(TlpSettingsService,"schemaLoaded",true,3000)
    tryCompare(TlpSettingsService,"statusReason","fixture",3000)

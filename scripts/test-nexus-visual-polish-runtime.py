@@ -154,7 +154,7 @@ ShellRoot {
     }catch(e){console.error("VISUAL_AUDIT_ABORT",e.message,e.stack);Qt.exit(1)}}
   }
   Timer { interval:500; running:true; onTriggered:tc.runAudit() }
-}'''.replace('INITIAL_WIDTH',str(VIEWPORT)).replace('INITIAL_HEIGHT',str(HEIGHT)).replace('LABEL',LABEL).replace('SERVICE',str(PLUGIN/'services/NexusService.qml')).replace('WORKSPACE',str(PLUGIN/'modules/nexus/NexusWorkspace.qml')).replace('OUT',str(OUT)).replace('PHOTO',photo.as_uri())
+}'''.replace('INITIAL_WIDTH',str(VIEWPORT)).replace('INITIAL_HEIGHT',str(HEIGHT)).replace('LABEL',LABEL).replace('SERVICE',str(PLUGIN/'plugins/nexus/services/NexusService.qml')).replace('WORKSPACE',str(PLUGIN/'plugins/nexus/modules/nexus/NexusWorkspace.qml')).replace('OUT',str(OUT)).replace('PHOTO',photo.as_uri())
     (shell/'shell.qml').write_text(qml)
     runtime=private/'runtime'; runtime.mkdir(mode=0o700)
     env=dict(os.environ,QT_QPA_PLATFORM='offscreen',XDG_RUNTIME_DIR=str(runtime),ALIS_NEXUS_DISABLE_XDG_OPEN='1',ALIS_NEXUS_HEADLESS_SERVICE_ONLY='1')

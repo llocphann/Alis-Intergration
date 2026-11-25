@@ -3,7 +3,7 @@
 import colorsys,importlib.util,json,re,tempfile,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-spec=importlib.util.spec_from_file_location("nexus_theme",ROOT/"scripts/integrations/nexus_theme.py");theme=importlib.util.module_from_spec(spec);spec.loader.exec_module(theme)
+spec=importlib.util.spec_from_file_location("nexus_theme",ROOT/"plugins/nexus/scripts/integrations/nexus_theme.py");theme=importlib.util.module_from_spec(spec);spec.loader.exec_module(theme)
 class ThemeTests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory(prefix="alis-nexus-theme-");self.addCleanup(self.tmp.cleanup)

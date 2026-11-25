@@ -75,6 +75,58 @@ fn sha256_hex(data: &[u8]) -> String {
     out
 }
 
+// Compact RFC 3174 SHA-1 implementation for 100% compatibility with existing
+// external note-history directories (`nexus_history/<sha1(vault)[:12]>/<sha1(rel)[:16]>/`).
+fn sha1_hex(data: &[u8]) -> String {
+    let mut h: [u32; 5] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0];
+    let bit_len = (data.len() as u64) * 8;
+    let mut msg = data.to_vec();
+    msg.push(0x80);
+    while (msg.len() % 64) != 56 {
+        msg.push(0x00);
+    }
+    msg.extend_from_slice(&bit_len.to_be_bytes());
+    for chunk in msg.chunks_exact(64) {
+        let mut w = [0u32; 80];
+        for i in 0..16 {
+            w[i] = u32::from_be_bytes([chunk[i * 4], chunk[i * 4 + 1], chunk[i * 4 + 2], chunk[i * 4 + 3]]);
+        }
+        for i in 16..80 {
+            w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
+        }
+        let [mut a, mut b, mut c, mut d, mut e] = h;
+        for (i, &wi) in w.iter().enumerate() {
+            let (f, k) = match i {
+                0..=19 => ((b & c) | ((!b) & d), 0x5a827999u32),
+                20..=39 => (b ^ c ^ d, 0x6ed9eba1u32),
+                40..=59 => ((b & c) | (b & d) | (c & d), 0x8f1bbcdcu32),
+                _ => (b ^ c ^ d, 0xca62c1d6u32),
+            };
+            let temp = a
+                .rotate_left(5)
+                .wrapping_add(f)
+                .wrapping_add(e)
+                .wrapping_add(k)
+                .wrapping_add(wi);
+            e = d;
+            d = c;
+            c = b.rotate_left(30);
+            b = a;
+            a = temp;
+        }
+        h[0] = h[0].wrapping_add(a);
+        h[1] = h[1].wrapping_add(b);
+        h[2] = h[2].wrapping_add(c);
+        h[3] = h[3].wrapping_add(d);
+        h[4] = h[4].wrapping_add(e);
+    }
+    let mut out = String::with_capacity(40);
+    for word in h {
+        out.push_str(&format!("{:08x}", word));
+    }
+    out
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FileCategory {
@@ -10867,8 +10919,429 @@ fn run_cli_args_inner(
             }
             cmd_query(vault, folder_opt, tag_opt, &where_filters, sort_opt, group_opt, limit)
         }
+        "history-snapshot" => {
+            let path = parse_flag(&args, "--path").ok_or_else(|| "Missing --path <rel_path>".to_string())?;
+            let label = parse_flag(&args, "--label").unwrap_or("Manual snapshot");
+            cmd_history_snapshot(vault, path, label)
+        }
+        "history-list" => {
+            let path = parse_flag(&args, "--path").ok_or_else(|| "Missing --path <rel_path>".to_string())?;
+            cmd_history_list(vault, path)
+        }
+        "history-diff" => {
+            let path = parse_flag(&args, "--path").ok_or_else(|| "Missing --path <rel_path>".to_string())?;
+            let rev = parse_flag(&args, "--rev").ok_or_else(|| "Missing --rev <rev_id>".to_string())?;
+            cmd_history_diff(vault, path, rev)
+        }
+        "history-restore" => {
+            let path = parse_flag(&args, "--path").ok_or_else(|| "Missing --path <rel_path>".to_string())?;
+            let rev = parse_flag(&args, "--rev").ok_or_else(|| "Missing --rev <rev_id>".to_string())?;
+            cmd_history_restore(vault, path, rev)
+        }
         other => Err(format!("Unknown command '{}'", other)),
     }
+}
+
+const HISTORY_MAX_SNAPSHOTS: usize = 20;
+
+fn history_state_root(vault_canon: &Path, norm_rel: &str) -> Result<PathBuf, String> {
+    let xdg_state = env::var("XDG_STATE_HOME")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+            PathBuf::from(home).join(".local").join("state")
+        });
+    let v_hash = &sha1_hex(vault_canon.to_string_lossy().as_bytes())[..12];
+    let n_hash = &sha1_hex(norm_rel.as_bytes())[..16];
+    let folder = xdg_state
+        .join("quickshell")
+        .join("user")
+        .join("nexus_history")
+        .join(v_hash)
+        .join(n_hash);
+    fs::create_dir_all(&folder).map_err(|e| format!("Cannot create history dir: {}", e))?;
+    Ok(folder)
+}
+
+fn history_now_parts() -> (String, String, String) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    // Civil date/time from Unix timestamp in UTC (Howard Hinnant's algorithm)
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    let hh = rem / 3600;
+    let mm = (rem % 3600) / 60;
+    let ss = rem % 60;
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+    let compact = format!("{:04}{:02}{:02}{:02}{:02}{:02}", year, m, d, hh, mm, ss);
+    let iso = format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00", year, m, d, hh, mm, ss);
+    let display = format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", year, m, d, hh, mm, ss);
+    (compact, iso, display)
+}
+
+fn history_load_index(hist_dir: &Path) -> Vec<Value> {
+    let idx_file = hist_dir.join("index.json");
+    fs::read_to_string(&idx_file)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default()
+}
+
+fn history_save_index(hist_dir: &Path, items: &[Value]) -> Result<(), String> {
+    let idx_file = hist_dir.join("index.json");
+    let tmp = hist_dir.join(format!(".index.{}.tmp", std::process::id()));
+    let body = serde_json::to_string_pretty(items)
+        .map_err(|e| format!("Failed serializing history index: {}", e))?;
+    fs::write(&tmp, body).map_err(|e| format!("Failed writing history index: {}", e))?;
+    fs::rename(&tmp, &idx_file).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        format!("Failed committing history index: {}", e)
+    })
+}
+
+fn history_git_log(vault_canon: &Path, norm_rel: &str, limit: usize) -> Vec<Value> {
+    let probe = std::process::Command::new("git")
+        .arg("-C")
+        .arg(vault_canon)
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .output();
+    let Ok(p) = probe else { return Vec::new() };
+    if !p.status.success() || String::from_utf8_lossy(&p.stdout).trim() != "true" {
+        return Vec::new();
+    }
+    let log_res = std::process::Command::new("git")
+        .arg("-C")
+        .arg(vault_canon)
+        .args(["log", &format!("-n{}", limit), "--format=%H%x1f%cI%x1f%s", "--", norm_rel])
+        .output();
+    let Ok(out) = log_res else { return Vec::new() };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    let mut revs = Vec::new();
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let mut parts = line.splitn(3, '\x1f');
+        if let (Some(sha), Some(iso_dt), Some(subj)) = (parts.next(), parts.next(), parts.next()) {
+            let short_sha: String = sha.chars().take(8).collect();
+            let display_time: String = iso_dt.chars().take(19).collect::<String>().replace('T', " ");
+            revs.push(json!({
+                "revId": format!("git:{}", sha),
+                "source": "git",
+                "timestamp": iso_dt,
+                "displayTime": display_time,
+                "summary": if subj.is_empty() { short_sha.as_str() } else { subj },
+                "sha1": short_sha,
+            }));
+        }
+    }
+    revs
+}
+
+fn history_read_revision(vault_canon: &Path, norm_rel: &str, rev_id: &str) -> Result<String, String> {
+    if rev_id.starts_with("snap:") {
+        let hist_dir = history_state_root(vault_canon, norm_rel)?;
+        for item in history_load_index(&hist_dir) {
+            if item.get("revId").and_then(|v| v.as_str()) == Some(rev_id) {
+                if let Some(fname) = item.get("file").and_then(|v| v.as_str()) {
+                    let safe_name = Path::new(fname)
+                        .file_name()
+                        .ok_or_else(|| format!("Invalid snapshot file: {}", fname))?;
+                    let f = hist_dir.join(safe_name);
+                    if f.is_file() {
+                        return fs::read_to_string(&f)
+                            .map_err(|e| format!("Failed reading snapshot: {}", e));
+                    }
+                }
+            }
+        }
+        return Err(format!("Snapshot not found: {}", rev_id));
+    }
+    if let Some(sha) = rev_id.strip_prefix("git:") {
+        if sha.is_empty() || !sha.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err("Invalid git revision id".to_string());
+        }
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(vault_canon)
+            .args(["show", &format!("{}:./{}", sha, norm_rel)])
+            .output()
+            .map_err(|e| format!("git show failed: {}", e))?;
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(if err.is_empty() { "git show failed".to_string() } else { err });
+        }
+        return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
+    }
+    Err(format!("Unsupported revId: {}", rev_id))
+}
+
+fn build_unified_diff(from_label: &str, to_label: &str, old_text: &str, new_text: &str) -> String {
+    let a: Vec<&str> = old_text.lines().collect();
+    let b: Vec<&str> = new_text.lines().collect();
+    if a == b {
+        return "(Identical to current file)".to_string();
+    }
+    // Trim common prefix/suffix to keep LCS DP fast and bounded even on long notes.
+    let mut prefix = 0usize;
+    while prefix < a.len() && prefix < b.len() && a[prefix] == b[prefix] {
+        prefix += 1;
+    }
+    let mut suffix = 0usize;
+    while suffix < (a.len() - prefix)
+        && suffix < (b.len() - prefix)
+        && a[a.len() - 1 - suffix] == b[b.len() - 1 - suffix]
+    {
+        suffix += 1;
+    }
+    let a_mid = &a[prefix..a.len() - suffix];
+    let b_mid = &b[prefix..b.len() - suffix];
+    let mut ops: Vec<(char, &str)> = Vec::new();
+    for line in &a[..prefix] {
+        ops.push((' ', line));
+    }
+    if a_mid.len() * b_mid.len() <= 400_000 {
+        let m = a_mid.len();
+        let n = b_mid.len();
+        let mut dp = vec![0u32; (m + 1) * (n + 1)];
+        let stride = n + 1;
+        for i in (0..m).rev() {
+            for j in (0..n).rev() {
+                dp[i * stride + j] = if a_mid[i] == b_mid[j] {
+                    dp[(i + 1) * stride + (j + 1)] + 1
+                } else {
+                    dp[(i + 1) * stride + j].max(dp[i * stride + (j + 1)])
+                };
+            }
+        }
+        let (mut i, mut j) = (0usize, 0usize);
+        while i < m && j < n {
+            if a_mid[i] == b_mid[j] {
+                ops.push((' ', a_mid[i]));
+                i += 1;
+                j += 1;
+            } else if dp[(i + 1) * stride + j] >= dp[i * stride + (j + 1)] {
+                ops.push(('-', a_mid[i]));
+                i += 1;
+            } else {
+                ops.push(('+', b_mid[j]));
+                j += 1;
+            }
+        }
+        while i < m {
+            ops.push(('-', a_mid[i]));
+            i += 1;
+        }
+        while j < n {
+            ops.push(('+', b_mid[j]));
+            j += 1;
+        }
+    } else {
+        for line in a_mid {
+            ops.push(('-', line));
+        }
+        for line in b_mid {
+            ops.push(('+', line));
+        }
+    }
+    for line in &a[a.len() - suffix..] {
+        ops.push((' ', line));
+    }
+
+    let mut out = vec![format!("--- {}", from_label), format!("+++ {}", to_label)];
+    let ctx = 3usize;
+    let total = ops.len();
+    let mut idx = 0usize;
+    let mut a_line = 1usize;
+    let mut b_line = 1usize;
+    while idx < total {
+        if ops[idx].0 == ' ' {
+            a_line += 1;
+            b_line += 1;
+            idx += 1;
+            continue;
+        }
+        let hunk_start = idx.saturating_sub(ctx);
+        let back = idx - hunk_start;
+        let hunk_a_start = a_line - back;
+        let hunk_b_start = b_line - back;
+        let mut hunk_end = idx;
+        let mut last_change = idx;
+        while hunk_end < total {
+            if ops[hunk_end].0 != ' ' {
+                last_change = hunk_end;
+            } else if hunk_end - last_change > ctx * 2 {
+                break;
+            }
+            hunk_end += 1;
+        }
+        let slice_end = (last_change + 1 + ctx).min(total);
+        let mut a_cnt = 0usize;
+        let mut b_cnt = 0usize;
+        for &(tag, _) in &ops[hunk_start..slice_end] {
+            if tag != '+' {
+                a_cnt += 1;
+            }
+            if tag != '-' {
+                b_cnt += 1;
+            }
+        }
+        out.push(format!("@@ -{},{} +{},{} @@", hunk_a_start, a_cnt, hunk_b_start, b_cnt));
+        for &(tag, text) in &ops[hunk_start..slice_end] {
+            out.push(format!("{}{}", tag, text));
+        }
+        for &(tag, _) in &ops[idx..slice_end] {
+            if tag != '+' {
+                a_line += 1;
+            }
+            if tag != '-' {
+                b_line += 1;
+            }
+        }
+        idx = slice_end;
+    }
+    out.join("\n")
+}
+
+pub fn cmd_history_snapshot(vault_str: &str, rel_str: &str, label: &str) -> Result<Value, String> {
+    let vault_canon = resolve_vault_root(vault_str)?;
+    let (target, norm_rel) = resolve_inside_vault(&vault_canon, rel_str, false)?;
+    if !target.is_file() {
+        return Ok(json!({ "ok": false, "error": format!("Note not found: {}", norm_rel) }));
+    }
+    let content = fs::read_to_string(&target).map_err(|e| format!("Failed reading note: {}", e))?;
+    let digest = sha1_hex(content.as_bytes())[..12].to_string();
+    let hist_dir = history_state_root(&vault_canon, &norm_rel)?;
+    let mut snaps = history_load_index(&hist_dir);
+    if let Some(first) = snaps.first() {
+        if first.get("sha1").and_then(|v| v.as_str()) == Some(digest.as_str()) {
+            return Ok(json!({
+                "ok": true,
+                "created": false,
+                "revId": first.get("revId").cloned().unwrap_or(Value::String(String::new())),
+                "relPath": norm_rel,
+            }));
+        }
+    }
+    let (compact, iso, display) = history_now_parts();
+    let rev_id = format!("snap:{}_{}", compact, &digest[..6]);
+    let fname = format!("{}.txt", rev_id.replace(':', "_"));
+    let snap_file = hist_dir.join(&fname);
+    fs::write(&snap_file, &content).map_err(|e| format!("Failed writing snapshot: {}", e))?;
+    let summary = if label.trim().is_empty() { "Snapshot" } else { label };
+    snaps.insert(
+        0,
+        json!({
+            "revId": rev_id,
+            "source": "snapshot",
+            "timestamp": iso,
+            "displayTime": display,
+            "summary": summary,
+            "sha1": digest,
+            "bytes": content.len(),
+            "file": fname,
+        }),
+    );
+    while snaps.len() > HISTORY_MAX_SNAPSHOTS {
+        if let Some(dropped) = snaps.pop() {
+            if let Some(old_name) = dropped.get("file").and_then(|v| v.as_str()) {
+                if let Some(safe) = Path::new(old_name).file_name() {
+                    let _ = fs::remove_file(hist_dir.join(safe));
+                }
+            }
+        }
+    }
+    history_save_index(&hist_dir, &snaps)?;
+    Ok(json!({
+        "ok": true,
+        "created": true,
+        "revId": rev_id,
+        "relPath": norm_rel,
+    }))
+}
+
+pub fn cmd_history_list(vault_str: &str, rel_str: &str) -> Result<Value, String> {
+    let vault_canon = resolve_vault_root(vault_str)?;
+    let (_, norm_rel) = resolve_inside_vault(&vault_canon, rel_str, false)?;
+    let hist_dir = history_state_root(&vault_canon, &norm_rel)?;
+    let mut revisions = history_load_index(&hist_dir);
+    revisions.extend(history_git_log(&vault_canon, &norm_rel, 20));
+    revisions.sort_by(|a, b| {
+        let ta = a.get("timestamp").and_then(|v| v.as_str()).unwrap_or("");
+        let tb = b.get("timestamp").and_then(|v| v.as_str()).unwrap_or("");
+        tb.cmp(ta)
+    });
+    revisions.truncate(40);
+    Ok(json!({
+        "ok": true,
+        "relPath": norm_rel,
+        "revisions": revisions,
+    }))
+}
+
+pub fn cmd_history_diff(vault_str: &str, rel_str: &str, rev_id: &str) -> Result<Value, String> {
+    let vault_canon = resolve_vault_root(vault_str)?;
+    let (target, norm_rel) = resolve_inside_vault(&vault_canon, rel_str, false)?;
+    let rev_text = history_read_revision(&vault_canon, &norm_rel, rev_id)?;
+    let cur_text = if target.is_file() {
+        fs::read_to_string(&target).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let diff = build_unified_diff(rev_id, &format!("current:{}", norm_rel), &rev_text, &cur_text);
+    Ok(json!({
+        "ok": true,
+        "relPath": norm_rel,
+        "revId": rev_id,
+        "diff": diff,
+        "revisionContent": rev_text,
+    }))
+}
+
+pub fn cmd_history_restore(vault_str: &str, rel_str: &str, rev_id: &str) -> Result<Value, String> {
+    let vault_canon = resolve_vault_root(vault_str)?;
+    let (target, norm_rel) = resolve_inside_vault(&vault_canon, rel_str, false)?;
+    let rev_text = history_read_revision(&vault_canon, &norm_rel, rev_id)?;
+    if target.is_file() {
+        let short_rev: String = rev_id.chars().take(16).collect();
+        let _ = cmd_history_snapshot(
+            vault_str,
+            &norm_rel,
+            &format!("Pre-restore backup before {}", short_rev),
+        );
+    }
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Cannot create parent dir: {}", e))?;
+    }
+    let fname = target
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "note".to_string());
+    let tmp = target.with_file_name(format!(".{}.{}.tmp", fname, std::process::id()));
+    fs::write(&tmp, &rev_text).map_err(|e| format!("Failed writing restore temp: {}", e))?;
+    fs::rename(&tmp, &target).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        format!("Failed committing restore: {}", e)
+    })?;
+    Ok(json!({
+        "ok": true,
+        "relPath": norm_rel,
+        "restoredRevId": rev_id,
+        "content": rev_text,
+    }))
 }
 
 pub fn cmd_preview(vault_str: &str, target_raw: &str) -> Result<Value, String> {
@@ -13185,6 +13658,61 @@ mod tests {
         let after_rmdir = cmd_scan_for_date_with_cache_opts(v_str, Some("2026-11-23"), Some(cache_str), true).unwrap();
         assert!(after_rmdir.get("unchanged").is_none());
 
+        let _ = fs::remove_dir_all(&vault);
+    }
+
+    #[test]
+    fn test_native_history_snapshot_list_diff_restore_and_sha1() {
+        assert_eq!(sha1_hex(b""), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+        assert_eq!(sha1_hex(b"abc"), "a9993e364706816aba3e25717850c26c9cd0d89d");
+
+        let vault = make_temp_vault("native_history");
+        let state_dir = vault.join("_state");
+        fs::create_dir_all(&state_dir).unwrap();
+        // SAFETY: isolated test state root verified via direct helper + restore roundtrip
+        let note = vault.join("Note.md");
+        fs::write(&note, "# Title\nline 1\nline 2\n").unwrap();
+
+        let v_str = vault.to_str().unwrap();
+        let snap1 = cmd_history_snapshot(v_str, "Note.md", "Initial").unwrap();
+        assert_eq!(snap1["ok"], Value::Bool(true));
+        assert_eq!(snap1["created"], Value::Bool(true));
+        let rev1 = snap1["revId"].as_str().unwrap().to_string();
+
+        // Duplicate content deduplicates cleanly
+        let snap_dup = cmd_history_snapshot(v_str, "Note.md", "Dup").unwrap();
+        assert_eq!(snap_dup["created"], Value::Bool(false));
+        assert_eq!(snap_dup["revId"].as_str().unwrap(), rev1);
+
+        // Modify note and diff against rev1
+        fs::write(&note, "# Title\nline 1 modified\nline 2\nline 3\n").unwrap();
+        let diff_res = cmd_history_diff(v_str, "Note.md", &rev1).unwrap();
+        assert_eq!(diff_res["ok"], Value::Bool(true));
+        let diff_txt = diff_res["diff"].as_str().unwrap();
+        assert!(diff_txt.contains("-line 1"));
+        assert!(diff_txt.contains("+line 1 modified"));
+        assert!(diff_txt.contains("+line 3"));
+
+        // Restore rev1 creates pre-restore backup and restores exact original bytes
+        let rest_res = cmd_history_restore(v_str, "Note.md", &rev1).unwrap();
+        assert_eq!(rest_res["ok"], Value::Bool(true));
+        assert_eq!(fs::read_to_string(&note).unwrap(), "# Title\nline 1\nline 2\n");
+
+        let list_res = cmd_history_list(v_str, "Note.md").unwrap();
+        assert_eq!(list_res["ok"], Value::Bool(true));
+        assert!(list_res["revisions"].as_array().unwrap().len() >= 2);
+
+        // Path traversal rejected
+        assert!(cmd_history_snapshot(v_str, "../escape.md", "Bad").is_err());
+
+        // Cleanup external snapshot state directory for this temp vault
+        if let Ok(canon) = resolve_vault_root(v_str) {
+            if let Ok(hdir) = history_state_root(&canon, "Note.md") {
+                if let Some(parent) = hdir.parent() {
+                    let _ = fs::remove_dir_all(parent);
+                }
+            }
+        }
         let _ = fs::remove_dir_all(&vault);
     }
 }

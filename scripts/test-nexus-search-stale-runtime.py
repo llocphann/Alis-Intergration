@@ -13,8 +13,8 @@ from native_test_session import private_wayland,run_qs
 with tempfile.TemporaryDirectory(prefix='alis-search-stale-') as name:
  p=Path(name);shell=p/'shell';shell.mkdir()
  for entry in ('services','modules','GlobalStates.qml','qmldir','scripts','defaults','translations','assets'):(shell/entry).symlink_to(HOST/entry)
- fixture=p/'plugin';(fixture/'services').mkdir(parents=True);shutil.copy2(PLUGIN/'services/NexusService.qml',fixture/'services/NexusService.qml');(fixture/'assets/bin').mkdir(parents=True)
- real=str(PLUGIN/'assets/bin/alis-nexus');helper=fixture/'assets/bin/alis-nexus'
+ fixture=p/'plugin';(fixture/'services').mkdir(parents=True);shutil.copy2(PLUGIN/'plugins/nexus/services/NexusService.qml',fixture/'services/NexusService.qml');(fixture/'assets/bin').mkdir(parents=True)
+ real=str(PLUGIN/'plugins/nexus/assets/bin/alis-nexus');helper=fixture/'assets/bin/alis-nexus'
  helper.write_text('''#!/usr/bin/env python3
 import json,os,signal,sys,time
 from pathlib import Path
@@ -81,6 +81,6 @@ ShellRoot {
   env.update({k:v for k,v in native.items() if k in ('WAYLAND_DISPLAY','NIRI_SOCKET','DISPLAY','XDG_RUNTIME_DIR')});result=run_qs(shell,env,timeout=15)
  after={f.name:hashlib.sha256(f.read_bytes()).hexdigest() for f in vault.iterdir()}
  checks=[json.loads(x) for x in re.findall(r'STALE_CHECK (\{[^\n]+\})',result.stdout)];checks.append({'name':'legacy-and-new-note-bytes-preserved','status':'PASS' if before==after else 'FAIL','actual':{'before':before,'after':after}})
- receipt={'host':str(HOST),'plugin':str(PLUGIN),'serviceSha256':hashlib.sha256((PLUGIN/'services/NexusService.qml').read_bytes()).hexdigest(),'scope':'Actual host and exact Service bytes; native controlled delayed helper for race-* queries, real installed native helper for needle queries, temporary vault with legacy CRLF and new Unicode notes.','exit':result.returncode,'complete':'STALE_DONE' in result.stdout,'checks':checks}
+ receipt={'host':str(HOST),'plugin':str(PLUGIN),'serviceSha256':hashlib.sha256((PLUGIN/'plugins/nexus/services/NexusService.qml').read_bytes()).hexdigest(),'scope':'Actual host and exact Service bytes; native controlled delayed helper for race-* queries, real installed native helper for needle queries, temporary vault with legacy CRLF and new Unicode notes.','exit':result.returncode,'complete':'STALE_DONE' in result.stdout,'checks':checks}
  (OUT/(LABEL+'.log')).write_text(result.stdout);(OUT/(LABEL+'.json')).write_text(json.dumps(receipt,indent=2)+'\n');print(json.dumps(receipt,indent=2))
  if result.returncode or not receipt['complete'] or any(c['status']!='PASS' for c in checks):raise SystemExit(1)

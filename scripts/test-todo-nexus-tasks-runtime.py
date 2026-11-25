@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).resolve().parent / "todo"
+SCRIPT_DIR = Path(__file__).resolve().parent.parent / "plugins/nexus/scripts/todo"
 SCRIPT = SCRIPT_DIR / "nexus_tasks.py"
 
 import sys

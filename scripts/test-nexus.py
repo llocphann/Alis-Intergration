@@ -14,7 +14,7 @@ HOST = resolve_host_root(ROOT)
 sys.path.insert(0, str(HOST / "scripts"))
 from native_test_session import run_qs, private_wayland
 
-BIN = ROOT / "assets/bin/alis-nexus"
+BIN = ROOT / "plugins/nexus/assets/bin/alis-nexus"
 
 
 def run_cli(*args, stdin_text=None, check=True, env_override=None):
@@ -451,9 +451,9 @@ def test_qml_workspace_runtime():
         qt_config.mkdir(parents=True)
         (qt_config / "config.json").write_text(json.dumps(options))
 
-        nexus_service_uri = str(ROOT / "services/NexusService.qml")
-        nexus_workspace_uri = str(ROOT / "modules/nexus/NexusWorkspace.qml")
-        nexus_settings_uri = str(ROOT / "modules/settings/NexusThemeSettings.qml")
+        nexus_service_uri = str(ROOT / "plugins/nexus/services/NexusService.qml")
+        nexus_workspace_uri = str(ROOT / "plugins/nexus/modules/nexus/NexusWorkspace.qml")
+        nexus_settings_uri = str(ROOT / "plugins/nexus/modules/settings/NexusThemeSettings.qml")
 
         (shell / "shell.qml").write_text(
             f"""
@@ -674,14 +674,20 @@ ShellRoot {{
                 check(nexus.commandPaletteOpen === true && nexus.commandPaletteMode === "switcher", "commandPalette did not open in switcher mode")
                 nexus.commandPaletteOpen = false
 
-                // Window vs Overlay mode toggle via header button & service
-                const modeBtn = findChild(ws, "nexusWindowModeToggleButton")
-                check(modeBtn !== null, "missing nexusWindowModeToggleButton")
+                // Window vs Overlay mode toggle via service (header toggle button intentionally removed)
+                check(findChild(ws, "nexusWindowModeToggleButton") === null, "nexusWindowModeToggleButton should be removed from workspace header")
                 const initialOverlay = nexus.overlayMode
                 nexus.toggleOverlayMode()
                 check(nexus.overlayMode === !initialOverlay, "overlayMode did not toggle")
                 nexus.toggleOverlayMode()
                 check(nexus.overlayMode === initialOverlay, "overlayMode did not toggle back")
+                nexus.setOverlayMode(true)
+                nexus.close()
+                nexus.openWindow()
+                check(nexus.isOpen === true && nexus.overlayMode === false, "openWindow() should open Nexus in Window mode")
+                nexus.close()
+                check(nexus.overlayMode === true, "close() after openWindow() should restore default Overlay mode")
+                nexus.openOverlay()
 
                 // Open markdown note in Hybrid Outliner via openNote(absPath)
                 check(nexus.openNote("{str(vault / '10_Projects/Alpha.md')}") === true, "openNote(absPath) returned false")
@@ -759,11 +765,23 @@ ShellRoot {{
                 mouseRelease(fGraphCanvas, 70, 55, Qt.LeftButton)
                 check(fGraphCanvas.rotYaw !== yawBefore || fGraphCanvas.rotPitch !== pitchBefore, "mouseDrag on empty 3D canvas should orbit NexusGraphCanvas")
                 fGraphCanvas.renderMode = "2d"
+                check(fGraphCanvas._adjEdgeOffsets !== null && fGraphCanvas._adjEdgeIndices !== null, "2D graph should build CSR adjacency buffers")
+                const zoom2DBefore = fGraphCanvas.zoom
+                const paints2DBefore = fGraphCanvas.paintCount
+                mouseWheel(fGraphCanvas, fGraphCanvas.width / 2, fGraphCanvas.height / 2, 0, 120, Qt.NoButton, Qt.NoModifier)
+                check(fGraphCanvas.zoom > zoom2DBefore, "mouseWheel zoom-in should increase 2D zoom immediately")
+                tryVerify(() => fGraphCanvas.paintCount > paints2DBefore, 1000)
+                mouseWheel(fGraphCanvas, fGraphCanvas.width / 2, fGraphCanvas.height / 2, 0, -120, Qt.NoButton, Qt.NoModifier)
+                tryVerify(() => !fGraphCanvas._zoomGlideActive, 1000)
                 const panBeforeX = fGraphCanvas.panX
                 mousePress(fGraphCanvas, 20, 20, Qt.LeftButton)
                 mouseMove(fGraphCanvas, 70, 55)
                 mouseRelease(fGraphCanvas, 70, 55, Qt.LeftButton)
                 check(fGraphCanvas.panX !== panBeforeX, "mouseDrag on empty 2D canvas should pan NexusGraphCanvas")
+                fGraphCanvas.hoveredIndex = 0
+                fGraphCanvas.scheduleMotionPaint()
+                tryVerify(() => !fGraphCanvas._coalescePaintFrameRunning && fGraphCanvas.paintCount > paints2DBefore + 1, 1000)
+                fGraphCanvas.hoveredIndex = -1
                 fGraphCanvas.resetView()
 
                 // Collection Browser: verify tvSeries camelCase normalization, Places metadata, and historyBack restoration
@@ -932,6 +950,10 @@ ShellRoot {{
                 check(findChild(ws, "nexusCloseButton") === null, "header close button should be removed")
                 check(findChild(ws, "nexusCommandPaletteButton") === null, "cluttered Alt+Enter header button should be removed")
                 check(findChild(ws, "nexusResetLayoutHeaderButton") === null, "mystery dashboard_customize header button should be removed")
+                check(findChild(ws, "nexusNavBackButton") === null, "header back button should be removed")
+                check(findChild(ws, "nexusNavForwardButton") === null, "header forward button should be removed")
+                check(findChild(ws, "nexusHomepagePinnedTab") !== null, "Homepage should appear as a pinned default tab in main workspace tab strip")
+                check(findChild(ws, "nexusObsidianRibbon") !== null, "missing Obsidian-style left hover ribbon")
                 const vimBadge = findChild(ws, "nexusVimModeBadge")
                 check(vimBadge !== null && vimBadge.inEditMode === false, "nexusVimModeBadge should show Reading mode when on Homepage")
                 nexus.openFile("10_Projects/Alpha.md", true)
@@ -1902,7 +1924,7 @@ def test_real_vault_notes_obsidian_nexus_compatibility():
 
 
 def test_asset_helper_native_clipboard():
-    helper = ROOT / "scripts/notes/asset_helper.py"
+    helper = ROOT / "plugins/nexus/scripts/notes/asset_helper.py"
     assert helper.is_file(), f"Missing {helper}"
     png_bytes = b"\x89PNG\r\n\x1a\nfake-png-payload"
     with tempfile.TemporaryDirectory(prefix="alis-asset-helper-") as tmp:

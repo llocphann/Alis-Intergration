@@ -268,7 +268,7 @@ ShellRoot {
         MOCK_HELPER=str(mock_helper),
         MOCK_PKEXEC=str(mock_pkexec),
         SET_STATE_HELPER=str(set_state_helper),
-        WORKER_QML_PATH=str(ROOT / "services/ThinkFanService.qml"),
+        WORKER_QML_PATH=str(ROOT / "plugins/thinkfan/services/ThinkFanService.qml"),
     )
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("NIRI_SOCKET", None)

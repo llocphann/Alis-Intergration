@@ -4,7 +4,7 @@ set -euo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
-source_helper="$repo_root/assets/helpers/alis-thinkfan"
+source_helper="$repo_root/plugins/thinkfan/assets/helpers/alis-thinkfan"
 
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT

@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import unittest
 
-SCRIPT = Path(__file__).resolve().parent / "notes/zettelkasten.py"
+SCRIPT = Path(__file__).resolve().parent.parent / "plugins/nexus/scripts/notes/zettelkasten.py"
 spec = importlib.util.spec_from_file_location("zettel", SCRIPT)
 zettel = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(zettel)

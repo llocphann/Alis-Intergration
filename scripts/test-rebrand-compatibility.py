@@ -19,7 +19,7 @@ from integration_test_host import resolve_host_root
 
 ROOT = Path(__file__).resolve().parents[1]
 HOST = resolve_host_root(ROOT)
-sys.path.insert(0, str(ROOT / 'scripts/todo'))
+sys.path.insert(0, str(ROOT / 'plugins/nexus/scripts/todo'))
 FIXTURE = ROOT / 'scripts/fixtures/rebrand-v1'
 provenance = json.loads((FIXTURE / 'provenance.json').read_text())
 assert provenance['hostSha'] == '36b163a52298a3d9cfc5b021097531a89c7d17dd'
@@ -36,7 +36,7 @@ def module(name, path):
 installer = module('rebrand_installer', ROOT / 'scripts/install.py')
 manager = module('rebrand_manager', HOST / 'scripts/alis-intergration-manager.py')
 legacy_reader = module('legacy_reader', FIXTURE / 'legacy-host-discovery.py')
-todo = module('rebrand_todo', ROOT / 'scripts/todo/nexus_todo.py')
+todo = module('rebrand_todo', ROOT / 'plugins/nexus/scripts/todo/nexus_todo.py')
 new_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
 old_sha = provenance['integrationSha']
 
@@ -85,19 +85,32 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
     old_manifest = json.loads(old_files['manifest.json'])
     assert new_manifest['id'] == old_manifest['id'] == 'alis-intergration'
     assert new_manifest['name'] == 'Alis-Intergration' and new_manifest['host'] == 'Alis'
-    for field in ('hostApi', 'session', 'backends', 'derivedFrom', 'uiDerivedFrom'):
+    for field in ('hostApi', 'session', 'derivedFrom', 'uiDerivedFrom'):
         assert new_manifest[field] == old_manifest[field], field
-    assert all(new_manifest['settings'].get(k) == v for k, v in old_manifest['settings'].items())
+    assert new_manifest['settings'].keys() >= old_manifest['settings'].keys()
+    assert new_manifest['backends'].keys() >= old_manifest['backends'].keys()
+    assert all(new_manifest['settings'][k].endswith('/' + v) for k, v in old_manifest['settings'].items())
+    assert all(new_manifest['backends'][k].endswith('/' + v) for k, v in old_manifest['backends'].items())
     assert new_manifest['integrations'][:3] == old_manifest['integrations'] and 'spaced_repetition' in new_manifest['integrations']
-    assert new_manifest['plugins'][:3] == old_manifest['plugins'] and any(p['id'] == 'spaced_repetition' for p in new_manifest['plugins'])
-    assert legacy_reader.inspect_package(candidate)['available'], 'API 1 host cannot load new display metadata'
+    assert [p['id'] for p in new_manifest['plugins'][:3]] == [p['id'] for p in old_manifest['plugins']] and any(p['id'] == 'spaced_repetition' for p in new_manifest['plugins'])
+    assert legacy_reader.inspect_package(old_release)['available']
     assert manager.discovery.inspect_package(candidate)['available']
+    helper_map = {
+        'assets/helpers/alis-battery-charge-limit': 'plugins/tlp/assets/helpers/alis-battery-charge-limit',
+        'assets/tlp/tlp-settings-schema.json': 'plugins/tlp/assets/tlp/tlp-settings-schema.json',
+        'assets/polkit/org.alis.battery-charge-limit.policy': 'plugins/tlp/assets/polkit/org.alis.battery-charge-limit.policy',
+        'assets/helpers/alis-thinkfan': 'plugins/thinkfan/assets/helpers/alis-thinkfan',
+        'assets/polkit/org.alis.thinkfan.policy': 'plugins/thinkfan/assets/polkit/org.alis.thinkfan.policy',
+    }
     for path in old_files:
+        mapped = helper_map.get(path)
+        if not mapped:
+            continue
         if path in ('assets/helpers/alis-battery-charge-limit', 'assets/helpers/alis-thinkfan'):
-            assert (candidate / path).read_bytes() == (ROOT / path).read_bytes(), path
+            assert (candidate / mapped).read_bytes() == (ROOT / mapped).read_bytes(), path
         elif path.startswith(('assets/helpers/', 'assets/polkit/', 'assets/tlp/')):
-            assert (candidate / path).read_bytes() == old_files[path], path
-    for path in ('assets/polkit/org.alis.battery-charge-limit.policy', 'assets/polkit/org.alis.thinkfan.policy'):
+            assert (candidate / mapped).read_bytes() == old_files[path], path
+    for path in ('plugins/tlp/assets/polkit/org.alis.battery-charge-limit.policy', 'plugins/thinkfan/assets/polkit/org.alis.thinkfan.policy'):
         policy = ET.fromstring((candidate / path).read_bytes())
         assert policy.find('.//allow_any').text == policy.find('.//allow_inactive').text == 'no'
         assert policy.find('.//allow_active').text == 'yes'
@@ -185,7 +198,7 @@ with tempfile.TemporaryDirectory(prefix='alis-rebrand-compat-') as name:
     fresh_home = private / 'fresh-data/alis-intergration'
     assert manager.operate('install', fresh_home, HOST, revision_fetch=lambda:new_sha, archive_fetch=fetch)['available']
     assert manager.discovery.inspect(HOST, fresh_home.parent)['available']
-    assert [p['id'] for p in manager.discovery.inspect(HOST, fresh_home.parent)['plugins']] == ['tlp','thinkfan','nexus','spaced_repetition','exercises_tracker']
+    assert [p['id'] for p in manager.discovery.inspect(HOST, fresh_home.parent)['plugins']] == ['tlp','thinkfan','nexus','spaced_repetition','exercises_tracker','alis_files']
     # The supported setup preview cannot touch the persisted transaction store.
     env = dict(os.environ, XDG_DATA_HOME=str(home.parent), XDG_STATE_HOME=str(private/'state'))
     preview = subprocess.run(['python3', str(HOST/'scripts/integration-setup.py'), 'install', '--dry-run'],

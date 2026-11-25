@@ -298,13 +298,76 @@ ShellRoot {
                 root.check(cvLegacyHr.indexOf("<hr") < 0 && cvLegacyHr.indexOf("background-color:") > 0,
                     "CustomViews themeRichHtml must auto-theme legacy & attributed <hr>")
 
+                // Move pointer to neutral center away from window edges so offscreen default (0,0) cursor does not keep edge rails hovered
+                // Wait past 150ms grace timer + 180ms OutCubic slide animation
+                tc.mouseMove(ws, 600, 400)
+                wait(450)
+
                 // Verify genuine top-edge slide-down WorkspaceHoverTabBar (full 28px height, slides via y = -28)
                 const localBar = root.findByObjectName(ws, "nexusLocalGraphStatusBar")
                 const calBar = root.findByObjectName(ws, "nexusCalendarHoverTabBar")
                 const vgBar = root.findByObjectName(ws, "nexusVaultGraphHoverTabBar")
+                const mainHoverBar = root.findByObjectName(ws, "nexusMainHoverTabBar")
+                const openTabsStrip = root.findByObjectName(ws, "nexusOpenTabsStrip")
+                const mainCard = root.findByObjectName(ws, "nexusMainCard")
+                const homepageView = root.findByObjectName(ws, "nexusHomepageView")
                 root.check(localBar !== null && calBar !== null && vgBar !== null, "Missing WorkspaceHoverTabBar instances")
                 root.check(localBar.height === 28 && localBar.y === -28 && localBar.opacity <= 0.01,
                     "WorkspaceHoverTabBar should hold full height=28 and slide from y=-28 when hidden, got h=" + localBar.height + " y=" + localBar.y)
+                root.check(mainHoverBar !== null && openTabsStrip !== null && mainCard !== null,
+                    "Missing nexusMainHoverTabBar, nexusOpenTabsStrip, or nexusMainCard")
+                root.check(root.findByObjectName(mainCard, "nexusOpenTabsStrip") === null,
+                    "nexusOpenTabsStrip should sit outside above nexusMainCard, not inside nexusMainCard")
+                root.check(openTabsStrip.height === 28 && openTabsStrip.y === -28 && openTabsStrip.opacity <= 0.01,
+                    "nexusOpenTabsStrip should hold height=28 and slide from y=-28 when hidden, got h=" + openTabsStrip.height + " y=" + openTabsStrip.y)
+                root.check(openTabsStrip.border.width === 0 && openTabsStrip.color.a === 0,
+                    "nexusOpenTabsStrip should have transparent background and no shared outer border, got border=" + openTabsStrip.border.width + " alpha=" + openTabsStrip.color.a)
+                const homepageTab = root.findByObjectName(openTabsStrip, "nexusHomepagePinnedTab")
+                const ribbon = root.findByObjectName(ws, "nexusObsidianRibbon")
+                function hasCloseSymbol(node) {
+                    if (!node) return false
+                    if (node.text === "close") return true
+                    const kids = node.children || []
+                    for (let i = 0; i < kids.length; ++i) {
+                        if (hasCloseSymbol(kids[i])) return true
+                    }
+                    return false
+                }
+                root.check(homepageTab !== null && !hasCloseSymbol(homepageTab),
+                    "nexusHomepagePinnedTab must sit inside nexusOpenTabsStrip and have no close button")
+                root.check(ribbon !== null && ribbon.width === 40 && ribbon.x === -40 && ribbon.opacity <= 0.01 && ribbon.border.width === 0 && ribbon.color.a === 0,
+                    "nexusObsidianRibbon should hold width=40, slide from x=-40 when hidden, and stay borderless/transparent, got w=" + (ribbon ? ribbon.width : null) + " x=" + (ribbon ? ribbon.x : null) + " op=" + (ribbon ? ribbon.opacity : null) + " b=" + (ribbon ? ribbon.border.width : null) + " a=" + (ribbon ? ribbon.color.a : null))
+                const basesBtn = root.findByObjectName(ribbon, "nexusBasesRibbonButton")
+                const vimBtn = root.findByObjectName(ribbon, "nexusVimModeBadge")
+                const ribbonCenterY = (basesBtn && vimBtn)
+                    ? (basesBtn.mapToItem(ribbon, 0, 0).y + vimBtn.mapToItem(ribbon, 0, 0).y + vimBtn.height) * 0.5
+                    : -1
+                root.check(basesBtn !== null && vimBtn !== null && Math.abs(ribbonCenterY - ribbon.height * 0.5) <= 24,
+                    "Obsidian ribbon icon buttons should sit vertically centered, got centerY=" + ribbonCenterY + " ribbonH=" + (ribbon ? ribbon.height : 0))
+                root.check(root.findByObjectName(ws, "nexusWindowModeToggleButton") === null && root.findByObjectName(ws, "nexusNavBackButton") === null && root.findByObjectName(ws, "nexusNavForwardButton") === null,
+                    "Window, Back, and Forward header buttons should be removed")
+                function hasHomepageTitleLabel(node) {
+                    if (!node) return false
+                    if (node.text === "Homepage") return true
+                    const kids = node.children || []
+                    for (let i = 0; i < kids.length; ++i) {
+                        if (hasHomepageTitleLabel(kids[i])) return true
+                    }
+                    return false
+                }
+                root.check(homepageView !== null && !hasHomepageTitleLabel(homepageView),
+                    "nexusHomepageView should not render large 'Homepage' heading text")
+                function hasLegacyWorkoutTableLabel(node) {
+                    if (!node) return false
+                    if (node.text === "Calisthenics" || node.text === "SET - REPS") return true
+                    const kids = node.children || []
+                    for (let i = 0; i < kids.length; ++i) {
+                        if (hasLegacyWorkoutTableLabel(kids[i])) return true
+                    }
+                    return false
+                }
+                root.check(homepageView !== null && !hasLegacyWorkoutTableLabel(homepageView),
+                    "nexusHomepageView should not render legacy Calisthenics/Cardio workout table")
 
                 console.info("NEXUS_ROUND2_PASS", "checks=" + root.checks)
             } catch (err) {
@@ -336,9 +399,9 @@ def main() -> None:
             (root / entry).symlink_to(HOST / entry)
         qml = (
             QML_HARNESS
-            .replace("GLOBE_QML", str(ROOT / "modules/nexus/NexusGlobeWidget.qml"))
-            .replace("CUSTOM_VIEWS_QML", str(ROOT / "modules/nexus/NexusCustomViews.qml"))
-            .replace("WORKSPACE_QML", str(ROOT / "modules/nexus/NexusWorkspace.qml"))
+            .replace("GLOBE_QML", str(ROOT / "plugins/nexus/modules/nexus/NexusGlobeWidget.qml"))
+            .replace("CUSTOM_VIEWS_QML", str(ROOT / "plugins/nexus/modules/nexus/NexusCustomViews.qml"))
+            .replace("WORKSPACE_QML", str(ROOT / "plugins/nexus/modules/nexus/NexusWorkspace.qml"))
         )
         (root / "shell.qml").write_text(qml, encoding="utf-8")
 

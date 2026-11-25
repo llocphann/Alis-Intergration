@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Owned cooling settings contract, independent of host navigation."""
 from pathlib import Path
-system_settings=(Path(__file__).resolve().parents[1]/'modules/settings/ThinkfanSettings.qml').read_text()
+system_settings=(Path(__file__).resolve().parents[1]/'plugins/thinkfan/modules/settings/ThinkfanSettings.qml').read_text()
 def check(value,message):
     assert value,message
 for token in (

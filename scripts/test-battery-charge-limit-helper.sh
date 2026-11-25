@@ -4,7 +4,7 @@ set -u
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
-helper="$repo_root/assets/helpers/alis-battery-charge-limit"
+helper="$repo_root/plugins/tlp/assets/helpers/alis-battery-charge-limit"
 installed_helper=${ALIS_TLP_HELPER:-/usr/libexec/alis-battery-charge-limit}
 live_tmp=""
 
@@ -231,7 +231,7 @@ reset_case() {
     config_dir="$case_dir/etc/tlp.d"
     config_file="$config_dir/99-alis-battery-charge-limit.conf"
     tlp_settings_config_file="$config_dir/99-alis-tlp-settings.conf"
-    tlp_settings_schema="$repo_root/assets/tlp/tlp-settings-schema.json"
+    tlp_settings_schema="$repo_root/plugins/tlp/assets/tlp/tlp-settings-schema.json"
     tlp_settings_lock="$case_dir/alis-tlp-settings.lock"
     platform_profile_choices_file="$case_dir/platform_profile_choices"
     mkdir -p "$config_dir"
@@ -941,8 +941,8 @@ test_tlp_settings_batch_rolls_back_both_dropins() {
 }
 
 test_quickshell_lifecycle_contract_is_status_driven() {
-    charge_service="$repo_root/services/TlpService.qml"
-    settings_service="$repo_root/services/TlpSettingsService.qml"
+    charge_service="$repo_root/plugins/tlp/services/TlpService.qml"
+    settings_service="$repo_root/plugins/tlp/services/TlpSettingsService.qml"
 
     assert_contains 'if (root._matchesRequestedPolicy()) {' "$charge_service" \
         'Quickshell startup must skip mutation when the requested policy already matches'

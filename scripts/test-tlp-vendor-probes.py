@@ -9,7 +9,7 @@ separate: this test does not assume that any CPU driver is present.
 from pathlib import Path
 import re
 
-source = (Path(__file__).resolve().parents[1] / "services/TlpRuntimeCapabilities.qml").read_text()
+source = (Path(__file__).resolve().parents[1] / "plugins/tlp/services/TlpRuntimeCapabilities.qml").read_text()
 
 for id_, path, drivers in (
     ("intelPstateStatusFile", "/sys/devices/system/cpu/intel_pstate/status",

@@ -7,8 +7,8 @@ def read(path): return (ROOT/path).read_text(encoding="utf-8")
 def check(condition,message):
     if not condition: failures.append(message)
 def main():
-    thinkfan_service=read("services/ThinkFanService.qml")
-    thinkfan_helper=read("assets/helpers/alis-thinkfan")
+    thinkfan_service=read("plugins/thinkfan/services/ThinkFanService.qml")
+    thinkfan_helper=read("plugins/thinkfan/assets/helpers/alis-thinkfan")
     for token in (
         "import Quickshell.Services.UPower",
         "property bool directControlAvailable: false",

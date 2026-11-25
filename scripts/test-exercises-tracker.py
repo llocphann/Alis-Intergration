@@ -14,10 +14,10 @@ import tempfile
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
-HELPER = ROOT / "scripts/integrations/exercises_tracker.py"
-ENGINE_JS = ROOT / "services/ExercisesTrackerEngine.js"
-SERVICE_QML = ROOT / "services/ExercisesTracker.qml"
-DASHBOARD_QML = ROOT / "modules/dashboard/DashboardExercisesTracker.qml"
+HELPER = ROOT / "plugins/exercises_tracker/scripts/integrations/exercises_tracker.py"
+ENGINE_JS = ROOT / "plugins/exercises_tracker/services/ExercisesTrackerEngine.js"
+SERVICE_QML = ROOT / "plugins/exercises_tracker/services/ExercisesTracker.qml"
+DASHBOARD_QML = ROOT / "plugins/exercises_tracker/modules/dashboard/DashboardExercisesTracker.qml"
 
 
 def make_valid_png(width: int = 16, height: int = 16) -> bytes:
@@ -126,6 +126,24 @@ assert.strictEqual(sumAfterBc.latestWeightKg, 71.6);
 assert.strictEqual(sumAfterBc.latestBodyFatPct, 14.9);
 assert.strictEqual(sumAfterBc.latestPhotoPath, "/tmp/p2.png");
 
+// 2b. PhotoVaultRel + schedule shift + reminderMinutes & unique #workout date tag
+let shifted = ctx.updateDayMetadata(state, today, { scheduledStart: "19:30" });
+assert.ok(shifted.days[today].scheduledEnd > "19:30", "scheduledEnd must advance past scheduledStart");
+shifted = ctx.updatePreferences(shifted, { workoutReminderMinutes: 30 });
+const shiftedPayload = ctx.buildPlannerEventPayload(shifted, today);
+assert.strictEqual(shiftedPayload.reminderMinutes, 30);
+assert.ok(shiftedPayload.description.includes("#workout · " + today), "payload must tag date to prevent multi-day collapse");
+const offRemState = ctx.updatePreferences(shifted, { workoutReminderMinutes: 0 });
+assert.strictEqual(ctx.buildPlannerEventPayload(offRemState, today).reminderMinutes, 0);
+const vaultBcState = ctx.addBodyCheckin(state, {
+    date: today,
+    photoPath: "/tmp/vault/90_System/95_Media_Assets/Exercise/Body_Tracker/2026-11-18_bc-9.png",
+    photoRel: "90_System/95_Media_Assets/Exercise/Body_Tracker/2026-11-18_bc-9.png",
+    photoVaultRel: "90_System/95_Media_Assets/Exercise/Body_Tracker/2026-11-18_bc-9.png",
+    weightKg: 71.5
+}).state;
+assert.ok(ctx.exportWorkoutMarkdown(vaultBcState, today).includes("![[90_System/95_Media_Assets/Exercise/Body_Tracker/2026-11-18_bc-9.png]]"));
+
 // 3. Weekly Planner Two-Way Parsing & Payload Generation
 const plannerEvent = {
     id: 77,
@@ -206,6 +224,9 @@ let customState = ctx.updatePreferences(migrated1, {
     defaultRestSeconds: 150,
     autoStartRestOnSet: true,
     showInNexus: false,
+    workoutReminderMinutes: 30,
+    bodyPhotosStorageMode: "custom",
+    bodyPhotosCustomDir: "90_System/CustomBody",
     defaultGalleryMode: "compare",
     showBodyMetrics: false
 });
@@ -214,6 +235,9 @@ assert.strictEqual(customState.preferences.defaultSets, 5);
 assert.strictEqual(customState.preferences.defaultRestSeconds, 150);
 assert.strictEqual(customState.preferences.autoStartRestOnSet, true);
 assert.strictEqual(customState.preferences.showInNexus, false);
+assert.strictEqual(customState.preferences.workoutReminderMinutes, 30);
+assert.strictEqual(customState.preferences.bodyPhotosStorageMode, "custom");
+assert.strictEqual(customState.preferences.bodyPhotosCustomDir, "90_System/CustomBody");
 assert.strictEqual(customState.preferences.defaultGalleryMode, "compare");
 assert.strictEqual(customState.preferences.showBodyMetrics, false);
 assert.strictEqual(customState.preferences.unknownPref, "preserved");
@@ -225,6 +249,54 @@ assert.strictEqual(customState.weeklyTemplates["3"], "rest");
 assert.strictEqual(customState.weeklyTemplates["4"], "pull");
 customState = ctx.updateWeeklyTemplate(customState, 3, "cardio");
 assert.strictEqual(customState.weeklyTemplates["3"], "cardio");
+
+// 7. Nexus Catalog Match, Search Ranking, Unsynced Planner Fallback & Idempotent Reconcile
+const nexusLib = [
+    {
+        title: "Barbell Bench Press",
+        relPath: "20_Personal_Life/33_Bodybuilding/Gym_n_Calisthenics_Exercises/Barbell Bench Press.md",
+        muscleGroup: "chest",
+        secondaryMuscles: "triceps, shoulders",
+        equipment: "barbell",
+        level: "intermediate",
+        posterUrl: "file:///tmp/bench.png"
+    },
+    {
+        title: "Push-Ups",
+        relPath: "20_Personal_Life/33_Bodybuilding/Gym_n_Calisthenics_Exercises/Push-Ups.md",
+        muscleGroup: "chest",
+        equipment: "body only"
+    }
+];
+const matchedPush = ctx.matchNexusExercise({ name: "Push ups" }, nexusLib);
+assert.ok(matchedPush && matchedPush.title === "Push-Ups");
+
+const searchBench = ctx.searchExercisesCatalog("bench", nexusLib, state, 10);
+assert.ok(searchBench.length >= 1 && searchBench[0].title === "Barbell Bench Press" && searchBench[0].source === "nexus");
+
+const fallbackEvents = ctx.buildUnsyncedPlannerEvents(state, []);
+assert.ok(fallbackEvents.some(ev => ev.sourceKind === "exerciseWorkout" && ev.workoutDate === today));
+
+const recon1 = ctx.reconcilePlannerWorkoutEvent(state, "2026-11-20", {
+    eventId: 88,
+    title: "Friday Upper",
+    routine: "push",
+    startHm: "18:30",
+    endHm: "19:30",
+    allDay: false,
+    exercises: [{ name: "Barbell Bench Press", sets: 4, reps: "8", weight: 70, completed: true, hasCheckbox: true }]
+});
+assert.strictEqual(recon1.changed, true);
+const recon2 = ctx.reconcilePlannerWorkoutEvent(recon1.state, "2026-11-20", {
+    eventId: 88,
+    title: "Friday Upper",
+    routine: "push",
+    startHm: "18:30",
+    endHm: "19:30",
+    allDay: false,
+    exercises: [{ name: "Barbell Bench Press", sets: 4, reps: "8", weight: 70, completed: true, hasCheckbox: true }]
+});
+assert.strictEqual(recon2.changed, false);
 """
     res = subprocess.run(
         ["node", "-e", node_test, str(ENGINE_JS)],
@@ -354,6 +426,147 @@ def run_photo_helper_security_tests() -> None:
         assert json.loads(ok_del.stdout) == {"ok": True, "deleted": True}
         assert not dest.exists()
 
+        # 6. Read-only Nexus Exercise Library scan & detail parsing + path traversal guard
+        vault = base / "vault"
+        ex_dir = vault / "20_Personal_Life/33_Bodybuilding/Gym_n_Calisthenics_Exercises"
+        att_dir = vault / "90_System/95_Attachments"
+        ex_dir.mkdir(parents=True)
+        att_dir.mkdir(parents=True)
+        (att_dir / "bench.png").write_bytes(png_bytes)
+        (ex_dir / "Barbell Bench Press.md").write_text(
+            "---\n"
+            "id: Barbell_Bench_Press\n"
+            "name: Barbell Bench Press\n"
+            "level: intermediate\n"
+            "force: push\n"
+            "mechanic: compound\n"
+            "equipment: barbell\n"
+            "primaryMuscles:\n"
+            "  - chest\n"
+            "secondaryMuscles:\n"
+            "  - triceps\n"
+            "  - shoulders\n"
+            "poster: \"[[bench.png]]\"\n"
+            "---\n\n"
+            "## How to Perform\n"
+            "1. Lie flat on a bench with eyes under the bar.\n"
+            "2. Lower bar to mid-chest under control and press up.\n\n"
+            "## Tips\n"
+            "- Keep shoulder blades retracted.\n",
+            encoding="utf-8",
+        )
+        scan_proc = subprocess.run(
+            [sys.executable, str(HELPER), "scan-exercises", "--vault", str(vault)],
+            capture_output=True, text=True, check=True,
+        )
+        scan_payload = json.loads(scan_proc.stdout)
+        assert scan_payload["ok"] is True and len(scan_payload["exercises"]) == 1
+        assert scan_payload["exercises"][0]["title"] == "Barbell Bench Press"
+
+        det_proc = subprocess.run(
+            [
+                sys.executable, str(HELPER), "exercise-detail",
+                "--vault", str(vault),
+                "--rel-path", "20_Personal_Life/33_Bodybuilding/Gym_n_Calisthenics_Exercises/Barbell Bench Press.md",
+            ],
+            capture_output=True, text=True, check=True,
+        )
+        det_payload = json.loads(det_proc.stdout)
+        assert det_payload["ok"] is True
+        assert det_payload["primaryMuscles"] == ["chest"]
+        assert det_payload["secondaryMuscles"] == ["triceps", "shoulders"]
+        assert len(det_payload["steps"]) == 2
+        assert len(det_payload["tips"]) == 1
+        assert det_payload["previewUrl"].startswith("file://")
+
+        bad_trav = subprocess.run(
+            [sys.executable, str(HELPER), "exercise-detail", "--vault", str(vault), "--rel-path", "../outside.md"],
+            capture_output=True, text=True, check=False,
+        )
+        assert bad_trav.returncode != 0 and json.loads(bad_trav.stdout)["ok"] is False
+
+        secret_md = base / "secret.md"
+        secret_md.write_text("# Secret\n", encoding="utf-8")
+        escape_link = ex_dir / "Escape.md"
+        escape_link.symlink_to(secret_md)
+        bad_sym_note = subprocess.run(
+            [
+                sys.executable, str(HELPER), "exercise-detail",
+                "--vault", str(vault),
+                "--rel-path", "20_Personal_Life/33_Bodybuilding/Gym_n_Calisthenics_Exercises/Escape.md",
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        assert bad_sym_note.returncode != 0 and json.loads(bad_sym_note.stdout)["ok"] is False
+
+        # 7. Smart Nexus Body Tracker photos dir resolution & in-vault photo import/delete
+        vault_media = base / "vault_media"
+        (vault_media / "90_System/95_Media_Assets/Exercise").mkdir(parents=True)
+        res_ex = json.loads(subprocess.check_output([
+            sys.executable, str(HELPER), "resolve-photos-dir",
+            "--photos-dir", str(photos_dir), "--vault", str(vault_media), "--storage-mode", "auto",
+        ], text=True))
+        assert res_ex["ok"] and res_ex["source"] == "nexus-auto"
+        assert res_ex["vaultRelDir"] == "90_System/95_Media_Assets/Exercise/Body_Tracker"
+        assert res_ex["photosDir"] == str(vault_media / "90_System/95_Media_Assets/Exercise/Body_Tracker")
+        assert not (vault_media / "90_System/95_Media_Assets/Exercise/Body_Tracker").exists(), "resolve-photos-dir must be read-only"
+
+        vault_obs = base / "vault_obs"
+        (vault_obs / ".obsidian").mkdir(parents=True)
+        (vault_obs / "90_System/CustomAtt").mkdir(parents=True)
+        (vault_obs / ".obsidian/app.json").write_text(json.dumps({"attachmentFolderPath": "90_System/CustomAtt"}), encoding="utf-8")
+        res_obs = json.loads(subprocess.check_output([
+            sys.executable, str(HELPER), "resolve-photos-dir",
+            "--photos-dir", str(photos_dir), "--vault", str(vault_obs), "--storage-mode", "auto",
+        ], text=True))
+        assert res_obs["ok"] and res_obs["vaultRelDir"] == "90_System/CustomAtt/Body_Tracker"
+
+        vault_plain = base / "vault_plain"
+        vault_plain.mkdir(parents=True)
+        res_plain = json.loads(subprocess.check_output([
+            sys.executable, str(HELPER), "resolve-photos-dir",
+            "--photos-dir", str(photos_dir), "--vault", str(vault_plain), "--storage-mode", "auto",
+        ], text=True))
+        assert res_plain["ok"] and res_plain["vaultRelDir"] == "Attachments/Body_Tracker"
+
+        res_local = json.loads(subprocess.check_output([
+            sys.executable, str(HELPER), "resolve-photos-dir",
+            "--photos-dir", str(photos_dir), "--vault", "", "--storage-mode", "auto",
+        ], text=True))
+        assert res_local["ok"] and res_local["source"] == "local-fallback" and res_local["inVault"] is False
+
+        custom_rel = json.loads(subprocess.check_output([
+            sys.executable, str(HELPER), "resolve-photos-dir",
+            "--photos-dir", str(photos_dir), "--vault", str(vault_media),
+            "--storage-mode", "custom", "--custom-dir", "90_System/MyBodyPhotos",
+        ], text=True))
+        assert custom_rel["ok"] and custom_rel["source"] == "custom" and custom_rel["inVault"] is True
+        assert custom_rel["vaultRelDir"] == "90_System/MyBodyPhotos"
+
+        bad_custom = subprocess.run([
+            sys.executable, str(HELPER), "resolve-photos-dir",
+            "--photos-dir", str(photos_dir), "--vault", str(vault_media),
+            "--storage-mode", "custom", "--custom-dir", "../../escape",
+        ], capture_output=True, text=True, check=False)
+        assert bad_custom.returncode != 0 and json.loads(bad_custom.stdout)["ok"] is False
+
+        vault_imp = json.loads(subprocess.check_output([
+            sys.executable, str(HELPER), "import-photo",
+            "--source", str(src_img), "--photos-dir", str(photos_dir),
+            "--checkin-id", "bc-202", "--date", "2026-11-24",
+            "--vault", str(vault_media), "--storage-mode", "auto",
+        ], text=True))
+        assert vault_imp["ok"] is True and vault_imp["storageSource"] == "nexus-auto"
+        assert vault_imp["photoVaultRel"] == "90_System/95_Media_Assets/Exercise/Body_Tracker/2026-11-24_bc-202.png"
+        imp_file = Path(vault_imp["photoPath"])
+        assert imp_file.is_file() and stat.S_IMODE(imp_file.stat().st_mode) == 0o600
+        del_allowed = json.loads(subprocess.check_output([
+            sys.executable, str(HELPER), "delete-photo",
+            "--photo-path", str(imp_file), "--photos-dir", str(photos_dir),
+            "--allowed-dir", str(vault_media / "90_System/95_Media_Assets/Exercise/Body_Tracker"),
+        ], text=True))
+        assert del_allowed == {"ok": True, "deleted": True} and not imp_file.exists()
+
 
 def run_qml_memory_and_timer_contract_checks() -> None:
     dash_qml = DASHBOARD_QML.read_text(encoding="utf-8")
@@ -381,11 +594,20 @@ def run_qml_memory_and_timer_contract_checks() -> None:
         w, h = int(size_m.group(1)), int(size_m.group(2))
         assert 0 < w <= 1024 and 0 < h <= 1024, f"Image #{i + 1} sourceSize ({w}x{h}) exceeds memory cap"
 
-    # Rest timer must strictly require presentationActive so hidden tabs cause zero wakeups
-    assert (
-        "running: root.restRunning && root.presentationActive && root.restRemainingSec > 0"
-        in svc_qml
-    ), "Rest timer must stop when presentationActive is false"
+    # Rest timer must delegate to TimerService (Timer Edgebar) with zero private restTickTimer
+    assert "id: restTickTimer" not in svc_qml, "Exercise Tracker must not run an isolated restTickTimer"
+    for contract in ("startCountdown(", "toggleCountdown(", "stopCountdown(", "countdownSecondsLeft"):
+        assert contract in svc_qml, f"Missing TimerService sync contract: {contract}"
+
+    # Tab-jump buttons must stay removed per design contract
+    for forbidden_btn in (
+        "exercisesOpenPlannerButton",
+        "exercisesOpenNexusButton",
+        "exercisesSyncPlannerButton",
+        "exercisesExportNexusButton",
+        "exercisesPlannerSyncBanner",
+    ):
+        assert forbidden_btn not in dash_qml, f"Removed button/banner reappeared: {forbidden_btn}"
 
 
 def main() -> None:
@@ -395,8 +617,8 @@ def main() -> None:
     run_photo_helper_security_tests()
     run_qml_memory_and_timer_contract_checks()
     print(
-        "EXERCISES_TRACKER_UNIT_PASS engine CRUD/streak/volume, legacy migration parity, "
-        "Weekly Planner 2-way sync, Nexus export, safe photo import/delete, bounded Image sourceSize & zero-idle timer"
+        "EXERCISES_TRACKER_UNIT_PASS engine CRUD/streak/volume/search/planner-reconcile, legacy migration parity, "
+        "TimerService Edgebar sync, Nexus exercise-detail/scan security, bounded Image sourceSize & removed tab jumps"
     )
 
 

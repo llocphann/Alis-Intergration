@@ -66,7 +66,7 @@ ShellRoot {
  Component.onCompleted:Quickshell.watchFiles=false
  Connections {target:root.observedWindow;function onFrameSwapped(){root.frames++}}
  Timer {interval:16;running:true;repeat:true;onTriggered:{const now=Date.now();root.maxTickGap=Math.max(root.maxTickGap,now-root.lastTick);root.lastTick=now;root.ticks++}}
- Loader {id:service;source:"PLUGIN/services/NexusService.qml"}
+ Loader {id:service;source:"PLUGIN/plugins/nexus/services/NexusService.qml"}
  TestCase {
   id:tc;when:false;optional:true
   function check(name,ok,actual){console.info("HOST_CHECK",JSON.stringify({name:name,status:ok?"PASS":"FAIL",actual:actual}));if(!ok)throw Error(name)}

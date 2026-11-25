@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory(prefix="alis-capture-failures-") as name:
                       + "if index==len(cases)-1:\n note=Path(" + repr(good["noteFullPath"]) + ");note.parent.mkdir();note.write_text('fixture saved note')\n"
                       + "code,output=cases[index];print(output);sys.exit(code)\n")
     helper.chmod(0o755)
-    (private / "CaptureWorker.qml").write_bytes((ROOT / "services/Zettelkasten.qml").read_bytes())
+    (private / "CaptureWorker.qml").write_bytes((ROOT / "plugins/nexus/services/Zettelkasten.qml").read_bytes())
     (shell / "shell.qml").write_text(r'''
 import QtQuick
 import QtTest

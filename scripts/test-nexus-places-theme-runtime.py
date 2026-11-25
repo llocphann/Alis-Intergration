@@ -45,8 +45,8 @@ ShellRoot {
  Component.onCompleted: Quickshell.watchFiles=false
  FloatingWindow {
   visible:true;implicitWidth:1280;implicitHeight:820
-  Loader {id:svc;source:"PLUGIN/services/NexusService.qml"}
-  Loader {id:workspace;anchors.fill:parent;source:"PLUGIN/modules/nexus/NexusWorkspace.qml";onLoaded:item.nexus=svc.item}
+  Loader {id:svc;source:"PLUGIN/plugins/nexus/services/NexusService.qml"}
+  Loader {id:workspace;anchors.fill:parent;source:"PLUGIN/plugins/nexus/modules/nexus/NexusWorkspace.qml";onLoaded:item.nexus=svc.item}
  }
  TestCase {
   id:tc;when:false;optional:true
@@ -99,7 +99,7 @@ ShellRoot {
         result = run_qs(shell, env, timeout=25)
     checks = [json.loads(s) for s in re.findall(r"PLACES_CHECK (\{[^\n]+\})", result.stdout)]
     receipt = {"scope": "Actual Places collection card in private native Wayland; real NexusService and sanitized persisted fixture, no provider/weather network or real vault writes.",
-               "plugin": str(PLUGIN), "host": str(HOST), "workspaceSha256": hashlib.sha256((PLUGIN / "modules/nexus/NexusWorkspace.qml").read_bytes()).hexdigest(),
+               "plugin": str(PLUGIN), "host": str(HOST), "workspaceSha256": hashlib.sha256((PLUGIN / "plugins/nexus/modules/nexus/NexusWorkspace.qml").read_bytes()).hexdigest(),
                "exit": result.returncode, "complete": "PLACES_DONE" in result.stdout, "checks": checks,
                "fixtureBytesUnchanged": place.read_text() == original}
     (out / "native.json").write_text(json.dumps(receipt, indent=2) + "\n")

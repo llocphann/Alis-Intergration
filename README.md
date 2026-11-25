@@ -6,11 +6,15 @@ Optional workspace, study, fitness, and hardware integration plugins for the [**
 
 ### Nexus Knowledge Workspace (`nexus`)
 
-Browse and edit your Markdown vault inside Alis with an Obsidian-style Soft Folder Tree, Tag Wrangler+ sidebar, 2D/3D Vault & Local Graph with virtual `#tag` hubs, Homepage overview, Daily Schedule, Obsidian Calendar with dual word-count & task indicators, interactive 3D Globe with smooth zoomed-in street/building Map mode & Alis auto-theming, Canvas board with inline Note Picker, Markdown editing shortcuts (`Ctrl+B`, `Ctrl+I`, `Ctrl+K`, smart list Enter) with external-edit conflict protection, persistent `alis-nexus --serve` vault backend, redesigned Bases decks, Quicknotes, Todo sync, native Wayland clipboard image paste, and adaptive Alis Vault theming.
+Browse and edit your Markdown vault inside Alis with an Obsidian-style Soft Folder Tree, Tag Wrangler+ sidebar, 2D/3D Vault & Local Graph with virtual `#tag` hubs, Homepage overview, Daily Schedule, Obsidian Calendar with dual word-count & task indicators, interactive 3D Globe with smooth zoomed-in street/building Map mode & Alis auto-theming, Canvas board with inline Note Picker, Markdown editing shortcuts (`Ctrl+B`, `Ctrl+I`, `Ctrl+K`, smart list Enter) with external-edit conflict protection, persistent `alis-nexus --serve` vault & native revision-history backend, redesigned Bases decks, Quicknotes, Todo sync, native Wayland clipboard image paste, and adaptive Alis Vault theming.
 
 <p align="center">
   <img src="docs/screenshots/nexus-workspace.png" alt="Nexus Workspace showing file tree, Vault Mini-Graph, Homepage overview, 3D Globe, and Today timeline" width="100%" />
 </p>
+
+### Alis Files (`alis_files`)
+
+Native Rust + GTK4 file manager (`alis-files`) with an integrated Abyss Overlay workspace, bounded async thumbnail worker pool with directory-change cancellation, split dual-pane browsing, QuickLook previews, inspector metadata, archive tools, and live Alis palette synchronization.
 
 ### Spaced Repetition (`spaced_repetition`)
 

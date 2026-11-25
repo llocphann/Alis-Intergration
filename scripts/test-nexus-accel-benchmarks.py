@@ -17,7 +17,7 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-NEXUS_BIN = ROOT / "assets" / "bin" / "alis-nexus"
+NEXUS_BIN = ROOT / "plugins" / "nexus" / "assets" / "bin" / "alis-nexus"
 
 
 def resolve_host_root() -> Path:
@@ -240,7 +240,7 @@ def verify_qml_graph_globe_and_exercises_bridge(tmp: Path) -> dict[str, float]:
     for entry in ("modules", "services", "GlobalStates.qml", "qmldir", "assets", "scripts", "defaults", "translations"):
         if (host_root / entry).exists():
             (qs_root / entry).symlink_to(host_root / entry)
-    (qs_root / "nexus_mod").symlink_to(ROOT / "modules" / "nexus")
+    (qs_root / "nexus_mod").symlink_to(ROOT / "plugins" / "nexus" / "modules" / "nexus")
     harness = qs_root / "shell.qml"
     harness.write_text(
         f"""

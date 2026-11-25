@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-TODO_DIR = Path(__file__).resolve().parent / "todo"
+TODO_DIR = Path(__file__).resolve().parent.parent / "plugins/nexus/scripts/todo"
 sys.path.insert(0, str(TODO_DIR))
 SCRIPT = TODO_DIR / "nexus_daily_todo.py"
 SPEC = importlib.util.spec_from_file_location("nexus_daily_todo", SCRIPT)
@@ -258,6 +258,84 @@ class DailyTodoTests(unittest.TestCase):
                 scan["tasks"][0]["id"], scan["document"]["sha256"],
             )
         self.assertEqual(error.exception.code, "conflict")
+
+    def test_scan_daily_range_unicode_dashes_fallback_and_toggle(self):
+        vault, _, _ = self.make_vault(
+            "## Day Planner\n"
+            "- [ ] 09:00–10:30 Họp nhóm\n"
+            "- [ ] 14:00-15:00 Code review\n"
+            "- [ ] Unscheduled task\n"
+            "## Notes\n",
+            day="2026-09-22",
+        )
+        # Second day note with standard heading
+        day2_note = vault / "00_Capture/01_Journal/2026/September/23-09-2026-Wednesday.md"
+        day2_note.write_text("## Tasks\n- [x] 07:00 Morning mobility\n", encoding="utf-8")
+
+        res = daily.scan_daily_range(
+            str(vault), daily.DEFAULT_FOLDER, daily.DEFAULT_FORMAT,
+            start_date="2026-09-21", end_date="2026-09-24",
+            heading="Tasks", heading_level=2, default_duration=45,
+        )
+        self.assertTrue(res["ok"])
+        self.assertEqual(len(res["events"]), 3)
+        ev0, ev1, ev2 = res["events"]
+        self.assertEqual((ev0["title"], ev0["startTime"], ev0["endTime"], ev0["done"]), ("Họp nhóm", "09:00", "10:30", False))
+        self.assertEqual((ev1["title"], ev1["startTime"], ev1["endTime"], ev1["done"]), ("Code review", "14:00", "15:00", False))
+        self.assertEqual((ev2["title"], ev2["startTime"], ev2["endTime"], ev2["done"]), ("Morning mobility", "07:00", "07:45", True))
+        self.assertEqual(ev0["sourceKind"], "nexusDailyTask")
+
+        daily.toggle_task(
+            str(vault), daily.DEFAULT_FOLDER, daily.DEFAULT_FORMAT,
+            "2026-09-22", "Day Planner", 2, 45,
+            ev0["taskId"], ev0["documentSha"],
+        )
+        after = daily.scan_daily_range(
+            str(vault), daily.DEFAULT_FOLDER, daily.DEFAULT_FORMAT,
+            start_date="2026-09-22", end_date="2026-09-22",
+        )
+        self.assertTrue(after["events"][0]["done"])
+
+    def test_initialize_section_creates_note_or_appends_heading_idempotently(self):
+        # 1. Appends missing heading cleanly while preserving existing body lines
+        vault, note, day = self.make_vault("# Daily Note\n\nExisting entry\n", day="2026-09-22")
+        res = daily.initialize_section(
+            str(vault), daily.DEFAULT_FOLDER, daily.DEFAULT_FORMAT, day=day, heading="Day Planner", heading_level=2
+        )
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["mutation"], "initialize-section")
+        self.assertEqual(res["tasks"], [])
+        content = note.read_text(encoding="utf-8")
+        self.assertIn("Existing entry", content)
+        self.assertIn("## Day Planner\n", content)
+
+        # 2. Idempotent when heading already exists once
+        before_bytes = note.read_bytes()
+        again = daily.initialize_section(
+            str(vault), daily.DEFAULT_FOLDER, daily.DEFAULT_FORMAT, day=day, heading="Day Planner", heading_level=2
+        )
+        self.assertTrue(again["ok"])
+        self.assertEqual(note.read_bytes(), before_bytes)
+
+        # 3. Creates missing daily note safely inside vault when absent
+        res_new = daily.initialize_section(
+            str(vault), daily.DEFAULT_FOLDER, daily.DEFAULT_FORMAT, day="2026-09-23", heading="Day Planner", heading_level=2
+        )
+        self.assertTrue(res_new["ok"])
+        self.assertEqual(
+            (vault / "00_Capture/01_Journal/2026/September/23-09-2026-Wednesday.md").read_text(encoding="utf-8"),
+            "## Day Planner\n",
+        )
+
+        # 4. Fails closed on duplicate headings
+        note.write_text("## Day Planner\n## Day Planner\n", encoding="utf-8")
+        dup_before = note.read_bytes()
+        with self.assertRaises(daily.core.TodoError) as error:
+            daily.initialize_section(
+                str(vault), daily.DEFAULT_FOLDER, daily.DEFAULT_FORMAT, day=day, heading="Day Planner", heading_level=2
+            )
+        self.assertEqual(error.exception.code, "invalid_planner_section")
+        self.assertEqual(note.read_bytes(), dup_before)
 
 
 if __name__ == "__main__":
